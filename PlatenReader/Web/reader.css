@@ -1,0 +1,43 @@
+/* Styles for the reader shell itself (not the book, whose styles are injected
+   by reader.js). The shell is just a full-window host for <foliate-view>. */
+
+:root {
+    /* Updated from Swift with the current theme; these defaults avoid a white
+       flash in dark mode before the first settings arrive. */
+    --platen-bg: #ffffff;
+    --platen-fg: #1c1c1e;
+    color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --platen-bg: #1e1e20;
+        --platen-fg: #d0d0d0;
+    }
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--platen-bg);
+    color: var(--platen-fg);
+    /* Text in the shell is never selectable; text in the book is. */
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+foliate-view {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* foliate's paginator paints its own background from the book's, but clears
+   it on every re-layout. Keep it transparent so the theme colour of the shell
+   (above) always shows around the page and between columns. */
+foliate-view::part(filter) {
+    background: transparent !important;
+}

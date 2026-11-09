@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+  The reader shell: a near-empty page that hosts foliate-js.
+
+  It is served from platen://reader/app/reader.html by the app's URL scheme
+  handler, which also sets a strict Content-Security-Policy header on it. Book
+  files are fetched from platen://reader/book/<path> (same origin), so no
+  network access and no file-system access is ever needed.
+-->
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="reader.css">
+<script type="module" src="reader.js"></script>
+</head>
+<body>
+</body>
+</html>

@@ -1,0 +1,10 @@
+build/
+.build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+.swiftpm/
+# Generated and non-redistributable test books
+Fixtures/generated/
+Fixtures/local/
