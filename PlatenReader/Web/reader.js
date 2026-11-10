@@ -9,25 +9,32 @@
 // Book files are fetched from /book/<path> on the same origin, which the
 // Swift URL scheme handler serves from memory. Nothing here touches the
 // network or the file system.
+//
+// This file opens the book and holds the `platen` commands; the rest lives
+// in modules/:
+//   state.js        what the modules share (the foliate view, settings)
+//   bridge.js       post() to Swift
+//   layout.js       settings → book CSS and page layout
+//   bookfixes.js    unreadable colours, publisher font sizes, wide tables
+//   input.js        clicks, pictures, selection, trackpad swipes
+//   pagenumbers.js  numbers under each page
+//   bookmarks.js    ribbons and bookmarking
+//   jumps.js        jumps and the Back button
+//   search.js       find in book
+//   contents.js     table of contents
 
 import './foliate/view.js'
 import { EPUB } from './foliate/epub.js'
-
-// ---------------------------------------------------------------------------
-// Bridge to Swift
-
-const post = (type, body = {}) => {
-    try {
-        window.webkit.messageHandlers.platen.postMessage({ type, ...body })
-    } catch {
-        // Running in a plain browser for debugging: log instead.
-        console.log('[platen →]', type, body)
-    }
-}
-
-// Forward uncaught errors so they show up in Xcode's console.
-window.addEventListener('error', e => post('log', { level: 'error', message: `${e.message} (${e.filename}:${e.lineno})` }))
-window.addEventListener('unhandledrejection', e => post('log', { level: 'error', message: String(e.reason?.stack ?? e.reason) }))
+import { reader } from './modules/state.js'
+import { ensureReadableColours, fitWideTables, rescalePublisherFontSizes } from './modules/bookfixes.js'
+import { pagesOnScreen, scheduleRibbons, setBookmarkList, toggleBookmark } from './modules/bookmarks.js'
+import { post } from './modules/bridge.js'
+import { sendContents } from './modules/contents.js'
+import { attachPointerHandlers, swipe } from './modules/input.js'
+import { goBack, jump, noteMovement, rememberJumpOrigin } from './modules/jumps.js'
+import { applyLayout } from './modules/layout.js'
+import { followScroll, updatePageNumbers } from './modules/pagenumbers.js'
+import { clearSearch, search } from './modules/search.js'
 
 // ---------------------------------------------------------------------------
 // Loading book files from Swift
@@ -62,196 +69,6 @@ const openBook = async ({ format, sizes }) => {
     return new EPUB(makeLoader(sizes)).init()
 }
 
-// ---------------------------------------------------------------------------
-// Settings → CSS and layout
-
-let view = null
-let settings = null
-let isFixedLayout = false
-
-// Approximate characters per line for each line-width setting.
-const lineWidthChars = { narrow: 55, medium: 66, wide: 80 }
-// Average glyph width as a fraction of font size, for typical book faces.
-const charWidthEm = 0.5
-// Spec: show two pages when each column can hold about 50 characters.
-const minCharsForTwoColumns = 50
-
-const bookCSS = s => `
-    @namespace epub "http://www.idpf.org/2007/ops";
-    html {
-        color-scheme: ${s.theme.dark ? 'dark' : 'light'};
-        font-size: ${s.fontSize}px !important;
-    }
-    html, body {
-        background-color: ${s.theme.background} !important;
-        color: ${s.theme.foreground} !important;
-    }
-    a:link, a:visited { color: ${s.theme.link} !important; }
-    ${s.lineHeight ? `
-    p, li, blockquote, dd, div {
-        line-height: ${s.lineHeight} !important;
-    }` : ''}
-    ${s.fontFamily ? `
-    body, p, li, blockquote, dd, td, th, dt, div {
-        font-family: "${s.fontFamily.replace(/"/g, '')}", serif !important;
-    }
-    code, pre, kbd, samp, tt, code *, pre * {
-        font-family: ui-monospace, Menlo, monospace !important;
-    }` : ''}
-    p, li, blockquote, dd {
-        -webkit-hyphens: ${s.hyphenate && s.flow === 'paginated' ? 'auto' : 'manual'};
-        hyphens: ${s.hyphenate && s.flow === 'paginated' ? 'auto' : 'manual'};
-        widows: 2;
-        orphans: 2;
-    }
-    pre { white-space: pre-wrap !important; }
-    ${s.theme.dark ? `
-    /* Dark line art on transparent backgrounds would vanish; give images a
-       light backing so they stay legible. */
-    img, svg image { background-color: #f2f2f2; }` : ''}
-    /* Footnote bodies are reached by following their links. */
-    aside[epub|type~="footnote"], aside[epub|type~="endnote"],
-    aside[epub|type~="note"], aside[epub|type~="rearnote"] {
-        display: none;
-    }
-`
-
-const columnCount = s => {
-    if (s.flow === 'scrolled') return 1
-    if (s.pageLayout === 'one') return 1
-    if (s.pageLayout === 'two') return 2
-    // Automatic: two pages if each half of the window is wide enough.
-    const half = window.innerWidth / 2
-    return half >= minCharsForTwoColumns * s.fontSize * charWidthEm * 1.15 ? 2 : 1
-}
-
-const applyLayout = () => {
-    const r = view?.renderer
-    if (!r || !settings) return
-    document.documentElement.style.setProperty('--platen-bg', settings.theme.background)
-    document.documentElement.style.setProperty('--platen-fg', settings.theme.foreground)
-    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
-    r.toggleAttribute('animated', settings.animated && !reduceMotion)
-    if (isFixedLayout) return
-
-    const columns = columnCount(settings)
-    const lineWidth = lineWidthChars[settings.lineWidth] * settings.fontSize * charWidthEm
-    // In forced two-page mode the columns must fit in the window, whatever
-    // the line width setting says.
-    const inline = columns === 2 ? Math.min(lineWidth, window.innerWidth / 2) : lineWidth
-    r.setAttribute('flow', settings.flow)
-    r.setAttribute('max-column-count', columns)
-    r.setAttribute('max-inline-size', `${Math.round(inline)}px`)
-    r.setAttribute('margin', '44px')
-    r.setAttribute('gap', '6%')
-    r.setStyles?.(bookCSS(settings))
-}
-
-// Debounce re-layout during window resizes so dragging stays smooth; the
-// paginator itself keeps the same text anchored in view.
-let resizeTimer
-window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer)
-    resizeTimer = setTimeout(applyLayout, 100)
-})
-
-// ---------------------------------------------------------------------------
-// Pointer input inside book documents
-
-// A "click" is mouse-down and mouse-up with negligible movement. The zone is
-// computed in window coordinates and sent to Swift, which decides what to do
-// (turn a page or toggle the overlay), so behaviour lives in one place.
-const attachPointerHandlers = doc => {
-    let down = null
-    doc.addEventListener('mousedown', e => {
-        const selection = doc.getSelection()
-        down = { x: e.screenX, y: e.screenY, hadSelection: selection && !selection.isCollapsed }
-    })
-    doc.addEventListener('click', e => {
-        if (e.button !== 0 || e.detail > 1 || !down) return // part of a double/triple click
-        if (down.hadSelection) return // the click just dismissed a selection
-        if (Math.hypot(e.screenX - down.x, e.screenY - down.y) > 4) return // a drag
-        if (e.target.closest?.('a[href], audio, video, button, input, select, textarea, label')) return
-        if (e.defaultPrevented) return
-
-        // Convert from the iframe's coordinates to the window's. The iframe
-        // may be scrolled (paginated mode) or scaled (fixed layout).
-        const frame = doc.defaultView.frameElement
-        const rect = frame.getBoundingClientRect()
-        const scale = frame.offsetWidth ? rect.width / frame.offsetWidth : 1
-        const x = rect.left + e.clientX * scale
-        const third = window.innerWidth / 3
-        const zone = x < third ? 'left' : x > 2 * third ? 'right' : 'centre'
-        post('click', { zone })
-    })
-    doc.addEventListener('wheel', onWheel, { passive: false })
-    // Context menus are left to WebKit (Look Up, Translate, Copy, Share…).
-}
-
-// ---------------------------------------------------------------------------
-// Trackpad and scroll wheel (paginated mode)
-//
-// Horizontal two-finger swipes move the page with the fingers and snap to
-// the nearest page on release; vertical wheel movement turns one page per
-// gesture. In scroll mode the browser's own scrolling is used unchanged.
-
-const gesture = { axis: null, total: 0, turned: false, timer: null }
-
-function onWheel(e) {
-    if (!view || settings?.flow === 'scrolled') return
-    e.preventDefault()
-    const ax = Math.abs(e.deltaX), ay = Math.abs(e.deltaY)
-    if (!gesture.axis) {
-        if (ax < 1 && ay < 1) return
-        gesture.axis = ax > ay ? 'x' : 'y'
-    }
-    const r = view.renderer
-    if (gesture.axis === 'x' && !isFixedLayout && r.scrollBy) {
-        r.scrollBy(e.deltaX, 0)
-        gesture.total += e.deltaX
-    } else if (!gesture.turned) {
-        const delta = gesture.axis === 'x' ? e.deltaX : e.deltaY
-        gesture.total += delta
-        if (Math.abs(gesture.total) > 24) {
-            gesture.turned = true
-            const forward = gesture.total > 0
-            // Horizontal swipes in fixed layout follow the visual direction.
-            if (gesture.axis === 'x') forward ? view.goRight() : view.goLeft()
-            else forward ? view.next() : view.prev()
-        }
-    }
-    clearTimeout(gesture.timer)
-    // Wheel events have no "fingers lifted" signal in the web, so treat a
-    // short pause (after any momentum) as the end of the gesture.
-    gesture.timer = setTimeout(endGesture, 90)
-}
-
-function endGesture() {
-    const r = view?.renderer
-    if (gesture.axis === 'x' && !isFixedLayout && r?.snap) {
-        // A deliberate swipe (more than 40 px) goes to the next page even if
-        // it moved less than half a page; a small nudge springs back.
-        const velocity = Math.abs(gesture.total) > 40 ? Math.sign(gesture.total) * 0.5 : 0
-        r.snap(velocity, 0)
-    }
-    gesture.axis = null
-    gesture.total = 0
-    gesture.turned = false
-}
-
-document.addEventListener('wheel', onWheel, { passive: false })
-
-// ---------------------------------------------------------------------------
-// Location reporting
-
-const flattenTOC = (items, depth = 0, out = []) => {
-    for (const item of items ?? []) {
-        out.push({ label: (item.label ?? '').trim(), href: item.href ?? '', depth })
-        if (item.subitems?.length) flattenTOC(item.subitems, depth + 1, out)
-    }
-    return out
-}
-
 const metadataString = x => {
     if (!x) return ''
     if (typeof x === 'string') return x
@@ -261,10 +78,32 @@ const metadataString = x => {
     return values.length ? metadataString(values[0]) : ''
 }
 
+
+// ---------------------------------------------------------------------------
+// Location reporting
+
 let firstRelocate = true
+let lastReason = null
 const onRelocate = ({ detail }) => {
     const { cfi, fraction, tocItem, pageItem, location, section } = detail
+    const r = reader.view.renderer
+    const pagesLeft = !reader.isFixedLayout && reader.settings?.flow !== 'scrolled' && r.pages > 0
+        ? Math.max(0, r.pages - 2 - r.page) : null
+    // foliate reports *why* the view moved on the renderer's event, which
+    // fires after this one; read it once the current dispatch has finished.
+    queueMicrotask(() => {
+        noteMovement(lastReason)
+        scheduleRibbons()
+        updatePageNumbers(detail)
+        // Page width changes with the layout; re-check tables each time.
+        if (!reader.isFixedLayout && reader.settings?.flow !== 'scrolled')
+            for (const { doc } of reader.view.renderer.getContents?.() ?? []) if (doc) fitWideTables(doc)
+    })
     post('relocate', {
+        pagesLeft,
+        // Pages side by side (Two Pages falls back to one in a narrow window).
+        columns: r.feet?.length ?? 1,
+        chapterHref: tocItem?.href ?? null,
         cfi,
         fraction: fraction ?? 0,
         chapter: tocItem?.label?.trim() ?? '',
@@ -294,54 +133,102 @@ window.platen = {
                 })
             })
 
-            view = document.createElement('foliate-view')
-            document.body.append(view)
-            await view.open(book)
-            isFixedLayout = view.isFixedLayout
-            settings = options.settings
-            view.addEventListener('relocate', onRelocate)
-            view.addEventListener('load', ({ detail: { doc } }) => attachPointerHandlers(doc))
-            view.addEventListener('external-link', e => {
+            reader.view = document.createElement('foliate-view')
+            document.body.append(reader.view)
+            await reader.view.open(book)
+            reader.isFixedLayout = reader.view.isFixedLayout
+            reader.settings = options.settings
+            reader.view.addEventListener('relocate', onRelocate)
+            reader.view.addEventListener('load', ({ detail: { doc, index } }) => {
+                if (!reader.isFixedLayout) {
+                    rescalePublisherFontSizes(doc)
+                    ensureReadableColours(doc)
+                }
+                attachPointerHandlers(doc, index)
+            })
+            reader.view.renderer.addEventListener('relocate', e => { lastReason = e.detail.reason })
+            reader.view.renderer.addEventListener('scroll', followScroll)
+            reader.view.addEventListener('external-link', e => {
                 // Never navigate the reader; let Swift open it in the browser.
                 e.preventDefault()
                 post('externalLink', { href: e.detail.a.href })
             })
-            view.addEventListener('link', () => post('jumped', { reason: 'link' }))
+            // Following a link is a jump: offer a way back.
+            reader.view.addEventListener('link', () => rememberJumpOrigin())
             applyLayout()
 
             // Restore the saved position, or start where the main text begins.
-            await view.init({ lastLocation: options.lastCFI ?? null, showTextStart: true })
+            await reader.view.init({ lastLocation: options.lastCFI ?? null, showTextStart: true })
 
             post('opened', {
                 title: metadataString(book.metadata?.title),
                 author: metadataString(book.metadata?.author),
                 language: metadataString(book.metadata?.language),
                 dir: book.dir ?? 'ltr',
-                fixedLayout: isFixedLayout,
-                toc: flattenTOC(book.toc),
+                fixedLayout: reader.isFixedLayout,
                 hasPageList: !!book.pageList?.length,
-                sectionFractions: view.getSectionFractions(),
+                sectionFractions: reader.view.getSectionFractions(),
             })
+            // Contents and chapter labels are worked out after the first page
+            // is on screen, so they never delay opening.
+            setTimeout(() => sendContents(book), 0)
         } catch (e) {
             post('error', { message: String(e?.message ?? e), stack: String(e?.stack ?? '') })
         }
     },
     setSettings(s) {
-        settings = s
+        const themeChanged = s.theme?.background !== reader.settings?.theme?.background
+        reader.settings = s
         applyLayout()
+        if (themeChanged && !reader.isFixedLayout)
+            for (const { doc } of reader.view?.renderer?.getContents?.() ?? []) ensureReadableColours(doc)
     },
-    goLeft: () => view?.goLeft(),
-    goRight: () => view?.goRight(),
-    next: () => view?.next(),
-    prev: () => view?.prev(),
+    goLeft: () => reader.view?.goLeft(),
+    goRight: () => reader.view?.goRight(),
+    next: () => reader.view?.next(),
+    prev: () => reader.view?.prev(),
     // Scroll mode: arrow keys move by a fraction of a screen.
-    scrollLines: lines => lines > 0 ? view?.next(lines * 40) : view?.prev(-lines * 40),
-    nextSection: () => view?.renderer.nextSection?.(),
-    prevSection: () => view?.renderer.prevSection?.(),
-    goTo: target => view?.goTo(target),
-    goToFraction: f => view?.goToFraction(f),
-    back: () => view?.history.back(),
-    get canGoBack() { return !!view?.history.canGoBack },
+    scrollLines: lines => lines > 0 ? reader.view?.next(lines * 40) : reader.view?.prev(-lines * 40),
+    nextSection: () => reader.view?.renderer.nextSection?.(),
+    prevSection: () => reader.view?.renderer.prevSection?.(),
+    // Jumps (contents, bookmarks, search results, slider) remember where
+    // the reader came from, for the Back button.
+    // `keepOrigin`: stepping through search results keeps "Back" pointing
+    // at where the reader was before the first result.
+    jumpTo: (target, keepOrigin) => jump(() => reader.view.goTo(target), keepOrigin),
+    jumpToFraction: f => jump(() => reader.view.goToFraction(f)),
+    goBack,
+    setBookmarks: setBookmarkList,
+    toggleBookmark,
+    search,
+    // For the page-turn animation (drawn natively from snapshots): turn
+    // with no slide, and resolve once the new page has been painted. Says
+    // whether the page changed and how many pages are side by side.
+    async turnInstantly(direction) {
+        if (!reader.view) return { moved: false, columns: 1 }
+        const r = reader.view.renderer
+        const before = reader.view.lastLocation?.cfi
+        const animated = r.hasAttribute('animated')
+        r.removeAttribute('animated')
+        const relocated = new Promise(resolve => {
+            const timer = setTimeout(resolve, 400) // at the start or end of the book
+            reader.view.addEventListener('relocate', () => { clearTimeout(timer); resolve() }, { once: true })
+        })
+        ;({ left: () => reader.view.goLeft(), right: () => reader.view.goRight(),
+            next: () => reader.view.next(), prev: () => reader.view.prev() })[direction]?.()
+        await relocated
+        if (animated) r.setAttribute('animated', '')
+        // Two frames: the first lays out, the second is on screen.
+        await new Promise(requestAnimationFrame)
+        await new Promise(requestAnimationFrame)
+        const columns = reader.isFixedLayout ? Math.max(1, pagesOnScreen().length) : (r.feet?.length ?? 1)
+        return { moved: reader.view.lastLocation?.cfi !== before, columns }
+    },
+    swipeMove: dx => swipe.move(dx),
+    swipeEnd: direction => swipe.end(direction),
+    // For debugging and automated checks (scripts/run-debug.sh steps).
+    get view() { return reader.view },
+    clearSearch,
 }
 
 post('ready')

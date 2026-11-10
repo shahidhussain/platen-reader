@@ -1,6 +1,42 @@
 {
   "sourceLanguage" : "en-GB",
   "strings" : {
+    "Adobe Digital Editions DRM" : {
+
+    },
+    "an unrecognised form of DRM" : {
+
+    },
+    "Apple Books (FairPlay) DRM" : {
+
+    },
+    "KFX is a proprietary Amazon format. If you have the book in EPUB, AZW3 or MOBI, open that instead." : {
+
+    },
+    "Kindle DRM" : {
+
+    },
+    "Platen does not recognise this file as an ebook." : {
+
+    },
+    "Platen opens DRM-free books only. Open it in the app or store it was bought from." : {
+
+    },
+    "Platen reads EPUB, KEPUB, MOBI, AZW and AZW3 files." : {
+
+    },
+    "Readium LCP DRM" : {
+
+    },
+    "This book is damaged and could not be opened." : {
+
+    },
+    "This book is protected by %@." : {
+
+    },
+    "This is a Kindle KFX book, which Platen cannot open." : {
+
+    }
   },
   "version" : "1.0"
 }

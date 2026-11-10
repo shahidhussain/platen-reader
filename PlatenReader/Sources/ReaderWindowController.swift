@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 /// The window for one book.
 ///
@@ -44,7 +45,21 @@ final class ReaderWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        #if DEBUG
+        Logger(subsystem: "Platen Reader", category: "reader").info("Window closed")
+        #endif
         readerViewController?.savePositionNow()
+        // There is always a window: when the last book closes, the welcome
+        // window comes back.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            if NSDocumentController.shared.documents.isEmpty, !AppDelegate.isQuitting {
+                WelcomeWindowController.shared.show()
+            }
+        }
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        readerViewController?.reportLayoutToSettings()
     }
 
     func windowDidEnterFullScreen(_ notification: Notification) {

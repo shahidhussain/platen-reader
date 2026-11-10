@@ -11,7 +11,9 @@ A free, open source (MPL-2.0), file-first ebook viewer for macOS, with iOS to fo
   - `ReaderSchemeHandler`: serves `platen://reader/app/*` (the shell) and `platen://reader/book/*` (book files from memory). It also holds the CSP and the remote-load blocker.
   - `MainMenu`: the full command set. Actions go to the first responder.
 - `PlatenReader/Web/`: `reader.html/js/css`, the shell that drives foliate-js. `foliate/` is vendored at a pinned commit (see `foliate/VENDORED.md`).
-- `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `run-debug.sh` (headless open + snapshots), `generate-xcodeproj.py`, `update-foliate.sh`.
+- `design/icon/`: the app icon. `make-icons.py` draws it (SVG, in several background colours; Honey is the one in use), Quick Look renders it, and `mask-icon.swift` makes the corners transparent. The sizes live in `PlatenReader/Sources/Assets.xcassets/AppIcon.appiconset`.
+- `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `check-corpus.sh` (opens each fixture and checks the result), `run-debug.sh` (headless open + snapshots), `update-foliate.sh`. The Xcode project is maintained in Xcode; `PlatenReader/Sources` is a synchronised folder, so new files need no project edits. The Xcode project is maintained in Xcode; `PlatenReader/Sources` is a synchronised folder, so new files need no project edits.
+- Reader features live in `reader.js` (opening, the `platen` commands) and `PlatenReader/Web/modules/` (one module per feature: layout, book fixes, input, page numbers, bookmarks, jumps, search, contents; shared state in `state.js`). The native side is `ContentsPopover.swift`, `OverlayViews.swift`, `PageTurnView.swift` and `ImageZoomView.swift`. `ReaderViewController` is split by job into `ReaderViewController+*.swift` (messages, input, page turn, contents, menu, pictures).
 
 ## Build and test
 
@@ -20,11 +22,17 @@ swift test --package-path PlatenCore                       # core unit tests
 xcodebuild -project PlatenReader.xcodeproj -scheme PlatenReader \
   -configuration Debug -derivedDataPath build/DerivedData build
 python3 scripts/make-fixtures.py                           # regenerate corpus
-scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next()"
+scripts/check-corpus.sh                                    # corpus must stay green
+scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next();@toggleContents:"
 # → log lines with open timings; PNG snapshots in build/snaps/
 ```
 
-`run-debug.sh` relies on Debug-only hooks (`DebugHooks.swift`). `PLATEN_SNAPSHOT_DIR` writes web-view snapshots after the first render, and `PLATEN_STEPS` runs semicolon-separated JS commands (for example `platen.next()` or `platen.setSettings({...})`) one per second, taking a snapshot after each.
+`run-debug.sh` relies on Debug-only hooks (`DebugHooks.swift`). `PLATEN_SNAPSHOT_DIR` writes snapshots after the first render: `<book>-N.png` of the web view and `<book>-N-native.png` of the native views (the native one is taken 0.5 s later). `PLATEN_STEPS` runs semicolon-separated steps, one per second:
+- JavaScript, such as `platen.next()`. `platen.view` exposes the foliate view; string results are logged as `step result:`.
+- `@<selector>` sends a menu action, such as `@toggleContents:` or `@findNext:`.
+- `@search:<query>` runs a search; `@tab:<contents|bookmarks|search>` opens the panel on a tab.
+
+The screen-control tools may lack macOS permissions in this environment, so verify UI through these snapshots.
 
 ## Rules
 
@@ -34,8 +42,9 @@ scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next()"
 - Font obfuscation is undone in Swift (`FontDeobfuscator`), and `encryption.xml` is then hidden from foliate-js so it is not undone twice.
 - No telemetry, no network and no permission prompts. Settings are global, and the only per-book data is position and bookmarks (`docs/per-book-data.md`).
 - Comment liberally: explain what and why for a non-specialist. User-facing strings go in String Catalogs (development language en-GB).
+- Add a line to `scripts/check-corpus.sh` for every new fixture.
 - If you patch vendored foliate-js, record it in `PlatenReader/Web/foliate/VENDORED.md`.
 
 ## Status
 
-M0 (spike) is done. Next is M1. See "Not yet done" in README.md.
+M0 (spike) is done. M1 is in progress on branch `m1`; see "Not yet done" in README.md.

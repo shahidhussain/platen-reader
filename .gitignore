@@ -8,3 +8,5 @@ xcuserdata/
 # Generated and non-redistributable test books
 Fixtures/generated/
 Fixtures/local/
+# Real books used for hand testing (not ours to redistribute).
+samples/

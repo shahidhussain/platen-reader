@@ -14,14 +14,19 @@ final class SettingsWindowController: NSWindowController {
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
             return item
         }
-        tabs.addTabViewItem(tab(String(localized: "General"), "gearshape", GeneralSettingsView()))
+        // Three tabs: how books look (Appearance), which files open here
+        // (File Types), and housekeeping (Advanced).
         tabs.addTabViewItem(tab(String(localized: "Appearance"), "textformat", AppearanceSettingsView()))
         tabs.addTabViewItem(tab(String(localized: "File Types"), "doc.text", FileTypesSettingsView()))
         tabs.addTabViewItem(tab(String(localized: "Advanced"), "wrench.and.screwdriver", AdvancedSettingsView()))
 
+        // The tabs' views have no titles of their own; without this the
+        // window would take the (empty) title of the selected tab and show
+        // "Untitled".
+        tabs.canPropagateSelectedChildViewControllerTitle = false
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
-        window.title = String(localized: "Settings")
+        window.title = String(localized: "Platen Reader")
         window.center()
         super.init(window: window)
     }
@@ -30,49 +35,14 @@ final class SettingsWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 }
 
-private struct GeneralSettingsView: View {
-    @ObservedObject var settings = ReaderSettings.shared
-
-    var body: some View {
-        Form {
-            Picker("Default reading mode", selection: $settings.defaultFlow) {
-                ForEach(ReadingFlow.allCases) { Text($0.label).tag($0) }
-            }
-            Picker("Page layout", selection: $settings.pageLayout) {
-                ForEach(PageLayout.allCases) { Text($0.label).tag($0) }
-            }
-            Toggle("Animate page turns", isOn: $settings.animatePageTurns)
-            Toggle("Hyphenate text in paginated mode", isOn: $settings.hyphenate)
-            LabeledContent("First-run tips") {
-                Button("Reset") { UserDefaults.standard.removeObject(forKey: "hasSeenReadingControls") }
-            }
-        }
-        .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
+/// Appearance: the same two groups as the controls over the page. Text
+/// matches the Aa popover; Layout matches the Layout popover.
 private struct AppearanceSettingsView: View {
     @ObservedObject var settings = ReaderSettings.shared
 
     var body: some View {
         Form {
-            Section {
-                Toggle("Follow system appearance", isOn: $settings.followSystemAppearance)
-                if settings.followSystemAppearance {
-                    Picker("Light appearance", selection: $settings.lightTheme) {
-                        ForEach(Theme.allCases) { Text($0.label).tag($0) }
-                    }
-                    Picker("Dark appearance", selection: $settings.darkTheme) {
-                        ForEach(Theme.allCases) { Text($0.label).tag($0) }
-                    }
-                } else {
-                    Picker("Theme", selection: $settings.fixedTheme) {
-                        ForEach(Theme.allCases) { Text($0.label).tag($0) }
-                    }
-                }
-            }
-            Section {
+            Section("Text") {
                 Picker("Font", selection: $settings.fontFamily) {
                     ForEach(ReaderSettings.curatedFonts, id: \.self) { name in
                         Text(name.isEmpty ? String(localized: "Publisher Default") : name).tag(name)
@@ -88,9 +58,30 @@ private struct AppearanceSettingsView: View {
                         Text(value == 0 ? String(localized: "Publisher Default") : value.formatted(.number.precision(.fractionLength(1...2)))).tag(value)
                     }
                 }
+                Toggle("Hyphenate text in paginated mode", isOn: $settings.hyphenate)
+                Picker("Appearance", selection: $settings.appearance) {
+                    ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }
+                }
+                Text("Automatic matches macOS: Light in Light Mode, Dark in Dark Mode.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Layout") {
+                Picker("Layout", selection: $settings.defaultLayout) {
+                    ForEach(ReadingLayout.allCases) { Text("\($0.label) (⌘\($0.shortcut))").tag($0) }
+                }
+                if settings.pageLayout == .two && settings.frontWindowTooNarrowForTwoPages {
+                    Text("The book window is too narrow for two pages. Make it wider to see them side by side.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Picker("Line width", selection: $settings.lineWidth) {
                     ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
                 }
+                Picker("Page turn animation", selection: $settings.pageTurnStyle) {
+                    ForEach(PageTurnStyle.allCases) { Text($0.label).tag($0) }
+                }
+                Toggle("Show pages left in chapter", isOn: $settings.showPagesLeftInChapter)
             }
         }
         .formStyle(.grouped)
@@ -173,14 +164,18 @@ private struct AdvancedSettingsView: View {
 
     var body: some View {
         Form {
-            LabeledContent("Reading positions and bookmarks") {
-                Button("Clear…") { confirmClear = true }
+            Section {
+                LabeledContent("First-run tips") {
+                    Button("Show Again") { ReadingControlsExplainer.resetTips() }
+                }
+            } footer: {
+                Text("Shows the click zones again for the next five books you open.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            LabeledContent("Data folder") {
-                Button("Show in Finder") {
-                    let folder = PositionStore.shared.directory
-                    try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                    NSWorkspace.shared.activateFileViewerSelecting([folder])
+            Section {
+                LabeledContent("Reading positions and bookmarks") {
+                    Button("Clear…") { confirmClear = true }
                 }
             }
         }

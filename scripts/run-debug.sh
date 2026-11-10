@@ -14,4 +14,4 @@ APPPID=$!
 STEPS=$(echo "${2:-}" | awk -F';' '{print NF}')
 sleep $((5 + STEPS))
 kill $APPPID $LOGPID 2>/dev/null
-grep -v '^Filtering' "$ROOT/build/app.log" | sed 's/^[0-9-]* [0-9:.]* //' 
+grep -av '^Filtering' "$ROOT/build/app.log" | sed 's/^[0-9-]* [0-9:.]* //' 

@@ -1,6 +1,406 @@
 {
   "sourceLanguage" : "en-GB",
   "strings" : {
+    "%@ (⌘%@)" : {
+      "localizations" : {
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (⌘%2$@)"
+          }
+        }
+      }
+    },
+    "%lld pages left in chapter" : {
+
+    },
+    "%lld pt" : {
+
+    },
+    "%lld results" : {
+
+    },
+    "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
+
+    },
+    "Aa" : {
+
+    },
+    "About %@" : {
+
+    },
+    "Advanced" : {
+
+    },
+    "Appearance" : {
+
+    },
+    "Automatic" : {
+
+    },
+    "Automatic matches macOS: Light in Light Mode, Dark in Dark Mode." : {
+
+    },
+    "Back" : {
+
+    },
+    "Back to %@" : {
+
+    },
+    "Back to %@ (⌘[)" : {
+
+    },
+    "Black" : {
+
+    },
+    "Bookmark" : {
+
+    },
+    "Bookmark added" : {
+
+    },
+    "Bookmark This Page" : {
+
+    },
+    "Bookmark This Page (⌘D)" : {
+
+    },
+    "Bookmarks" : {
+
+    },
+    "Books will open at the beginning. This cannot be undone." : {
+
+    },
+    "Bring All to Front" : {
+
+    },
+    "Clear" : {
+
+    },
+    "Clear all reading positions and bookmarks?" : {
+
+    },
+    "Clear Menu" : {
+
+    },
+    "Clear…" : {
+
+    },
+    "Close" : {
+
+    },
+    "Contents" : {
+
+    },
+    "Contents and Bookmarks" : {
+
+    },
+    "Contents, Bookmarks and Search" : {
+
+    },
+    "Contents, Bookmarks and Search (⌘T)" : {
+
+    },
+    "Copy" : {
+
+    },
+    "Copy Image" : {
+
+    },
+    "Copy with Citation" : {
+
+    },
+    "Dark" : {
+
+    },
+    "Default Text Size" : {
+
+    },
+    "Edit" : {
+
+    },
+    "Enter Full Screen" : {
+
+    },
+    "EPUB, KEPUB, MOBI or AZW3. You can also drop a book here." : {
+
+    },
+    "File" : {
+
+    },
+    "File Types" : {
+
+    },
+    "Find" : {
+
+    },
+    "Find in Book" : {
+
+    },
+    "Find in Book…" : {
+
+    },
+    "Find Next" : {
+
+    },
+    "Find Previous" : {
+
+    },
+    "First-run tips" : {
+
+    },
+    "Fixed-layout books are always paginated." : {
+
+    },
+    "Font" : {
+
+    },
+    "Go" : {
+
+    },
+    "Help" : {
+
+    },
+    "Hide %@" : {
+
+    },
+    "Hide Contents" : {
+
+    },
+    "Hide Controls" : {
+
+    },
+    "Hide Others" : {
+
+    },
+    "Hyphenate text in paginated mode" : {
+
+    },
+    "Larger Text" : {
+
+    },
+    "last page in chapter" : {
+
+    },
+    "Layout" : {
+
+    },
+    "Light" : {
+
+    },
+    "Line spacing" : {
+
+    },
+    "Line Spacing" : {
+
+    },
+    "Line width" : {
+
+    },
+    "Line Width" : {
+
+    },
+    "Location" : {
+
+    },
+    "Make Platen the Default" : {
+
+    },
+    "Make Platen the Default for All" : {
+
+    },
+    "Medium" : {
+
+    },
+    "Minimise" : {
+
+    },
+    "Narrow" : {
+
+    },
+    "Next Chapter" : {
+
+    },
+    "Next Page" : {
+
+    },
+    "No bookmarks yet. Click the top-right corner of a page, or press ⌘D." : {
+
+    },
+    "No results for “%@”" : {
+
+    },
+    "None" : {
+
+    },
+    "One Page" : {
+
+    },
+    "Open Book…" : {
+
+    },
+    "Open Recent" : {
+
+    },
+    "Open…" : {
+
+    },
+    "or press C" : {
+
+    },
+    "Or press C." : {
+
+    },
+    "p. %@" : {
+
+    },
+    "Page Curl" : {
+
+    },
+    "Page turn animation" : {
+
+    },
+    "Paginated" : {
+
+    },
+    "Picture" : {
+
+    },
+    "Platen Reader" : {
+
+    },
+    "Previous Chapter" : {
+
+    },
+    "Previous Page" : {
+
+    },
+    "Progress" : {
+
+    },
+    "Publisher Default" : {
+
+    },
+    "Quit %@" : {
+
+    },
+    "Reading controls: click the left of the page for the previous page, the right for the next page, and the middle to show controls, or press C." : {
+
+    },
+    "Reading positions and bookmarks" : {
+
+    },
+    "Remove Bookmark" : {
+
+    },
+    "Remove Bookmark (⌘D)" : {
+
+    },
+    "Save Image…" : {
+
+    },
+    "Scroll" : {
+
+    },
+    "Search" : {
+
+    },
+    "Search Book for “%@”" : {
+
+    },
+    "Search Book for Selection" : {
+
+    },
+    "Select All" : {
+
+    },
+    "Sepia" : {
+
+    },
+    "Services" : {
+
+    },
+    "Settings…" : {
+
+    },
+    "Share Selection…" : {
+
+    },
+    "Share…" : {
+
+    },
+    "Show" : {
+
+    },
+    "Show Again" : {
+
+    },
+    "Show All" : {
+
+    },
+    "Show Contents" : {
+
+    },
+    "Show Controls" : {
+
+    },
+    "Show pages left in chapter" : {
+
+    },
+    "Show Reading Controls" : {
+
+    },
+    "Shows the click zones again for the next five books you open." : {
+
+    },
+    "Slide" : {
+
+    },
+    "Smaller Text" : {
+
+    },
+    "Text" : {
+
+    },
+    "Text and Appearance" : {
+
+    },
+    "Text size" : {
+
+    },
+    "Text Size" : {
+
+    },
+    "The book window is too narrow for two pages. Make it wider to see them side by side." : {
+
+    },
+    "The window is too narrow for two pages. Make it wider to see them side by side." : {
+
+    },
+    "This book could not be opened." : {
+
+    },
+    "This book has no table of contents." : {
+
+    },
+    "Two Pages" : {
+
+    },
+    "Untitled" : {
+
+    },
+    "View" : {
+
+    },
+    "Wide" : {
+
+    },
+    "Window" : {
+
+    },
+    "Zoom" : {
+
+    }
   },
   "version" : "1.0"
 }

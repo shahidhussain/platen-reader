@@ -11,7 +11,9 @@ Usage: scripts/make-fixtures.py
 import hashlib
 import os
 import random
+import struct
 import uuid
+import zlib
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -79,6 +81,20 @@ def opf(identifier, title, manifest, spine, version="3.0", extra_meta="", spine_
     {refs}
   </spine>
 </package>"""
+
+
+def png(width, height, rgb):
+    """A plain PNG of one colour with a darker diagonal, for picture tests."""
+    rows = b""
+    for y in range(height):
+        row = bytearray(b"\x00")
+        for x in range(width):
+            row += bytes(c // 3 for c in rgb) if abs(x * height - y * width) < width * 2 else bytes(rgb)
+        rows += bytes(row)
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
 def write_epub(name, files, mimetype_first=True):
@@ -240,6 +256,32 @@ def main():
     made.append(simple("fixed-layout.epub", "Fixed Layout", pages,
                        extra_meta='<meta property="rendition:layout">pre-paginated</meta><meta property="rendition:spread">landscape</meta>'))
 
+    # Publisher sizes in px, pt and keywords, which ignore the root font
+    # size: the text size setting must still change them (reader.js rewrites
+    # them to rem). Also content wider than a page (a fixed-width table and a
+    # long unbreakable rule), which must be kept inside its column.
+    sized = xhtml("Fixed sizes", """<h1 style="font-size:24pt">Fixed sizes</h1>
+<p><img src="picture.png" alt="Test picture" style="width:200px"/></p>
+<p class="px">Sized in pixels. """ + paragraph(rng) + """</p>
+<p style="font-size: small">Sized with a keyword. """ + paragraph(rng) + """</p>
+<table style="width:1400px"><tr><td>Too wide</td><td>for a page</td></tr></table>
+<p>________________________________________________________________________________________________________________________________</p>
+<div style="width:90em">A block wider than any page. """ + paragraph(rng) + """</div>""",
+        extra_head='<style>p.px { font-size: 12px; line-height: 18px }</style>')
+    made.append(simple("fixed-font-sizes.epub", "Fixed Font Sizes", [("s1.xhtml", sized)],
+                       extra_files=[("OEBPS/picture.png", png(400, 300, (90, 140, 200)))],
+                       manifest_extra=['<item id="pic" href="picture.png" media-type="image/png"/>']))
+
+    # Publisher colours that vanish on some themes: black headings (invisible
+    # on Dark and Black) and white text (invisible on Light). Whatever the
+    # theme, the reader must swap unreadable colours for the theme's own.
+    colours = xhtml("Colours", """<h1 class="block3">Black heading</h1>
+<p>""" + paragraph(rng) + """</p>
+<h2 class="block3">Another black heading</h2>
+<p class="ghost">White text. """ + paragraph(rng) + """</p>""",
+        extra_head='<style>.block3 { color: black } .ghost { color: #fff }</style>')
+    made.append(simple("low-contrast.epub", "Low Contrast", [("c1.xhtml", colours)]))
+
     # DRM: Adobe ADEPT markers (content is not actually encrypted).
     enc = """<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
 <enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/>
@@ -272,6 +314,12 @@ def main():
                            extra_files=[("META-INF/encryption.xml", enc), ("OEBPS/fonts/obf.ttf", bytes(font))],
                            manifest_extra=['<item id="font" href="fonts/obf.ttf" media-type="font/ttf"/>'],
                            identifier=ident))
+
+    # KEPUB: Kobo's koboSpan markup and fixed-size column wrappers.
+    spans = " ".join(f'<span class="koboSpan" id="kobo.1.{i}">{paragraph(rng, 1)}</span>' for i in range(1, 40))
+    kepub_body = f'''<div id="book-columns" style="column-count:2;width:600px;height:800px"><div id="book-inner">
+<h1>Kobo chapter</h1><p>{spans}</p></div></div>'''
+    made.append(simple("kobo.kepub.epub", "KEPUB Book", [("k1.xhtml", xhtml("Kobo", kepub_body))]))
 
     for m in made:
         print(f"{os.path.getsize(m):>10,}  {os.path.relpath(m, ROOT)}")

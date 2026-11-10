@@ -86,6 +86,7 @@ export class FixedLayout extends HTMLElement {
         iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts')
         iframe.setAttribute('scrolling', 'no')
         iframe.setAttribute('part', 'filter')
+        iframe.dataset.platenIndex = index ?? -1 // Platen: lets getContents() report the section
         this.#root.append(element)
         if (!src) return { blank: true, element, iframe }
         return new Promise(resolve => {
@@ -308,7 +309,8 @@ export class FixedLayout extends HTMLElement {
     getContents() {
         return Array.from(this.#root.querySelectorAll('iframe'), frame => ({
             doc: frame.contentDocument,
-            // TODO: index, overlayer
+            index: Number(frame.dataset.platenIndex ?? -1), // Platen patch
+            // TODO: overlayer
         }))
     }
     destroy() {

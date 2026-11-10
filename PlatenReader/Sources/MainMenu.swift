@@ -82,28 +82,34 @@ enum MainMenu {
     private static func editMenu() -> NSMenu {
         let menu = NSMenu(title: String(localized: "Edit"))
         menu.addItem(item(String(localized: "Copy"), #selector(NSText.copy(_:)), "c"))
+        menu.addItem(item(String(localized: "Copy with Citation"), #selector(ReaderViewController.copyWithCitation(_:)), "c", [.command, .shift]))
         menu.addItem(item(String(localized: "Select All"), #selector(NSText.selectAll(_:)), "a"))
-        // M1: Copy with Citation, Find in Book (⌘F), Find Next (⌘G).
+        menu.addItem(.separator())
+        menu.addItem(item(String(localized: "Share Selection…"), #selector(ReaderViewController.shareSelection(_:))))
+        menu.addItem(.separator())
+        let find = NSMenuItem(title: String(localized: "Find"), action: nil, keyEquivalent: "")
+        let findMenu = NSMenu(title: find.title)
+        findMenu.addItem(item(String(localized: "Find in Book…"), #selector(ReaderViewController.findInBook(_:)), "f"))
+        findMenu.addItem(item(String(localized: "Find Next"), #selector(ReaderViewController.findNext(_:)), "g"))
+        findMenu.addItem(item(String(localized: "Find Previous"), #selector(ReaderViewController.findPrevious(_:)), "g", [.command, .shift]))
+        findMenu.addItem(item(String(localized: "Search Book for Selection"), #selector(ReaderViewController.searchForSelection(_:)), "e"))
+        find.submenu = findMenu
+        menu.addItem(find)
         return menu
     }
 
     private static func viewMenu() -> NSMenu {
         let menu = NSMenu(title: String(localized: "View"))
-        menu.addItem(item(String(localized: "Paginated"), #selector(ReaderViewController.showPaginated(_:)), "1"))
-        menu.addItem(item(String(localized: "Scroll"), #selector(ReaderViewController.showScroll(_:)), "2"))
+        // ⌘1 one page, ⌘2 two pages, ⌘3 scroll.
+        for layout in ReadingLayout.allCases {
+            menu.addItem(item(layout.label, #selector(ReaderViewController.setLayoutFromMenu(_:)), layout.shortcut,
+                              represented: layout.rawValue))
+        }
         menu.addItem(.separator())
 
-        let layout = NSMenuItem(title: String(localized: "Page Layout"), action: nil, keyEquivalent: "")
-        let layoutMenu = NSMenu(title: layout.title)
-        for option in PageLayout.allCases {
-            layoutMenu.addItem(item(option.label, #selector(ReaderViewController.setPageLayout(_:)), represented: option.rawValue))
-        }
-        layout.submenu = layoutMenu
-        menu.addItem(layout)
-
-        let theme = NSMenuItem(title: String(localized: "Theme"), action: nil, keyEquivalent: "")
+        let theme = NSMenuItem(title: String(localized: "Appearance"), action: nil, keyEquivalent: "")
         let themeMenu = NSMenu(title: theme.title)
-        for option in Theme.allCases {
+        for option in AppearanceChoice.allCases {
             themeMenu.addItem(item(option.label, #selector(ReaderViewController.setThemeFromMenu(_:)), represented: option.rawValue))
         }
         theme.submenu = themeMenu
@@ -120,6 +126,9 @@ enum MainMenu {
         menu.addItem(item(String(localized: "Smaller Text"), #selector(ReaderViewController.makeTextSmaller(_:)), "-"))
         menu.addItem(item(String(localized: "Default Text Size"), #selector(ReaderViewController.makeTextDefaultSize(_:)), "0"))
         menu.addItem(.separator())
+        menu.addItem(item(String(localized: "Show Contents"), #selector(ReaderViewController.toggleContents(_:)), "t"))
+        // Also the C key on its own (handled by the reader, so it never
+        // interferes with typing in the search field).
         menu.addItem(item(String(localized: "Show Controls"), #selector(ReaderViewController.toggleReaderControls(_:)), "k"))
         menu.addItem(.separator())
         // AppKit recognises this action and keeps the title in sync.
@@ -140,6 +149,8 @@ enum MainMenu {
                           arrow(NSRightArrowFunctionKey)))
         menu.addItem(.separator())
         menu.addItem(item(String(localized: "Back"), #selector(ReaderViewController.goBackInHistory(_:)), "["))
+        menu.addItem(.separator())
+        menu.addItem(item(String(localized: "Bookmark This Page"), #selector(ReaderViewController.toggleBookmark(_:)), "d"))
         return menu
     }
 
@@ -154,7 +165,7 @@ enum MainMenu {
 
     private static func helpMenu() -> NSMenu {
         let menu = NSMenu(title: String(localized: "Help"))
-        // M1: Show Reading Controls (the first-run zone explainer).
+        menu.addItem(item(String(localized: "Show Reading Controls"), #selector(ReaderViewController.showReadingControls(_:))))
         return menu
     }
 }

@@ -11,7 +11,14 @@ Platen stores one JSON file per book:
 ```json
 {
   "bookmarks" : [
-    { "cfi" : "epubcfi(/6/8!/4/2/10/1:0)", "created" : "2026-11-09T13:55:10Z", "snippet" : "It was a bright cold day" }
+    {
+      "cfi" : "epubcfi(/6/8!/4/2/10/1:0)",
+      "chapter" : "Chapter 1",
+      "created" : "2026-11-09T13:55:10Z",
+      "fraction" : 0.031,
+      "page" : "4",
+      "snippet" : "It was a bright cold day"
+    }
   ],
   "fingerprint" : "325805-72f3a294043ff3286c947d3a",
   "key" : "6999b1b98200e4b6899381de21a9a27e",
@@ -24,6 +31,7 @@ Platen stores one JSON file per book:
 }
 ```
 
+- In a bookmark, `chapter`, `page` and `fraction` are optional; `fraction` only orders the bookmarks list.
 - `lastKnownPath` is informational only and is never used to find the book.
 - `readingMode` is `paginated` or `scrolled`, as it was when the book was closed.
 - Writes are atomic: Platen writes a temporary file and renames it over the old one. Saves after page turns are debounced by 0.75 s; closing the window saves immediately.

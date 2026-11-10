@@ -13,15 +13,45 @@ enum ReadingFlow: String, CaseIterable, Identifiable {
     }
 }
 
-/// How many pages to show side by side.
-enum PageLayout: String, CaseIterable, Identifiable {
-    case automatic, one, two
+/// How many pages to show side by side in paginated mode.
+enum PageLayout: String {
+    case one, two
+}
+
+/// The one Layout choice the reader sees: one page, two pages (side by side
+/// when the window is wide enough) or continuous scroll. It is stored as two
+/// parts: paginated or scroll (remembered per book) and one or two pages
+/// (a global setting). The order matches the shortcuts ⌘1, ⌘2 and ⌘3.
+enum ReadingLayout: String, CaseIterable, Identifiable {
+    case onePage, twoPages, scroll
     var id: String { rawValue }
+
+    init(flow: ReadingFlow, pages: PageLayout) {
+        self = flow == .scrolled ? .scroll : pages == .one ? .onePage : .twoPages
+    }
+
+    var flow: ReadingFlow { self == .scroll ? .scrolled : .paginated }
+    var pages: PageLayout? {
+        switch self {
+        case .onePage: return .one
+        case .twoPages: return .two
+        case .scroll: return nil
+        }
+    }
+
     var label: String {
         switch self {
-        case .automatic: return String(localized: "Automatic")
-        case .one: return String(localized: "One Page")
-        case .two: return String(localized: "Two Pages")
+        case .onePage: return String(localized: "One Page")
+        case .twoPages: return String(localized: "Two Pages")
+        case .scroll: return String(localized: "Scroll")
+        }
+    }
+
+    var shortcut: String {
+        switch self {
+        case .onePage: return "1"
+        case .twoPages: return "2"
+        case .scroll: return "3"
         }
     }
 }
@@ -40,7 +70,8 @@ enum LineWidth: String, CaseIterable, Identifiable {
 
 /// The three reading themes (see spec, "Themes").
 enum Theme: String, CaseIterable, Identifiable {
-    case light, sepia, dark
+    /// Black is Dark with a true black background, for OLED screens.
+    case light, sepia, dark, black
     var id: String { rawValue }
 
     var label: String {
@@ -48,6 +79,7 @@ enum Theme: String, CaseIterable, Identifiable {
         case .light: return String(localized: "Light")
         case .sepia: return String(localized: "Sepia")
         case .dark: return String(localized: "Dark")
+        case .black: return String(localized: "Black")
         }
     }
 
@@ -56,6 +88,7 @@ enum Theme: String, CaseIterable, Identifiable {
         case .light: return "#ffffff"
         case .sepia: return "#f5ecd7"
         case .dark: return "#1e1e20" // near-black, not pure black
+        case .black: return "#000000"
         }
     }
 
@@ -64,6 +97,7 @@ enum Theme: String, CaseIterable, Identifiable {
         case .light: return "#1c1c1e"
         case .sepia: return "#5b4636"
         case .dark: return "#d4d4d4"
+        case .black: return "#c8c8c8" // a little dimmer: white on black glares
         }
     }
 
@@ -71,11 +105,11 @@ enum Theme: String, CaseIterable, Identifiable {
         switch self {
         case .light: return "#0b57d0"
         case .sepia: return "#8a4b1f"
-        case .dark: return "#8ab4f8"
+        case .dark, .black: return "#8ab4f8"
         }
     }
 
-    var isDark: Bool { self == .dark }
+    var isDark: Bool { self == .dark || self == .black }
 
     var nsBackground: NSColor { NSColor(hex: background) }
 
@@ -83,6 +117,36 @@ enum Theme: String, CaseIterable, Identifiable {
     /// look right over the page.
     var appearance: NSAppearance? {
         NSAppearance(named: isDark ? .darkAqua : .aqua)
+    }
+}
+
+/// How a page turn (click, key or wheel) is animated. Trackpad swipes always
+/// slide: the page follows the fingers.
+enum PageTurnStyle: String, CaseIterable, Identifiable {
+    case curl, slide, none
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .curl: return String(localized: "Page Curl")
+        case .slide: return String(localized: "Slide")
+        case .none: return String(localized: "None")
+        }
+    }
+}
+
+/// The one Appearance setting: follow the system (Light by day, Dark by
+/// night), or always use one theme.
+enum AppearanceChoice: String, CaseIterable, Identifiable {
+    case automatic, light, sepia, dark, black
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .automatic: return String(localized: "Automatic")
+        case .light: return String(localized: "Light")
+        case .sepia: return String(localized: "Sepia")
+        case .dark: return String(localized: "Dark")
+        case .black: return String(localized: "Black")
+        }
     }
 }
 
@@ -106,17 +170,18 @@ final class ReaderSettings: ObservableObject {
 
     @Published var defaultFlow: ReadingFlow { didSet { save("defaultFlow", defaultFlow.rawValue) } }
     @Published var pageLayout: PageLayout { didSet { save("pageLayout", pageLayout.rawValue) } }
-    @Published var animatePageTurns: Bool { didSet { save("animatePageTurns", animatePageTurns) } }
-    @Published var followSystemAppearance: Bool { didSet { save("followSystemAppearance", followSystemAppearance) } }
-    @Published var lightTheme: Theme { didSet { save("lightTheme", lightTheme.rawValue) } }
-    @Published var darkTheme: Theme { didSet { save("darkTheme", darkTheme.rawValue) } }
-    /// Used when not following the system appearance.
-    @Published var fixedTheme: Theme { didSet { save("fixedTheme", fixedTheme.rawValue) } }
+    @Published var pageTurnStyle: PageTurnStyle { didSet { save("pageTurnStyle", pageTurnStyle.rawValue) } }
+    @Published var appearance: AppearanceChoice { didSet { save("appearance", appearance.rawValue) } }
     @Published var fontSizeIndex: Int { didSet { save("fontSizeIndex", fontSizeIndex) } }
     @Published var lineHeight: Double { didSet { save("lineHeight", lineHeight) } }
     @Published var lineWidth: LineWidth { didSet { save("lineWidth", lineWidth.rawValue) } }
     @Published var fontFamily: String { didSet { save("fontFamily", fontFamily) } }
     @Published var hyphenate: Bool { didSet { save("hyphenate", hyphenate) } }
+    /// Optional "N pages left in chapter" in the location line (paginated).
+    @Published var showPagesLeftInChapter: Bool { didSet { save("showPagesLeftInChapter", showPagesLeftInChapter) } }
+    /// Not saved: whether the front book window shows one page although Two
+    /// Pages is chosen (it is too narrow). Settings explains this.
+    @Published var frontWindowTooNarrowForTwoPages = false
 
     private init() {
         func string(_ key: String) -> String? { UserDefaults.standard.string(forKey: key) }
@@ -124,18 +189,18 @@ final class ReaderSettings: ObservableObject {
             UserDefaults.standard.object(forKey: key) == nil ? fallback : UserDefaults.standard.bool(forKey: key)
         }
         defaultFlow = string("defaultFlow").flatMap(ReadingFlow.init) ?? .paginated
-        pageLayout = string("pageLayout").flatMap(PageLayout.init) ?? .automatic
-        animatePageTurns = bool("animatePageTurns", true)
-        followSystemAppearance = bool("followSystemAppearance", true)
-        lightTheme = string("lightTheme").flatMap(Theme.init) ?? .light
-        darkTheme = string("darkTheme").flatMap(Theme.init) ?? .dark
-        fixedTheme = string("fixedTheme").flatMap(Theme.init) ?? .light
+        pageLayout = string("pageLayout").flatMap(PageLayout.init) ?? .two
+        // Older versions had an on/off switch; off becomes None.
+        pageTurnStyle = string("pageTurnStyle").flatMap(PageTurnStyle.init)
+            ?? (bool("animatePageTurns", true) ? .curl : .none)
+        appearance = string("appearance").flatMap(AppearanceChoice.init) ?? .automatic
         let index = UserDefaults.standard.object(forKey: "fontSizeIndex") as? Int ?? Self.defaultFontSizeIndex
         fontSizeIndex = min(max(index, 0), Self.fontSizes.count - 1)
         lineHeight = UserDefaults.standard.double(forKey: "lineHeight")
         lineWidth = string("lineWidth").flatMap(LineWidth.init) ?? .medium
         fontFamily = string("fontFamily") ?? ""
         hyphenate = bool("hyphenate", true)
+        showPagesLeftInChapter = bool("showPagesLeftInChapter", false)
     }
 
     private func save(_ key: String, _ value: Any) {
@@ -144,18 +209,25 @@ final class ReaderSettings: ObservableObject {
 
     var fontSize: Double { Self.fontSizes[fontSizeIndex] }
 
-    /// The theme to use under a given system appearance.
-    func theme(for appearance: NSAppearance) -> Theme {
-        guard followSystemAppearance else { return fixedTheme }
-        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return isDark ? darkTheme : lightTheme
+    /// The layout new books open in (Settings > General).
+    var defaultLayout: ReadingLayout {
+        get { ReadingLayout(flow: defaultFlow, pages: pageLayout) }
+        set {
+            defaultFlow = newValue.flow
+            if let pages = newValue.pages { pageLayout = pages }
+        }
     }
 
-    /// Sets the theme the user picked in the Aa popover. When following the
-    /// system, this changes the theme for the current appearance only.
-    func setTheme(_ theme: Theme, for appearance: NSAppearance) {
-        guard followSystemAppearance else { fixedTheme = theme; return }
-        if appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua { darkTheme = theme } else { lightTheme = theme }
+    /// The theme to use under a given system appearance.
+    func theme(for systemAppearance: NSAppearance) -> Theme {
+        switch appearance {
+        case .automatic:
+            return systemAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
+        case .light: return .light
+        case .sepia: return .sepia
+        case .dark: return .dark
+        case .black: return .black
+        }
     }
 
     func biggerText() { fontSizeIndex = min(fontSizeIndex + 1, Self.fontSizes.count - 1) }
@@ -167,7 +239,9 @@ final class ReaderSettings: ObservableObject {
         [
             "flow": flow.rawValue,
             "pageLayout": pageLayout.rawValue,
-            "animated": animatePageTurns,
+            // foliate-js's own slide animation, for Slide (the curl is drawn
+            // natively, and swipes always slide; see reader.js).
+            "animated": pageTurnStyle == .slide,
             "fontSize": fontSize,
             "lineHeight": lineHeight,
             "lineWidth": lineWidth.rawValue,
