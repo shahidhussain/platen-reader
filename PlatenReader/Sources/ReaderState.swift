@@ -86,15 +86,18 @@ final class ReaderState: ObservableObject {
 
     @Published var selection: Selection?
 
+    /// True while a popover from the overlay (Aa) is open, so the overlay
+    /// does not hide underneath it.
+    @Published var overlayPopoverOpen = false
+
     var hasContents: Bool { !toc.isEmpty || !bookmarks.isEmpty }
     var allHits: [SearchHit] { searchGroups.flatMap(\.hits) }
 
-    /// "Chapter 4 · 37% · p. 214", optionally with pages left in the chapter.
+    /// "Chapter 4 · 37%", optionally with pages left in the chapter.
     func locationLine(showPagesLeft: Bool) -> String {
         var parts: [String] = []
         if !chapter.isEmpty { parts.append(chapter) }
         parts.append(fraction.formatted(.percent.precision(.fractionLength(0))))
-        if let printedPage { parts.append(String(localized: "p. \(printedPage)")) }
         if showPagesLeft, let left = pagesLeftInChapter, flow == .paginated {
             parts.append(left == 0
                 ? String(localized: "last page in chapter")

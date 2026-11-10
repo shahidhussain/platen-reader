@@ -86,6 +86,21 @@ enum Theme: String, CaseIterable, Identifiable {
     }
 }
 
+/// The one Appearance setting: follow the system (Light by day, Dark by
+/// night), or always use one theme.
+enum AppearanceChoice: String, CaseIterable, Identifiable {
+    case automatic, light, sepia, dark
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .automatic: return String(localized: "Automatic")
+        case .light: return String(localized: "Light")
+        case .sepia: return String(localized: "Sepia")
+        case .dark: return String(localized: "Dark")
+        }
+    }
+}
+
 /// Global reader settings (the spec allows no per-book settings beyond
 /// position and bookmarks). Stored in UserDefaults; every open window observes
 /// this object and re-styles itself when anything changes.
@@ -107,11 +122,7 @@ final class ReaderSettings: ObservableObject {
     @Published var defaultFlow: ReadingFlow { didSet { save("defaultFlow", defaultFlow.rawValue) } }
     @Published var pageLayout: PageLayout { didSet { save("pageLayout", pageLayout.rawValue) } }
     @Published var animatePageTurns: Bool { didSet { save("animatePageTurns", animatePageTurns) } }
-    @Published var followSystemAppearance: Bool { didSet { save("followSystemAppearance", followSystemAppearance) } }
-    @Published var lightTheme: Theme { didSet { save("lightTheme", lightTheme.rawValue) } }
-    @Published var darkTheme: Theme { didSet { save("darkTheme", darkTheme.rawValue) } }
-    /// Used when not following the system appearance.
-    @Published var fixedTheme: Theme { didSet { save("fixedTheme", fixedTheme.rawValue) } }
+    @Published var appearance: AppearanceChoice { didSet { save("appearance", appearance.rawValue) } }
     @Published var fontSizeIndex: Int { didSet { save("fontSizeIndex", fontSizeIndex) } }
     @Published var lineHeight: Double { didSet { save("lineHeight", lineHeight) } }
     @Published var lineWidth: LineWidth { didSet { save("lineWidth", lineWidth.rawValue) } }
@@ -128,10 +139,7 @@ final class ReaderSettings: ObservableObject {
         defaultFlow = string("defaultFlow").flatMap(ReadingFlow.init) ?? .paginated
         pageLayout = string("pageLayout").flatMap(PageLayout.init) ?? .automatic
         animatePageTurns = bool("animatePageTurns", true)
-        followSystemAppearance = bool("followSystemAppearance", true)
-        lightTheme = string("lightTheme").flatMap(Theme.init) ?? .light
-        darkTheme = string("darkTheme").flatMap(Theme.init) ?? .dark
-        fixedTheme = string("fixedTheme").flatMap(Theme.init) ?? .light
+        appearance = string("appearance").flatMap(AppearanceChoice.init) ?? .automatic
         let index = UserDefaults.standard.object(forKey: "fontSizeIndex") as? Int ?? Self.defaultFontSizeIndex
         fontSizeIndex = min(max(index, 0), Self.fontSizes.count - 1)
         lineHeight = UserDefaults.standard.double(forKey: "lineHeight")
@@ -148,17 +156,14 @@ final class ReaderSettings: ObservableObject {
     var fontSize: Double { Self.fontSizes[fontSizeIndex] }
 
     /// The theme to use under a given system appearance.
-    func theme(for appearance: NSAppearance) -> Theme {
-        guard followSystemAppearance else { return fixedTheme }
-        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return isDark ? darkTheme : lightTheme
-    }
-
-    /// Sets the theme the user picked in the Aa popover. When following the
-    /// system, this changes the theme for the current appearance only.
-    func setTheme(_ theme: Theme, for appearance: NSAppearance) {
-        guard followSystemAppearance else { fixedTheme = theme; return }
-        if appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua { darkTheme = theme } else { lightTheme = theme }
+    func theme(for systemAppearance: NSAppearance) -> Theme {
+        switch appearance {
+        case .automatic:
+            return systemAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
+        case .light: return .light
+        case .sepia: return .sepia
+        case .dark: return .dark
+        }
     }
 
     func biggerText() { fontSizeIndex = min(fontSizeIndex + 1, Self.fontSizes.count - 1) }

@@ -24,6 +24,13 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     private var overlayHost: NSHostingView<OverlayBar>!
     private var sidebarHost: NSHostingView<SidebarView>!
     private var explainerHost: NSView?
+    /// Backing for the title when it is shown, drawn by us so the real title
+    /// bar can stay transparent (see `applyChromeVisibility`).
+    private var titleBacking: PassThroughEffectView!
+    private var titleBackingHeight: NSLayoutConstraint!
+    private var imageZoom: ImageZoomView?
+    private var scrollMonitor: Any?
+    private var swipe = SwipeTracker()
     private var spinner: NSProgressIndicator!
     private var failureHost: NSView?
 
@@ -84,11 +91,6 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             goBack: { [weak self] in self?.goBackInHistory(nil) },
             toggleContents: { [weak self] in self?.toggleContents(nil) },
             setFlow: { [weak self] flow in self?.setFlow(flow) },
-            setTheme: { [weak self] theme in
-                guard let self else { return }
-                self.settings.setTheme(theme, for: self.view.effectiveAppearance)
-            },
-            currentTheme: { [weak self] in self?.currentTheme ?? .light },
             interacted: { [weak self] in self?.restartHideTimer() }
         )
         overlayHost = NSHostingView(rootView: OverlayBar(state: state, actions: actions))
@@ -112,6 +114,14 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         sidebarHost.sizingOptions = [.minSize]
         sidebarHost.isHidden = true
         root.addSubview(sidebarHost)
+
+        titleBacking = PassThroughEffectView()
+        titleBacking.material = .titlebar
+        titleBacking.blendingMode = .withinWindow
+        titleBacking.alphaValue = 0
+        titleBacking.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(titleBacking)
+        titleBackingHeight = titleBacking.heightAnchor.constraint(equalToConstant: 28)
 
         // Quiet progress indicator, shown only if opening takes > 500 ms.
         spinner = NSProgressIndicator()
@@ -137,6 +147,11 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             sidebarHost.topAnchor.constraint(equalTo: root.topAnchor),
             sidebarHost.bottomAnchor.constraint(equalTo: root.bottomAnchor),
 
+            titleBacking.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            titleBacking.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            titleBacking.topAnchor.constraint(equalTo: root.topAnchor),
+            titleBackingHeight,
+
             spinner.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: root.centerYAnchor),
         ])
@@ -151,6 +166,12 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         settings.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.pushSettings() }
+            .store(in: &cancellables)
+
+        // When the Aa popover closes, the overlay's hide countdown restarts.
+        state.$overlayPopoverOpen
+            .removeDuplicates()
+            .sink { [weak self] open in if !open { self?.restartHideTimer() } }
             .store(in: &cancellables)
 
         RemoteContentBlocker.load { [weak self] list in
@@ -175,6 +196,13 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
             DispatchQueue.main.async { self?.pushSettings() }
         }
+        installScrollMonitor()
+    }
+
+    override func viewWillDisappear() {
+        super.viewWillDisappear()
+        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+        scrollMonitor = nil
     }
 
     // MARK: - Opening
@@ -379,6 +407,9 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         case "click":
             handleClick(zone: body["zone"] as? String ?? "centre")
 
+        case "image":
+            showImage(from: body)
+
         case "externalLink":
             // Links to the web open in the user's browser, never in the reader.
             if let href = body["href"] as? String, let url = URL(string: href),
@@ -441,6 +472,12 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         let modifiers = event.modifierFlags.intersection([.command, .option, .control])
         guard modifiers.isEmpty else { return false }
         let shift = event.modifierFlags.contains(.shift)
+        // C shows or hides the controls (by character, so it follows the
+        // keyboard layout).
+        if !shift, event.charactersIgnoringModifiers?.lowercased() == "c" {
+            setOverlay(visible: !overlayVisible)
+            return true
+        }
         switch event.keyCode {
         case 49: // space
             js(shift ? "platen.prev()" : "platen.next()")
@@ -451,7 +488,9 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         case 125: js(state.flow == .scrolled ? "platen.scrollLines(1)" : "platen.next()") // ↓
         case 126: js(state.flow == .scrolled ? "platen.scrollLines(-1)" : "platen.prev()") // ↑
         case 53: // Esc: close the panel or overlay; exit full screen if neither is showing
-            if explainerHost != nil {
+            if imageZoom != nil {
+                closeImage()
+            } else if explainerHost != nil {
                 dismissExplainer()
             } else if state.sidebarVisible {
                 setSidebar(visible: false)
@@ -491,8 +530,11 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     /// pointer is over it (it is being used).
     private func restartHideTimer() {
         hideTimer?.invalidate()
+        guard overlayVisible else { return }
         hideTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
             guard let self, self.overlayVisible else { return }
+            // Never hide from under an open popover; closing it restarts this.
+            if self.state.overlayPopoverOpen { return }
             if let window = self.view.window {
                 let point = self.overlayHost.convert(window.mouseLocationOutsideOfEventStream, from: nil)
                 if self.overlayHost.bounds.contains(point) { return self.restartHideTimer() }
@@ -504,16 +546,23 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     private func applyChromeVisibility(animated: Bool) {
         guard let window = view.window else { return }
         let duration = animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.15 : 0
-        // The title bar container holds the window buttons, title and its
-        // background. Fading it (rather than hiding it) keeps the top edge
-        // draggable.
+        // The title bar container holds the window buttons and title. Fading
+        // it (rather than hiding it) keeps the top edge draggable.
+        //
+        // The title bar always stays transparent: an opaque title bar takes
+        // its height away from the content, so the page would shrink and the
+        // text re-flow every time the controls appeared. Instead it floats
+        // over the page, on a backing view of our own (as in IINA).
         let titleBar = window.standardWindowButton(.closeButton)?.superview?.superview
         window.titleVisibility = titleBarVisible ? .visible : .hidden
-        window.titlebarAppearsTransparent = !titleBarVisible
+        window.titlebarAppearsTransparent = true
+        let fullScreen = window.styleMask.contains(.fullScreen)
+        titleBackingHeight.constant = max(0, view.bounds.height - window.contentLayoutRect.height)
         if overlayVisible { overlayHost.isHidden = false }
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = duration
-            titleBar?.animator().alphaValue = titleBarVisible || window.styleMask.contains(.fullScreen) ? 1 : 0
+            titleBar?.animator().alphaValue = titleBarVisible || fullScreen ? 1 : 0
+            titleBacking.animator().alphaValue = titleBarVisible && !fullScreen ? 1 : 0
             overlayHost.animator().alphaValue = overlayVisible ? 1 : 0
         }, completionHandler: { [weak self] in
             guard let self else { return }
@@ -530,8 +579,11 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
 
     // MARK: - Settings and theme
 
+    /// Decided from the system's appearance, not the window's: the window's
+    /// own appearance is forced to match the theme, so it cannot tell us
+    /// when macOS switches between Light and Dark.
     private var currentTheme: Theme {
-        settings.theme(for: view.effectiveAppearance)
+        settings.theme(for: NSApp.effectiveAppearance)
     }
 
     private func pushSettings() {
@@ -841,8 +893,8 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     }
 
     @objc func setThemeFromMenu(_ sender: NSMenuItem) {
-        if let theme = (sender.representedObject as? String).flatMap(Theme.init) {
-            settings.setTheme(theme, for: view.effectiveAppearance)
+        if let choice = (sender.representedObject as? String).flatMap(AppearanceChoice.init) {
+            settings.appearance = choice
         }
     }
 
@@ -860,7 +912,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             item.state = (item.representedObject as? String) == settings.pageLayout.rawValue ? .on : .off
             return ready && state.flow == .paginated && !state.isFixedLayout
         case #selector(setThemeFromMenu(_:)):
-            item.state = (item.representedObject as? String) == currentTheme.rawValue ? .on : .off
+            item.state = (item.representedObject as? String) == settings.appearance.rawValue ? .on : .off
             return true
         case #selector(makeTextBigger(_:)):
             return !state.isFixedLayout && settings.fontSizeIndex < ReaderSettings.fontSizes.count - 1
@@ -883,6 +935,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             return ready && state.selection != nil
         case #selector(toggleReaderControls(_:)):
             item.title = overlayVisible ? String(localized: "Hide Controls") : String(localized: "Show Controls")
+            item.toolTip = String(localized: "Or press C.")
             return ready
         default:
             return ready
@@ -890,7 +943,164 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     }
 }
 
+// MARK: - Trackpad and scroll wheel
+
+extension ReaderViewController {
+    /// Scroll events are read here rather than in the page because AppKit
+    /// says when the fingers touch and lift (`phase`) and which events are
+    /// momentum after they lift (`momentumPhase`). The web only sees a stream
+    /// of wheel events, which is what made swipes unpredictable.
+    fileprivate func installScrollMonitor() {
+        guard scrollMonitor == nil else { return }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, event.window === self.view.window else { return event }
+            return self.handleScroll(event) ? nil : event
+        }
+    }
+
+    /// Returns true if the event was used (and must not reach WebKit).
+    private func handleScroll(_ event: NSEvent) -> Bool {
+        guard bookSentToShell, failureHost == nil else { return false }
+        if imageZoom != nil { return true }
+        // Scroll mode uses WebKit's own scrolling, unchanged.
+        guard state.flow == .paginated || state.isFixedLayout else { return false }
+        // Only over the page: the contents panel and overlay scroll normally.
+        let point = view.convert(event.locationInWindow, from: nil)
+        if state.sidebarVisible && sidebarHost.frame.contains(point) { return false }
+        if overlayVisible && overlayHost.frame.contains(point) { return false }
+
+        // Momentum after the fingers lift never turns another page: one
+        // gesture is one page at most.
+        if event.momentumPhase != [] { return true }
+
+        // A mouse wheel (no phases): one page per notch, with a short pause
+        // so a fast spin does not race through the book.
+        if event.phase == [] {
+            let delta = abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) ? -event.scrollingDeltaY : -event.scrollingDeltaX
+            guard delta != 0, event.timestamp >= swipe.wheelQuietUntil else { return true }
+            swipe.wheelQuietUntil = event.timestamp + 0.25
+            js(delta > 0 ? "platen.next()" : "platen.prev()")
+            return true
+        }
+
+        // Trackpad: content follows the fingers (`scrollingDelta` already
+        // includes the natural-scrolling preference).
+        let dx = -event.scrollingDeltaX, dy = -event.scrollingDeltaY
+        switch event.phase {
+        case .began, .mayBegin:
+            swipe.reset()
+            if event.phase == .began { swipe.active = true }
+        case .changed:
+            swipe.active = true
+            if swipe.axis == nil {
+                guard abs(dx) + abs(dy) > 1 else { return true }
+                swipe.axis = abs(dx) > abs(dy) ? .horizontal : .vertical
+            }
+            if swipe.axis == .horizontal && !state.isFixedLayout {
+                // The page moves with the fingers.
+                swipe.add(dx, at: event.timestamp)
+                js("platen.swipeMove(\(dx))")
+            } else if !swipe.turned {
+                // Vertical (or fixed layout): one page once past a threshold.
+                swipe.total += swipe.axis == .horizontal ? dx : dy
+                if abs(swipe.total) > 30 {
+                    swipe.turned = true
+                    let forward = swipe.total > 0
+                    if swipe.axis == .horizontal { js(forward ? "platen.goRight()" : "platen.goLeft()") }
+                    else { js(forward ? "platen.next()" : "platen.prev()") }
+                }
+            }
+        case .ended, .cancelled:
+            if swipe.active && swipe.axis == .horizontal && !state.isFixedLayout {
+                js("platen.swipeEnd(\(event.phase == .cancelled ? 0 : swipe.flickDirection(at: event.timestamp)))")
+            }
+            swipe.reset()
+        default:
+            break
+        }
+        return true
+    }
+}
+
+/// State of one trackpad gesture.
+struct SwipeTracker {
+    enum Axis { case horizontal, vertical }
+    var active = false
+    var axis: Axis?
+    var total: CGFloat = 0
+    var turned = false
+    /// Recent movement, for the speed when the fingers lift.
+    private var recent: [(time: TimeInterval, dx: CGFloat)] = []
+    var wheelQuietUntil: TimeInterval = 0
+
+    mutating func reset() {
+        active = false; axis = nil; total = 0; turned = false; recent = []
+    }
+
+    mutating func add(_ dx: CGFloat, at time: TimeInterval) {
+        total += dx
+        recent.append((time, dx))
+        recent.removeAll { time - $0.time > 0.1 }
+    }
+
+    /// 1 or -1 if the fingers were moving quickly when they lifted (a flick,
+    /// which turns the page however short it was), else 0: the page then
+    /// settles on whichever page is mostly in view, so a short, slow drag
+    /// springs back.
+    func flickDirection(at time: TimeInterval) -> Int {
+        let window = recent.filter { time - $0.time <= 0.08 }
+        guard let first = window.first, abs(total) > 20 else { return 0 }
+        let distance = window.reduce(0) { $0 + $1.dx }
+        let duration = max(time - first.time, 0.016)
+        let speed = distance / CGFloat(duration) // points per second
+        guard abs(speed) > 350, (speed > 0) == (total > 0) else { return 0 }
+        return speed > 0 ? 1 : -1
+    }
+}
+
+// MARK: - Pictures
+
+extension ReaderViewController {
+    /// A click on a picture in the book: show it full size, zooming from
+    /// where it sits on the page.
+    fileprivate func showImage(from body: [String: Any]) {
+        guard imageZoom == nil,
+              let base64 = body["data"] as? String, let data = Data(base64Encoded: base64),
+              let image = NSImage(data: data) else { return }
+        log.debug("Showing picture (\(data.count) bytes)")
+        let rect = body["rect"] as? [String: Any] ?? [:]
+        func number(_ key: String) -> CGFloat { CGFloat((rect[key] as? NSNumber)?.doubleValue ?? 0) }
+        // Web coordinates have their origin at the top left; AppKit's at the
+        // bottom left.
+        let source = NSRect(x: number("x"), y: view.bounds.height - number("y") - number("height"),
+                            width: number("width"), height: number("height"))
+        let zoom = ImageZoomView(image: image, data: data, type: body["mimeType"] as? String ?? "",
+                                 name: body["alt"] as? String ?? "", background: currentTheme.nsBackground)
+        zoom.onClose = { [weak self] in self?.closeImage() }
+        zoom.frame = view.bounds
+        zoom.autoresizingMask = [.width, .height]
+        view.addSubview(zoom, positioned: .below, relativeTo: titleBacking)
+        imageZoom = zoom
+        if overlayVisible { setOverlay(visible: false) }
+        zoom.present(from: source, animated: !reducedMotion)
+        view.window?.makeFirstResponder(zoom)
+    }
+
+    fileprivate func closeImage() {
+        guard let zoom = imageZoom else { return }
+        imageZoom = nil
+        zoom.dismiss(animated: !reducedMotion) { zoom.removeFromSuperview() }
+        view.window?.makeFirstResponder(webView)
+    }
+}
+
 // MARK: - Supporting views
+
+/// A visual-effect view that never takes clicks, so the page underneath
+/// still gets them.
+final class PassThroughEffectView: NSVisualEffectView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
 
 /// The root view: tracks the pointer so the title bar can be revealed at the
 /// top edge and the overlay kept alive while the pointer moves.

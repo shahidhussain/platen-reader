@@ -34,7 +34,13 @@ To run the core tests: `swift test --package-path PlatenCore`. To check the robu
 - **Click-zone explainer** on first open, flashed on the first three mode switches, and from Help > Show Reading Controls.
 - The slider shows the chapter name while dragging. "N pages left in chapter" is optional, in Settings > General.
 - Page turns animate in 180 ms. KEPUB column wrappers are neutralised.
-- `scripts/check-corpus.sh` opens every fixture and checks the result (14 of 14 pass). Core timing tests and a GitHub Actions workflow are in place.
+- **Trackpad swipes** are read natively (finger phases, momentum ignored): the page follows the fingers, a flick or a drag past halfway turns one page, and anything less springs back. A mouse wheel turns one page per notch.
+- **Page numbers** centred under each page (one per page in a two-page spread): printed page numbers where the book has a page list, otherwise screen pages.
+- **Pictures:** click one to zoom it to full size; right-click for Copy Image, Save Image… and Share….
+- **Publisher sizes in px, pt or keywords** are rewritten to rem so the text size setting works on every book. Over-wide tables and blocks are kept inside the page.
+- The title bar floats over the page, so showing the controls no longer re-flows the text. The controls stay up while the Aa popover is open. C shows and hides them.
+- One **Appearance** setting: Automatic, Light, Sepia or Dark.
+- `scripts/check-corpus.sh` opens every fixture and checks the result (15 of 15 pass). Core timing tests and a GitHub Actions workflow are in place.
 
 Measured here (Debug build, cold launch plus open): about 290 ms to the first visible page for a 2 MB novel.
 

@@ -81,3 +81,9 @@ foliate-view::part(filter) {
 @media (prefers-reduced-motion: reduce) {
     #ribbons .corner svg { transition: none; }
 }
+
+/* Page numbers, centred below each page (filled in by reader.js). */
+foliate-view {
+    font: 15px -apple-system, system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+}

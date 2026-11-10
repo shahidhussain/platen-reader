@@ -8,8 +8,6 @@ struct OverlayActions {
     var goBack: () -> Void
     var toggleContents: () -> Void
     var setFlow: (ReadingFlow) -> Void
-    var setTheme: (Theme) -> Void
-    var currentTheme: () -> Theme
     /// Called whenever the user interacts, so the overlay does not auto-hide
     /// while it is being used.
     var interacted: () -> Void
@@ -37,7 +35,7 @@ struct OverlayBar: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 10) {
             HStack {
                 // Shown only after a jump, until the reader moves on.
                 if let back = state.backLabel {
@@ -45,13 +43,11 @@ struct OverlayBar: View {
                         actions.goBack()
                     } label: {
                         Label(String(localized: "Back to \(back)"), systemImage: "arrow.uturn.backward")
-                            .font(.callout)
                     }
                     .help(String(localized: "Back to \(back) (⌘[)"))
                 }
                 Spacer(minLength: 0)
                 Text(locationText)
-                    .font(.callout)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -60,8 +56,9 @@ struct OverlayBar: View {
                     .accessibilityValue(Text(locationText))
                 Spacer(minLength: 0)
             }
+            .frame(minHeight: 22)
 
-            HStack(spacing: 14) {
+            HStack(spacing: 18) {
                 if state.hasContents {
                     Button(action: actions.toggleContents) {
                         Image(systemName: "list.bullet")
@@ -82,6 +79,7 @@ struct OverlayBar: View {
                         set: { dragFraction = $0; actions.interacted() }
                     ),
                     ticks: state.sectionFractions,
+                    rightToLeft: state.isRightToLeft,
                     onEditingChanged: { editing in
                         if !editing, let f = dragFraction {
                             actions.goToFraction(f)
@@ -90,7 +88,6 @@ struct OverlayBar: View {
                         }
                     }
                 )
-                .environment(\.layoutDirection, state.isRightToLeft ? .rightToLeft : .leftToRight)
 
                 Button(action: state.isRightToLeft ? actions.previousPage : actions.nextPage) {
                     Image(systemName: "chevron.right")
@@ -102,7 +99,7 @@ struct OverlayBar: View {
                     showTypography.toggle()
                     actions.interacted()
                 } label: {
-                    Text("Aa").font(.body.weight(.medium))
+                    Text("Aa").font(.title3.weight(.medium))
                 }
                 .help("Text and Theme")
                 .accessibilityLabel(Text("Text and Theme"))
@@ -111,40 +108,94 @@ struct OverlayBar: View {
                 }
             }
             .buttonStyle(.borderless)
+            .font(.title3)
             .imageScale(.large)
+            .frame(minHeight: 32)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
-        .frame(maxWidth: 720)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
+        .frame(maxWidth: 760)
+        // The overlay must stay while its popover is open.
+        .onChange(of: showTypography) { _, open in
+            state.overlayPopoverOpen = open
+            actions.interacted()
+        }
     }
 }
 
-/// A slider with tick marks at chapter boundaries.
+/// The progress slider: a thin track with tick marks at chapter starts and
+/// a round knob. Drawn by hand because the system slider's knob is a pill.
+/// Click anywhere on the track to jump there, or drag the knob.
 struct ProgressSlider: View {
     @Binding var value: Double
     let ticks: [Double]
+    var rightToLeft = false
     let onEditingChanged: (Bool) -> Void
 
+    @State private var dragging = false
+    private let knob: CGFloat = 18
+    private let track: CGFloat = 4
+
     var body: some View {
-        Slider(value: $value, in: 0...1, onEditingChanged: onEditingChanged)
-            .controlSize(.small)
-            .background(alignment: .center) {
-                GeometryReader { geo in
-                    // Slider's track is inset by roughly half the knob width.
-                    let inset: CGFloat = 8
-                    let width = geo.size.width - inset * 2
-                    ForEach(Array(ticks.dropFirst().dropLast().enumerated()), id: \.offset) { _, tick in
-                        Rectangle()
-                            .fill(.tertiary)
-                            .frame(width: 1, height: 8)
-                            .position(x: inset + width * tick, y: geo.size.height / 2)
-                    }
-                }
-                .allowsHitTesting(false)
+        GeometryReader { geo in
+            let usable = max(geo.size.width - knob, 1)
+            // Position along the track, mirrored for right-to-left books.
+            let position = { (f: Double) -> CGFloat in
+                knob / 2 + usable * CGFloat(rightToLeft ? 1 - f : f)
             }
-            .accessibilityLabel(Text("Progress"))
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.primary.opacity(0.15))
+                    .frame(height: track)
+                    .padding(.horizontal, knob / 2)
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(width: max(0, abs(position(value) - position(0))), height: track)
+                    .offset(x: rightToLeft ? position(value) : knob / 2)
+                ForEach(Array(ticks.dropFirst().dropLast().enumerated()), id: \.offset) { _, tick in
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.3))
+                        .frame(width: 1, height: 10)
+                        .offset(x: position(tick))
+                }
+                Circle()
+                    .fill(.white)
+                    .shadow(color: .black.opacity(0.3), radius: 1.5, y: 0.5)
+                    .overlay(Circle().strokeBorder(Color.black.opacity(0.12), lineWidth: 0.5))
+                    .frame(width: knob, height: knob)
+                    .scaleEffect(dragging ? 1.12 : 1)
+                    .offset(x: position(value) - knob / 2)
+                    .animation(.easeOut(duration: 0.1), value: dragging)
+            }
+            .frame(height: geo.size.height)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        if !dragging { dragging = true; onEditingChanged(true) }
+                        var f = Double((drag.location.x - knob / 2) / usable)
+                        if rightToLeft { f = 1 - f }
+                        value = min(max(f, 0), 1)
+                    }
+                    .onEnded { _ in
+                        dragging = false
+                        onEditingChanged(false)
+                    }
+            )
+        }
+        .frame(height: 28)
+        .accessibilityElement()
+        .accessibilityLabel(Text("Progress"))
+        .accessibilityValue(Text(value.formatted(.percent.precision(.fractionLength(0)))))
+        .accessibilityAdjustableAction { direction in
+            let step = 0.01
+            let f = direction == .increment ? value + step : value - step
+            onEditingChanged(true)
+            value = min(max(f, 0), 1)
+            onEditingChanged(false)
+        }
     }
 }
 
@@ -190,8 +241,8 @@ struct TypographyPopover: View {
             .pickerStyle(.segmented)
             .disabled(state.isFixedLayout)
 
-            Picker("Theme", selection: Binding(get: actions.currentTheme, set: actions.setTheme)) {
-                ForEach(Theme.allCases) { Text($0.label).tag($0) }
+            Picker("Appearance", selection: $settings.appearance) {
+                ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
 
@@ -203,7 +254,7 @@ struct TypographyPopover: View {
             .help(state.isFixedLayout ? String(localized: "Fixed-layout books are always paginated.") : "")
         }
         .formStyle(.grouped)
-        .frame(width: 340)
+        .frame(width: 400)
         .fixedSize(horizontal: false, vertical: true)
     }
 }

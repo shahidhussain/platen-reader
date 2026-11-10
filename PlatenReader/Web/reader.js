@@ -78,6 +78,7 @@ const charWidthEm = 0.5
 const minCharsForTwoColumns = 50
 
 const bookCSS = s => `
+    /* platen-styles (reader.js skips this sheet when rescaling font sizes) */
     @namespace epub "http://www.idpf.org/2007/ops";
     html {
         color-scheme: ${s.theme.dark ? 'dark' : 'light'};
@@ -106,6 +107,11 @@ const bookCSS = s => `
         orphans: 2;
     }
     pre { white-space: pre-wrap !important; }
+    /* Nothing may be wider than a page: in paginated mode anything wider
+       spills into the next column and is drawn over its text. */
+    body * { max-width: 100% !important; box-sizing: border-box; }
+    body { overflow-wrap: break-word; }
+    img, svg, video, table { height: auto; }
     ${s.theme.dark ? `
     /* Dark line art on transparent backgrounds would vanish; give images a
        light backing so they stay legible. */
@@ -172,15 +178,31 @@ window.addEventListener('resize', () => {
 // A "click" is mouse-down and mouse-up with negligible movement. The zone is
 // computed in window coordinates and sent to Swift, which decides what to do
 // (turn a page or toggle the overlay), so behaviour lives in one place.
+//
+// The side zones are wider than the centre: most clicks are page turns.
+const sideZoneFraction = 0.38
+
+// A press held this long is a long press or a Force Touch (Look Up), not a
+// click: acting on it would dismiss the Look Up panel it opened.
+const longPressMs = 450
+
+// Images smaller than this (icons, ornaments, drop caps) are not zoomable.
+const minZoomableSize = 48
+
 const attachPointerHandlers = (doc, index) => {
     let down = null
     doc.addEventListener('mousedown', e => {
         const selection = doc.getSelection()
-        down = { x: e.screenX, y: e.screenY, hadSelection: selection && !selection.isCollapsed }
+        down = { x: e.screenX, y: e.screenY, t: e.timeStamp, forced: false,
+                 hadSelection: selection && !selection.isCollapsed }
     })
+    // WebKit's Force Touch events: a firm press opens Look Up.
+    for (const type of ['webkitmouseforcewillbegin', 'webkitmouseforcedown'])
+        doc.addEventListener(type, () => { if (down) down.forced = true })
     doc.addEventListener('click', e => {
         if (e.button !== 0 || e.detail > 1 || !down) return // part of a double/triple click
         if (down.hadSelection) return // the click just dismissed a selection
+        if (down.forced || e.timeStamp - down.t > longPressMs) return
         if (Math.hypot(e.screenX - down.x, e.screenY - down.y) > 4) return // a drag
         if (e.target.closest?.('a[href], audio, video, button, input, select, textarea, label')) return
         if (e.defaultPrevented) return
@@ -190,12 +212,26 @@ const attachPointerHandlers = (doc, index) => {
         const frame = doc.defaultView.frameElement
         const rect = frame.getBoundingClientRect()
         const scale = frame.offsetWidth ? rect.width / frame.offsetWidth : 1
+
+        // A click on a picture opens it full size (not in fixed layout, where
+        // the whole page is usually one picture).
+        const img = !isFixedLayout && e.target.closest?.('img')
+        if (img) {
+            const r = img.getBoundingClientRect()
+            if (r.width * scale >= minZoomableSize && r.height * scale >= minZoomableSize) {
+                zoomImage(img, {
+                    x: rect.left + r.left * scale, y: rect.top + r.top * scale,
+                    width: r.width * scale, height: r.height * scale,
+                })
+                return
+            }
+        }
+
         const x = rect.left + e.clientX * scale
-        const third = window.innerWidth / 3
-        const zone = x < third ? 'left' : x > 2 * third ? 'right' : 'centre'
+        const side = window.innerWidth * sideZoneFraction
+        const zone = x < side ? 'left' : x > window.innerWidth - side ? 'right' : 'centre'
         post('click', { zone })
     })
-    doc.addEventListener('wheel', onWheel, { passive: false })
     // Context menus are WebKit's own (Look Up, Translate, Copy, Share…);
     // Swift adds Platen's items, using the selection reported here.
     let selectionTimer
@@ -203,6 +239,79 @@ const attachPointerHandlers = (doc, index) => {
         clearTimeout(selectionTimer)
         selectionTimer = setTimeout(() => reportSelection(doc, index), 120)
     })
+}
+
+// Sends a picture's bytes and on-screen position to Swift, which shows it
+// full size (with Copy and Save) in a native view. The image's src is a
+// blob: URL made by foliate-js, so reading it stays inside the page.
+async function zoomImage(img, rect) {
+    try {
+        const blob = await (await fetch(img.currentSrc || img.src)).blob()
+        // Base64, built in chunks (String.fromCharCode has an argument limit).
+        const bytes = new Uint8Array(await blob.arrayBuffer())
+        let binary = ''
+        for (let i = 0; i < bytes.length; i += 0x8000)
+            binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+        post('image', { data: btoa(binary), mimeType: blob.type, alt: img.alt ?? '', rect })
+    } catch (e) {
+        post('log', { level: 'error', message: `image zoom failed: ${e}` })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Publisher font sizes
+//
+// The text size setting works by setting the font size of the book's root
+// element; everything sized in em, rem or % follows it. Some books size their
+// text in px or pt, or with keywords such as "small", which ignore the root
+// size, so the setting appears to do nothing. Those values are rewritten to
+// rem here (16 px = 1 rem, the size the publisher had in mind), so they keep
+// their proportions but follow the setting. px line heights are rewritten
+// too, or lines would overlap at larger sizes.
+
+const keywordSizes = {
+    'xx-small': 0.5625, 'x-small': 0.625, 'small': 0.8125, 'medium': 1,
+    'large': 1.125, 'x-large': 1.5, 'xx-large': 2, 'xxx-large': 3,
+}
+
+const toRem = value => {
+    const v = value.trim().toLowerCase()
+    const m = /^(-?\d*\.?\d+)(px|pt)$/.exec(v)
+    if (m) {
+        const px = parseFloat(m[1]) * (m[2] === 'pt' ? 4 / 3 : 1)
+        return `${+(px / 16).toFixed(4)}rem`
+    }
+    return keywordSizes[v] ? `${keywordSizes[v]}rem` : null
+}
+
+const rescaleStyle = style => {
+    for (const prop of ['font-size', 'line-height']) {
+        const value = style.getPropertyValue(prop)
+        if (!value || (prop === 'line-height' && !/px|pt$/i.test(value.trim()))) continue
+        const rem = toRem(value)
+        if (rem) style.setProperty(prop, rem, style.getPropertyPriority(prop))
+    }
+}
+
+const rescaleRules = rules => {
+    for (const rule of rules) {
+        if (rule.style) rescaleStyle(rule.style)
+        if (rule.cssRules) rescaleRules(rule.cssRules) // @media, @supports…
+    }
+}
+
+function rescalePublisherFontSizes(doc) {
+    for (const sheet of doc.styleSheets) {
+        if (sheet.ownerNode?.textContent?.includes('platen-styles')) continue
+        try { rescaleRules(sheet.cssRules) } catch { /* unreadable sheet */ }
+    }
+    for (const el of doc.querySelectorAll('[style]')) rescaleStyle(el.style)
+    // Old-style <font size="1-7"> (common in converted MOBI files).
+    const fontSizes = [0, 0.625, 0.8125, 1, 1.125, 1.5, 2, 3]
+    for (const el of doc.querySelectorAll('font[size]')) {
+        const n = parseInt(el.getAttribute('size'), 10)
+        if (n >= 1 && n <= 7) el.style.fontSize = `${fontSizes[n]}rem`
+    }
 }
 
 // Tells Swift what is selected, with the chapter and printed page it is on,
@@ -220,60 +329,48 @@ const reportSelection = (doc, index) => {
     })
 }
 
+// Tables wider than a page would spill into the next column, over its text.
+// WebKit ignores max-width on tables, so once laid out, any table wider than
+// the page is set to the page's width. (foliate-js notices the change in size
+// and re-paginates.)
+function fitWideTables(doc) {
+    const pageWidth = doc.body?.getBoundingClientRect().width
+    if (!pageWidth) return
+    for (const table of doc.querySelectorAll('table'))
+        if (table.getBoundingClientRect().width > pageWidth + 1)
+            table.style.setProperty('width', '100%', 'important')
+}
+
 // ---------------------------------------------------------------------------
-// Trackpad and scroll wheel (paginated mode)
+// Trackpad swipes (paginated mode)
 //
-// Horizontal two-finger swipes move the page with the fingers and snap to
-// the nearest page on release; vertical wheel movement turns one page per
-// gesture. In scroll mode the browser's own scrolling is used unchanged.
+// Swift reads the trackpad gesture natively, where it can tell when the
+// fingers touch and lift and can ignore momentum, and sends it here: the
+// page follows the fingers, then settles on the next page or springs back.
+// One gesture never moves more than one page. Vertical scrolling and mouse
+// wheels are turned into single page turns in Swift.
 
-const gesture = { axis: null, total: 0, turned: false, timer: null }
+const setPageNumbersHidden = hidden => {
+    for (const el of view?.renderer?.feet ?? [])
+        el.style.visibility = hidden ? 'hidden' : ''
+}
 
-function onWheel(e) {
-    if (!view || settings?.flow === 'scrolled') return
-    e.preventDefault()
-    const ax = Math.abs(e.deltaX), ay = Math.abs(e.deltaY)
-    if (!gesture.axis) {
-        if (ax < 1 && ay < 1) return
-        gesture.axis = ax > ay ? 'x' : 'y'
-    }
-    const r = view.renderer
-    if (gesture.axis === 'x' && !isFixedLayout && r.scrollBy) {
+const swipe = {
+    move(dx) {
+        if (!view || isFixedLayout) return
         ribbons.hidden = true // they would not move with the page
-        r.scrollBy(e.deltaX, 0)
-        gesture.total += e.deltaX
-    } else if (!gesture.turned) {
-        const delta = gesture.axis === 'x' ? e.deltaX : e.deltaY
-        gesture.total += delta
-        if (Math.abs(gesture.total) > 24) {
-            gesture.turned = true
-            const forward = gesture.total > 0
-            // Horizontal swipes in fixed layout follow the visual direction.
-            if (gesture.axis === 'x') forward ? view.goRight() : view.goLeft()
-            else forward ? view.next() : view.prev()
-        }
-    }
-    clearTimeout(gesture.timer)
-    // Wheel events have no "fingers lifted" signal in the web, so treat a
-    // short pause (after any momentum) as the end of the gesture.
-    gesture.timer = setTimeout(endGesture, 90)
+        setPageNumbersHidden(true)
+        view.renderer.scrollBy?.(dx, 0)
+    },
+    // direction: 1 or -1 for a flick, which turns the page however short
+    // it was; 0 to settle on whichever page is mostly in view.
+    end(direction) {
+        if (!view || isFixedLayout) return
+        view.renderer.snap?.(direction, 0)
+        ribbons.hidden = false
+        setPageNumbersHidden(false)
+    },
 }
-
-function endGesture() {
-    const r = view?.renderer
-    if (gesture.axis === 'x' && !isFixedLayout && r?.snap) {
-        // A deliberate swipe (more than 40 px) goes to the next page even if
-        // it moved less than half a page; a small nudge springs back.
-        const velocity = Math.abs(gesture.total) > 40 ? Math.sign(gesture.total) * 0.5 : 0
-        r.snap(velocity, 0)
-    }
-    gesture.axis = null
-    gesture.total = 0
-    gesture.turned = false
-    ribbons.hidden = false
-}
-
-document.addEventListener('wheel', onWheel, { passive: false })
 
 // ---------------------------------------------------------------------------
 // Location reporting
@@ -307,6 +404,7 @@ const onRelocate = ({ detail }) => {
     queueMicrotask(() => {
         noteMovement(lastReason)
         scheduleRibbons()
+        updatePageNumbers(detail)
     })
     post('relocate', {
         pagesLeft,
@@ -323,6 +421,69 @@ const onRelocate = ({ detail }) => {
         firstRelocate = false
         post('firstRender')
     }
+}
+
+// ---------------------------------------------------------------------------
+// Page numbers
+//
+// A number is centred below each page, as in a printed book: one for a single
+// page, one under each page of a two-page spread. foliate-js gives each page
+// (column) a footer element in the bottom margin.
+//
+// Books with a page list (printed page numbers) show those. Otherwise the
+// numbers are screen pages: exact within a chapter, and estimated for where
+// each chapter starts, from the size of the text before it. The estimate is
+// calibrated once per layout (text size, window size…), so numbers do not
+// shift as the reader moves between chapters.
+
+let pagesPerBook = null    // estimated screen pages in the whole book
+let calibratedFor = ''     // the layout the estimate was made for
+
+function updatePageNumbers(detail) {
+    const r = view?.renderer
+    const feet = r?.feet
+    if (!feet?.length || isFixedLayout || settings?.flow === 'scrolled') return
+    const columns = feet.length
+    const index = detail.section?.current ?? r.getContents?.()[0]?.index
+    const fractions = view.getSectionFractions?.() ?? []
+    // foliate's paginator adds a blank page before and after each section.
+    const textPages = r.pages - 2
+    const columnsInSection = textPages * columns
+    const firstColumn = (r.page - 1) * columns
+
+    const pages = view.book?.pageList?.length ? printedPageLabels(feet.length) : null
+    if (pages) {
+        feet.forEach((el, i) => { el.textContent = pages[i] ?? '' })
+        return
+    }
+
+    const layout = [settings.fontSize, settings.lineHeight, settings.lineWidth, settings.fontFamily,
+                    columns, innerWidth, innerHeight].join('|')
+    const share = (fractions[index + 1] ?? 1) - (fractions[index] ?? 0)
+    if (calibratedFor !== layout && share > 0 && columnsInSection >= 4) {
+        pagesPerBook = columnsInSection / share
+        calibratedFor = layout
+    }
+    if (!pagesPerBook) {
+        feet.forEach(el => { el.textContent = '' })
+        return
+    }
+    const sectionStart = Math.round((fractions[index] ?? 0) * pagesPerBook)
+    feet.forEach((el, i) => {
+        const column = firstColumn + i
+        el.textContent = column >= 0 && column < columnsInSection ? String(sectionStart + column + 1) : ''
+    })
+}
+
+// Printed page labels for each page on screen, from the book's page list.
+function printedPageLabels(count) {
+    const pages = pagesOnScreen()
+    if (!pages.length) return null
+    // pagesOnScreen() runs left to right; footers run in reading order.
+    const labels = pages.map(p => p.page ?? '')
+    if (view.book?.dir === 'rtl') labels.reverse()
+    while (labels.length < count) labels.push('')
+    return labels
 }
 
 // ---------------------------------------------------------------------------
@@ -346,7 +507,13 @@ window.platen = {
             isFixedLayout = view.isFixedLayout
             settings = options.settings
             view.addEventListener('relocate', onRelocate)
-            view.addEventListener('load', ({ detail: { doc, index } }) => attachPointerHandlers(doc, index))
+            view.addEventListener('load', ({ detail: { doc, index } }) => {
+                if (!isFixedLayout) {
+                    rescalePublisherFontSizes(doc)
+                    requestAnimationFrame(() => fitWideTables(doc))
+                }
+                attachPointerHandlers(doc, index)
+            })
             view.renderer.addEventListener('relocate', e => { lastReason = e.detail.reason })
             view.addEventListener('external-link', e => {
                 // Never navigate the reader; let Swift open it in the browser.
@@ -401,6 +568,8 @@ window.platen = {
     },
     toggleBookmark,
     search,
+    swipeMove: dx => swipe.move(dx),
+    swipeEnd: direction => swipe.end(direction),
     // For debugging and automated checks (scripts/run-debug.sh steps).
     get view() { return view },
     clearSearch() {

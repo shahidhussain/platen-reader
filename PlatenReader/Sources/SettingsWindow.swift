@@ -59,19 +59,13 @@ private struct AppearanceSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Follow system appearance", isOn: $settings.followSystemAppearance)
-                if settings.followSystemAppearance {
-                    Picker("Light appearance", selection: $settings.lightTheme) {
-                        ForEach(Theme.allCases) { Text($0.label).tag($0) }
-                    }
-                    Picker("Dark appearance", selection: $settings.darkTheme) {
-                        ForEach(Theme.allCases) { Text($0.label).tag($0) }
-                    }
-                } else {
-                    Picker("Theme", selection: $settings.fixedTheme) {
-                        ForEach(Theme.allCases) { Text($0.label).tag($0) }
-                    }
+                Picker("Appearance", selection: $settings.appearance) {
+                    ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }
                 }
+            } footer: {
+                Text("Automatic matches macOS: Light in Light Mode, Dark in Dark Mode.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section {
                 Picker("Font", selection: $settings.fontFamily) {
@@ -176,13 +170,6 @@ private struct AdvancedSettingsView: View {
         Form {
             LabeledContent("Reading positions and bookmarks") {
                 Button("Clear…") { confirmClear = true }
-            }
-            LabeledContent("Data folder") {
-                Button("Show in Finder") {
-                    let folder = PositionStore.shared.directory
-                    try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                    NSWorkspace.shared.activateFileViewerSelecting([folder])
-                }
             }
         }
         .formStyle(.grouped)

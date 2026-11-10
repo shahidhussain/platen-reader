@@ -112,9 +112,9 @@ enum MainMenu {
         layout.submenu = layoutMenu
         menu.addItem(layout)
 
-        let theme = NSMenuItem(title: String(localized: "Theme"), action: nil, keyEquivalent: "")
+        let theme = NSMenuItem(title: String(localized: "Appearance"), action: nil, keyEquivalent: "")
         let themeMenu = NSMenu(title: theme.title)
-        for option in Theme.allCases {
+        for option in AppearanceChoice.allCases {
             themeMenu.addItem(item(option.label, #selector(ReaderViewController.setThemeFromMenu(_:)), represented: option.rawValue))
         }
         theme.submenu = themeMenu
@@ -132,6 +132,8 @@ enum MainMenu {
         menu.addItem(item(String(localized: "Default Text Size"), #selector(ReaderViewController.makeTextDefaultSize(_:)), "0"))
         menu.addItem(.separator())
         menu.addItem(item(String(localized: "Show Contents"), #selector(ReaderViewController.toggleContents(_:)), "t"))
+        // Also the C key on its own (handled by the reader, so it never
+        // interferes with typing in the search field).
         menu.addItem(item(String(localized: "Show Controls"), #selector(ReaderViewController.toggleReaderControls(_:)), "k"))
         menu.addItem(.separator())
         // AppKit recognises this action and keeps the title in sync.

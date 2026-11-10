@@ -19,7 +19,7 @@ check() {
     file=$1; step=$2; expect=$3; forbid=${4:-}
     [ "$step" = "-" ] && step=""
     out=$("$ROOT/scripts/run-debug.sh" "$G/$file" "$step" 2>/dev/null)
-    if echo "$out" | grep -qF -- "$expect" && { [ -z "$forbid" ] || ! echo "$out" | grep -qF -- "$forbid"; }; then
+    if echo "$out" | grep -aqF -- "$expect" && { [ -z "$forbid" ] || ! echo "$out" | grep -aqF -- "$forbid"; }; then
         echo "PASS  $file"
     else
         echo "FAIL  $file (expected “$expect”${forbid:+, without “$forbid”})"
@@ -41,6 +41,9 @@ check rtl.epub                "String(platen.view.book.dir)"           "step res
 check fixed-layout.epub       "String(platen.view.isFixedLayout)"      "step result: true"
 check kobo.kepub.epub         "$TEXT"                                  "Kobo chapter"
 check truncated.epub          "-"                                      "rebuilt package"
+# 12 px text must follow the text size setting, keeping its proportion to
+# the root size (12/16 = 0.75), and nothing may be wider than the page.
+check fixed-font-sizes.epub   "(d=>'ratio:'+parseFloat(getComputedStyle(d.querySelector('p.px')).fontSize)/parseFloat(getComputedStyle(d.documentElement).fontSize)+' over:'+[...d.body.querySelectorAll('*')].some(e=>e.getBoundingClientRect().width>d.body.getBoundingClientRect().width+1))(platen.view.renderer.getContents()[0].doc)" "ratio:0.75 over:false"
 check drm-adept.epub          "-"                                      "drm(PlatenCore.DRMScheme.adobeADEPT)"
 
 exit $FAILED
