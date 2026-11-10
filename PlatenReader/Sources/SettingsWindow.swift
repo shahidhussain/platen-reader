@@ -43,8 +43,9 @@ private struct GeneralSettingsView: View {
             }
             Toggle("Animate page turns", isOn: $settings.animatePageTurns)
             Toggle("Hyphenate text in paginated mode", isOn: $settings.hyphenate)
+            Toggle("Show pages left in chapter", isOn: $settings.showPagesLeftInChapter)
             LabeledContent("First-run tips") {
-                Button("Reset") { UserDefaults.standard.removeObject(forKey: "hasSeenReadingControls") }
+                Button("Reset") { ReadingControlsExplainer.resetTips() }
             }
         }
         .formStyle(.grouped)

@@ -11,7 +11,8 @@ A free, open source (MPL-2.0), file-first ebook viewer for macOS, with iOS to fo
   - `ReaderSchemeHandler`: serves `platen://reader/app/*` (the shell) and `platen://reader/book/*` (book files from memory). It also holds the CSP and the remote-load blocker.
   - `MainMenu`: the full command set. Actions go to the first responder.
 - `PlatenReader/Web/`: `reader.html/js/css`, the shell that drives foliate-js. `foliate/` is vendored at a pinned commit (see `foliate/VENDORED.md`).
-- `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `run-debug.sh` (headless open + snapshots), `generate-xcodeproj.py`, `update-foliate.sh`.
+- `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `check-corpus.sh` (opens each fixture and checks the result), `run-debug.sh` (headless open + snapshots), `generate-xcodeproj.py`, `update-foliate.sh`.
+- Reader features live mostly in `reader.js`: bookmark ribbons, jumps and Back, search, contents synthesis and selection reporting. The native side is `SidebarView.swift` (contents, bookmarks and search panel, and the click-zone explainer) and `OverlayViews.swift`.
 
 ## Build and test
 
@@ -20,11 +21,17 @@ swift test --package-path PlatenCore                       # core unit tests
 xcodebuild -project PlatenReader.xcodeproj -scheme PlatenReader \
   -configuration Debug -derivedDataPath build/DerivedData build
 python3 scripts/make-fixtures.py                           # regenerate corpus
-scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next()"
+scripts/check-corpus.sh                                    # corpus must stay green
+scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next();@toggleContents:"
 # → log lines with open timings; PNG snapshots in build/snaps/
 ```
 
-`run-debug.sh` relies on Debug-only hooks (`DebugHooks.swift`). `PLATEN_SNAPSHOT_DIR` writes web-view snapshots after the first render, and `PLATEN_STEPS` runs semicolon-separated JS commands (for example `platen.next()` or `platen.setSettings({...})`) one per second, taking a snapshot after each.
+`run-debug.sh` relies on Debug-only hooks (`DebugHooks.swift`). `PLATEN_SNAPSHOT_DIR` writes snapshots after the first render: `<book>-N.png` of the web view and `<book>-N-native.png` of the native views (the native one is taken 0.5 s later). `PLATEN_STEPS` runs semicolon-separated steps, one per second:
+- JavaScript, such as `platen.next()`. `platen.view` exposes the foliate view; string results are logged as `step result:`.
+- `@<selector>` sends a menu action, such as `@toggleContents:` or `@findNext:`.
+- `@search:<query>` runs a search; `@tab:<contents|bookmarks|search>` opens the panel on a tab.
+
+The screen-control tools may lack macOS permissions in this environment, so verify UI through these snapshots.
 
 ## Rules
 
@@ -34,8 +41,9 @@ scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next()"
 - Font obfuscation is undone in Swift (`FontDeobfuscator`), and `encryption.xml` is then hidden from foliate-js so it is not undone twice.
 - No telemetry, no network and no permission prompts. Settings are global, and the only per-book data is position and bookmarks (`docs/per-book-data.md`).
 - Comment liberally: explain what and why for a non-specialist. User-facing strings go in String Catalogs (development language en-GB).
+- Add a line to `scripts/check-corpus.sh` for every new fixture.
 - If you patch vendored foliate-js, record it in `PlatenReader/Web/foliate/VENDORED.md`.
 
 ## Status
 
-M0 (spike) is done. Next is M1. See "Not yet done" in README.md.
+M0 (spike) is done. M1 is in progress on branch `m1`; see "Not yet done" in README.md.

@@ -15,11 +15,22 @@ public struct BookRecord: Codable, Equatable, Sendable {
         public var created: Date
         /// The first line of text, for the bookmarks list.
         public var snippet: String
+        /// Chapter title at the bookmark, for the list. Optional: added after
+        /// schema version 1 was first written, so older files lack it.
+        public var chapter: String?
+        /// Printed page number, when the book has a page list.
+        public var page: String?
+        /// Approximate position in the book (0–1), used only to sort the list.
+        public var fraction: Double?
 
-        public init(cfi: String, created: Date = Date(), snippet: String) {
+        public init(cfi: String, created: Date = Date(), snippet: String,
+                    chapter: String? = nil, page: String? = nil, fraction: Double? = nil) {
             self.cfi = cfi
             self.created = created
             self.snippet = snippet
+            self.chapter = chapter
+            self.page = page
+            self.fraction = fraction
         }
     }
 

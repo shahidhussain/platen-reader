@@ -5,6 +5,8 @@ struct OverlayActions {
     var previousPage: () -> Void
     var nextPage: () -> Void
     var goToFraction: (Double) -> Void
+    var goBack: () -> Void
+    var toggleContents: () -> Void
     var setFlow: (ReadingFlow) -> Void
     var setTheme: (Theme) -> Void
     var currentTheme: () -> Theme
@@ -14,27 +16,60 @@ struct OverlayActions {
 }
 
 /// The bottom part of the overlay: location line, progress slider with
-/// chapter ticks, page buttons and the Aa (typography) button. The top part
-/// is the real window title bar, faded in by the view controller.
+/// chapter ticks, page buttons, Contents, Back and the Aa (typography)
+/// button. The top part is the real window title bar, faded in by the view
+/// controller.
 struct OverlayBar: View {
     @ObservedObject var state: ReaderState
+    @ObservedObject var settings = ReaderSettings.shared
     let actions: OverlayActions
 
     @State private var dragFraction: Double?
     @State private var showTypography = false
 
+    private var locationText: String {
+        if let f = dragFraction {
+            // While dragging: the chapter at the slider position, and where.
+            let percent = f.formatted(.percent.precision(.fractionLength(0)))
+            return [state.chapter(atFraction: f), percent].compactMap { $0 }.joined(separator: " · ")
+        }
+        return state.locationLine(showPagesLeft: settings.showPagesLeftInChapter)
+    }
+
     var body: some View {
         VStack(spacing: 6) {
-            Text(dragFraction.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? state.locationLine)
-                .font(.callout)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .accessibilityLabel(Text("Location"))
-                .accessibilityValue(Text(state.locationLine))
+            HStack {
+                // Shown only after a jump, until the reader moves on.
+                if let back = state.backLabel {
+                    Button {
+                        actions.goBack()
+                    } label: {
+                        Label(String(localized: "Back to \(back)"), systemImage: "arrow.uturn.backward")
+                            .font(.callout)
+                    }
+                    .help(String(localized: "Back to \(back) (⌘[)"))
+                }
+                Spacer(minLength: 0)
+                Text(locationText)
+                    .font(.callout)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .accessibilityLabel(Text("Location"))
+                    .accessibilityValue(Text(locationText))
+                Spacer(minLength: 0)
+            }
 
             HStack(spacing: 14) {
+                if state.hasContents {
+                    Button(action: actions.toggleContents) {
+                        Image(systemName: "list.bullet")
+                    }
+                    .help("Contents and Bookmarks (⌘T)")
+                    .accessibilityLabel(Text("Contents and Bookmarks"))
+                }
+
                 Button(action: state.isRightToLeft ? actions.nextPage : actions.previousPage) {
                     Image(systemName: "chevron.left")
                 }

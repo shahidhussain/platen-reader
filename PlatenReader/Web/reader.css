@@ -41,3 +41,43 @@ foliate-view {
 foliate-view::part(filter) {
     background: transparent !important;
 }
+
+/* Bookmark corners and ribbons, drawn above the book (see reader.js). The
+   container lets clicks through; each corner takes them. */
+#ribbons {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+}
+#ribbons[hidden] { display: none; }
+#ribbons .corner {
+    position: absolute;
+    width: 36px;
+    height: 34px;
+    padding: 0 0 0 16px;
+    margin: 0;
+    border: 0;
+    background: none;
+    pointer-events: auto;
+    cursor: default;
+    color: var(--platen-fg);
+}
+#ribbons .corner svg {
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1;
+    opacity: 0;
+    transition: opacity 120ms;
+}
+/* A faint outline on hover makes the feature discoverable. */
+#ribbons .corner:hover svg { opacity: .35; }
+#ribbons .corner.marked svg {
+    fill: #d0342c;
+    stroke: none;
+    opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+    #ribbons .corner svg { transition: none; }
+}

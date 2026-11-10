@@ -12,6 +12,7 @@
 
 import './foliate/view.js'
 import { EPUB } from './foliate/epub.js'
+import { Overlayer } from './foliate/overlayer.js'
 
 // ---------------------------------------------------------------------------
 // Bridge to Swift
@@ -109,6 +110,14 @@ const bookCSS = s => `
     /* Dark line art on transparent backgrounds would vanish; give images a
        light backing so they stay legible. */
     img, svg image { background-color: #f2f2f2; }` : ''}
+    /* Kobo KEPUBs wrap the whole book in fixed-size column containers meant
+       for Kobo's own reader; they fight our pagination, so neutralise them. */
+    div#book-columns, div#book-inner {
+        column-count: auto !important; columns: auto !important;
+        width: auto !important; height: auto !important;
+        margin: 0 !important; padding: 0 !important;
+        overflow: visible !important;
+    }
     /* Footnote bodies are reached by following their links. */
     aside[epub|type~="footnote"], aside[epub|type~="endnote"],
     aside[epub|type~="note"], aside[epub|type~="rearnote"] {
@@ -142,7 +151,9 @@ const applyLayout = () => {
     r.setAttribute('flow', settings.flow)
     r.setAttribute('max-column-count', columns)
     r.setAttribute('max-inline-size', `${Math.round(inline)}px`)
-    r.setAttribute('margin', '44px')
+    // In paginated mode the top margin leaves room for the bookmark ribbon
+    // below the (hidden) title bar.
+    r.setAttribute('margin', settings.flow === 'scrolled' ? '44px' : '60px')
     r.setAttribute('gap', '6%')
     r.setStyles?.(bookCSS(settings))
 }
@@ -161,7 +172,7 @@ window.addEventListener('resize', () => {
 // A "click" is mouse-down and mouse-up with negligible movement. The zone is
 // computed in window coordinates and sent to Swift, which decides what to do
 // (turn a page or toggle the overlay), so behaviour lives in one place.
-const attachPointerHandlers = doc => {
+const attachPointerHandlers = (doc, index) => {
     let down = null
     doc.addEventListener('mousedown', e => {
         const selection = doc.getSelection()
@@ -185,7 +196,28 @@ const attachPointerHandlers = doc => {
         post('click', { zone })
     })
     doc.addEventListener('wheel', onWheel, { passive: false })
-    // Context menus are left to WebKit (Look Up, Translate, Copy, Share…).
+    // Context menus are WebKit's own (Look Up, Translate, Copy, Share…);
+    // Swift adds Platen's items, using the selection reported here.
+    let selectionTimer
+    doc.addEventListener('selectionchange', () => {
+        clearTimeout(selectionTimer)
+        selectionTimer = setTimeout(() => reportSelection(doc, index), 120)
+    })
+}
+
+// Tells Swift what is selected, with the chapter and printed page it is on,
+// for Copy with Citation and "Search Book for …".
+const reportSelection = (doc, index) => {
+    const selection = doc.getSelection()
+    const text = selection?.toString().trim() ?? ''
+    if (!text || !selection.rangeCount) return post('selection', { text: '' })
+    const range = selection.getRangeAt(0)
+    const { tocItem, pageItem } = view.getProgressOf(index, range) ?? {}
+    post('selection', {
+        text,
+        chapter: tocItem?.label?.trim() ?? '',
+        page: pageItem?.label ?? null,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +239,7 @@ function onWheel(e) {
     }
     const r = view.renderer
     if (gesture.axis === 'x' && !isFixedLayout && r.scrollBy) {
+        ribbons.hidden = true // they would not move with the page
         r.scrollBy(e.deltaX, 0)
         gesture.total += e.deltaX
     } else if (!gesture.turned) {
@@ -237,6 +270,7 @@ function endGesture() {
     gesture.axis = null
     gesture.total = 0
     gesture.turned = false
+    ribbons.hidden = false
 }
 
 document.addEventListener('wheel', onWheel, { passive: false })
@@ -262,9 +296,21 @@ const metadataString = x => {
 }
 
 let firstRelocate = true
+let lastReason = null
 const onRelocate = ({ detail }) => {
     const { cfi, fraction, tocItem, pageItem, location, section } = detail
+    const r = view.renderer
+    const pagesLeft = !isFixedLayout && settings?.flow !== 'scrolled' && r.pages > 0
+        ? Math.max(0, r.pages - 2 - r.page) : null
+    // foliate reports *why* the view moved on the renderer's event, which
+    // fires after this one; read it once the current dispatch has finished.
+    queueMicrotask(() => {
+        noteMovement(lastReason)
+        scheduleRibbons()
+    })
     post('relocate', {
+        pagesLeft,
+        chapterHref: tocItem?.href ?? null,
         cfi,
         fraction: fraction ?? 0,
         chapter: tocItem?.label?.trim() ?? '',
@@ -300,13 +346,15 @@ window.platen = {
             isFixedLayout = view.isFixedLayout
             settings = options.settings
             view.addEventListener('relocate', onRelocate)
-            view.addEventListener('load', ({ detail: { doc } }) => attachPointerHandlers(doc))
+            view.addEventListener('load', ({ detail: { doc, index } }) => attachPointerHandlers(doc, index))
+            view.renderer.addEventListener('relocate', e => { lastReason = e.detail.reason })
             view.addEventListener('external-link', e => {
                 // Never navigate the reader; let Swift open it in the browser.
                 e.preventDefault()
                 post('externalLink', { href: e.detail.a.href })
             })
-            view.addEventListener('link', () => post('jumped', { reason: 'link' }))
+            // Following a link is a jump: offer a way back.
+            view.addEventListener('link', () => rememberJumpOrigin())
             applyLayout()
 
             // Restore the saved position, or start where the main text begins.
@@ -318,10 +366,12 @@ window.platen = {
                 language: metadataString(book.metadata?.language),
                 dir: book.dir ?? 'ltr',
                 fixedLayout: isFixedLayout,
-                toc: flattenTOC(book.toc),
                 hasPageList: !!book.pageList?.length,
                 sectionFractions: view.getSectionFractions(),
             })
+            // Contents and chapter labels are worked out after the first page
+            // is on screen, so they never delay opening.
+            setTimeout(() => sendContents(book), 0)
         } catch (e) {
             post('error', { message: String(e?.message ?? e), stack: String(e?.stack ?? '') })
         }
@@ -338,10 +388,334 @@ window.platen = {
     scrollLines: lines => lines > 0 ? view?.next(lines * 40) : view?.prev(-lines * 40),
     nextSection: () => view?.renderer.nextSection?.(),
     prevSection: () => view?.renderer.prevSection?.(),
-    goTo: target => view?.goTo(target),
-    goToFraction: f => view?.goToFraction(f),
-    back: () => view?.history.back(),
-    get canGoBack() { return !!view?.history.canGoBack },
+    // Jumps (contents, bookmarks, search results, slider) remember where
+    // the reader came from, for the Back button.
+    // `keepOrigin`: stepping through search results keeps "Back" pointing
+    // at where the reader was before the first result.
+    jumpTo: (target, keepOrigin) => jump(() => view.goTo(target), keepOrigin),
+    jumpToFraction: f => jump(() => view.goToFraction(f)),
+    goBack,
+    setBookmarks(list) {
+        bookmarks = list ?? []
+        scheduleRibbons()
+    },
+    toggleBookmark,
+    search,
+    // For debugging and automated checks (scripts/run-debug.sh steps).
+    get view() { return view },
+    clearSearch() {
+        searchToken++
+        view?.clearSearch()
+    },
+}
+
+
+// ---------------------------------------------------------------------------
+// Jumps and the Back button
+//
+// After a jump (contents, link, bookmark, search, slider), the overlay offers
+// "Back to p. 87" or "Back to Chapter 3". It stays until the reader moves on
+// from the destination by turning a page.
+
+let back = null          // { cfi, label }
+let jumpStartedAt = 0
+
+const describeLocation = () => {
+    const l = view?.lastLocation
+    if (!l?.cfi) return null
+    const page = l.pageItem?.label
+    const chapter = l.tocItem?.label?.trim()
+    const label = page ? `p. ${page}` : chapter || `${Math.round((l.fraction ?? 0) * 100)}%`
+    return { cfi: l.cfi, label }
+}
+
+const rememberJumpOrigin = keepOrigin => {
+    const origin = describeLocation()
+    jumpStartedAt = performance.now()
+    if (keepOrigin && back) return
+    if (!origin) return
+    back = origin
+    post('back', { label: back.label })
+}
+
+async function jump(go, keepOrigin = false) {
+    rememberJumpOrigin(keepOrigin)
+    await go()
+}
+
+function goBack() {
+    if (!back) return
+    const target = back.cfi
+    back = null
+    post('back', { label: null })
+    jumpStartedAt = performance.now()
+    return view.goTo(target)
+}
+
+// Called for every relocation with foliate's reason. Re-layouts ("anchor")
+// and the jump's own arrival do not count as moving on.
+function noteMovement(reason) {
+    if (!back || reason === 'anchor') return
+    if (performance.now() - jumpStartedAt < 700) return
+    back = null
+    post('back', { label: null })
+}
+
+// ---------------------------------------------------------------------------
+// Bookmarks
+//
+// A bookmark is anchored to the CFI of the first word on a page. In a
+// two-page spread each page has its own top-right corner and bookmark. The
+// ribbons are drawn in the shell, above the book, so they never touch the
+// book's own document.
+
+let bookmarks = []   // [{ cfi }], from Swift
+
+const ribbons = document.createElement('div')
+ribbons.id = 'ribbons'
+document.body.append(ribbons)
+
+const ribbonSVG = `<svg viewBox="0 0 14 24" width="14" height="24" aria-hidden="true">
+    <path d="M1 0h12v23l-6-5-6 5z"/></svg>`
+
+// The pages on screen, each with its bounds (window coordinates), the CFI
+// and text of its first word, and its chapter and printed page.
+function pagesOnScreen() {
+    if (!view) return []
+    const contents = view.renderer.getContents?.() ?? []
+    if (isFixedLayout) {
+        // Fixed layout: the bookmark is simply the page (section) itself.
+        return contents.filter(c => c.doc && c.index >= 0
+                                     && c.doc.defaultView.frameElement.getBoundingClientRect().width > 0)
+            .map(({ doc, index }) => {
+            const r = doc.defaultView.frameElement.getBoundingClientRect()
+            return { left: r.left, right: r.right, top: r.top, index,
+                     cfi: view.getCFI(index), snippet: doc.body?.innerText?.trim().slice(0, 100) ?? '',
+                     ...labelsFor(index) }
+        }).filter(p => p.right > 0 && p.left < innerWidth)
+    }
+    const location = view.lastLocation
+    const { doc, index } = contents[0] ?? {}
+    if (!doc || !location?.range) return []
+    const frame = doc.defaultView.frameElement
+    const fr = frame.getBoundingClientRect()
+    const scale = frame.offsetWidth ? fr.width / frame.offsetWidth : 1
+    const toWindow = r => ({ left: fr.left + r.left * scale, right: fr.left + r.right * scale,
+                             top: fr.top + r.top * scale, bottom: fr.top + r.bottom * scale })
+
+    // Every line box of the visible text, grouped into columns (pages) by
+    // horizontal position.
+    const boxes = Array.from(location.range.getClientRects())
+        .filter(r => r.width > 0 && r.height > 0)
+        .map(r => ({ r, w: toWindow(r) }))
+        .filter(({ w }) => w.right > 0 && w.left < innerWidth && w.bottom > 0 && w.top < innerHeight)
+        .sort((a, b) => a.w.left - b.w.left)
+    const columns = []
+    for (const box of boxes) {
+        const column = columns.at(-1)
+        if (column && box.w.left < column.right + 8) {
+            column.boxes.push(box)
+            column.right = Math.max(column.right, box.w.right)
+        } else columns.push({ left: box.w.left, right: box.w.right, boxes: [box] })
+    }
+    return columns.map(column => {
+        const first = column.boxes.reduce((a, b) =>
+            b.w.top < a.w.top - 1 || (Math.abs(b.w.top - a.w.top) <= 1 && b.w.left < a.w.left) ? b : a)
+        const caret = doc.caretRangeFromPoint(first.r.left + 1, first.r.top + first.r.height / 2)
+        if (!caret) return null
+        const rest = doc.createRange()
+        rest.setStart(caret.startContainer, caret.startOffset)
+        rest.setEnd(location.range.endContainer, location.range.endOffset)
+        const snippet = rest.toString().replace(/\s+/g, ' ').trim().slice(0, 100)
+        const { tocItem, pageItem } = view.getProgressOf(index, caret) ?? {}
+        return { left: column.left, right: column.right, top: first.w.top, index,
+                 cfi: view.getCFI(index, caret), snippet,
+                 chapter: tocItem?.label?.trim() ?? '', page: pageItem?.label ?? null,
+                 contains: w => w.left >= column.left - 4 && w.left <= column.right + 4
+                     && w.bottom > 0 && w.top < innerHeight }
+    }).filter(Boolean)
+}
+
+function labelsFor(index) {
+    const { tocItem, pageItem } = view.getProgressOf(index) ?? {}
+    return { chapter: tocItem?.label?.trim() ?? '', page: pageItem?.label ?? null }
+}
+
+// Window rect of a bookmark's anchor, if it is in the current section.
+function bookmarkRect(cfi, index, doc) {
+    try {
+        const resolved = view.resolveNavigation(cfi)
+        if (resolved?.index !== index) return null
+        if (isFixedLayout) return { section: true }
+        const anchor = resolved.anchor(doc)
+        const range = anchor instanceof Range ? anchor.cloneRange()
+            : (() => { const r = doc.createRange(); r.selectNode(anchor); return r })()
+        // A collapsed range (a bookmark is a point) has no boxes in WebKit;
+        // widen it to the character that follows so it can be located.
+        if (range.collapsed && range.startContainer.nodeType === Node.TEXT_NODE
+            && range.startOffset < range.startContainer.length) range.setEnd(range.startContainer, range.startOffset + 1)
+        const r = Array.from(range.getClientRects()).find(x => x.width || x.height) ?? range.getBoundingClientRect()
+        if (!r.width && !r.height) return null
+        const frame = doc.defaultView.frameElement
+        const fr = frame.getBoundingClientRect()
+        const scale = frame.offsetWidth ? fr.width / frame.offsetWidth : 1
+        return { left: fr.left + r.left * scale, top: fr.top + r.top * scale,
+                 bottom: fr.top + r.bottom * scale }
+    } catch { return null }
+}
+
+let pagesCache = []
+let ribbonFrame = 0
+let lastBookmarkedState = null
+
+// foliate can report several relocations for one page turn (layout, fonts
+// loading…). Redraw the ribbons once per frame at most.
+function scheduleRibbons() {
+    cancelAnimationFrame(ribbonFrame)
+    ribbonFrame = requestAnimationFrame(refreshRibbons)
+}
+
+function refreshRibbons() {
+    ribbons.replaceChildren()
+    if (!view) return
+    const pages = pagesCache = pagesOnScreen()
+    const contents = view.renderer.getContents?.() ?? []
+    const scrolled = settings?.flow === 'scrolled' && !isFixedLayout
+    let anyMarked = false
+
+    for (const page of pages) {
+        const doc = contents.find(c => c.index === page.index)?.doc
+        // Which saved bookmarks fall on this page?
+        const marks = bookmarks.map(b => ({ b, rect: doc && bookmarkRect(b.cfi, page.index, doc) }))
+            .filter(({ b, rect }) => b.cfi === page.cfi || (rect && !rect.section && page.contains?.(rect)))
+            .map(({ b, rect }) => ({ b, rect: rect ?? { top: page.top } }))
+        if (isFixedLayout) marks.splice(0, marks.length, ...bookmarks
+            .filter(b => b.cfi === page.cfi).map(b => ({ b, rect: { section: true } })))
+
+        // Paginated: one corner per page, at its top right. Scroll mode: the
+        // corner for adding sits at the top; existing ribbons sit level with
+        // their line.
+        const corner = (marked, top, cfi) => {
+            const el = document.createElement('button')
+            el.className = 'corner' + (marked ? ' marked' : '')
+            el.style.left = `${Math.round(page.right - 30)}px`
+            el.style.top = `${Math.round(top)}px`
+            el.innerHTML = ribbonSVG
+            el.setAttribute('aria-label', marked ? 'Remove Bookmark' : 'Bookmark This Page')
+            el.tabIndex = -1 // reachable via ⌘D and the menu instead
+            el.addEventListener('click', e => {
+                e.stopPropagation()
+                if (marked) post('removeBookmark', { cfi })
+                else post('addBookmark', bookmarkPayload(page))
+            })
+            ribbons.append(el)
+        }
+        const topEdge = 28 // just below the title bar
+        if (marks.length) {
+            anyMarked ||= page === leadingPage(pages)
+            for (const { b, rect } of marks)
+                corner(true, scrolled && !rect.section ? Math.max(topEdge, rect.top - 4) : topEdge, b.cfi)
+        }
+        if (!marks.length || scrolled) {
+            if (!(scrolled && marks.some(({ rect }) => Math.abs(Math.max(topEdge, rect.top - 4) - topEdge) < 30)))
+                corner(false, topEdge, null)
+        }
+    }
+    if (anyMarked !== lastBookmarkedState) {
+        lastBookmarkedState = anyMarked
+        post('pageBookmarked', { bookmarked: anyMarked })
+    }
+}
+
+const bookmarkPayload = page => ({
+    cfi: page.cfi, snippet: page.snippet, chapter: page.chapter, page: page.page,
+    fraction: view?.lastLocation?.fraction ?? null,
+})
+
+// The page a keyboard command applies to: the first page in reading order.
+const leadingPage = pages => (view?.book?.dir === 'rtl' ? pages.at(-1) : pages[0])
+
+// ⌘D: bookmark the leading page, or remove its bookmark.
+function toggleBookmark() {
+    const page = leadingPage(pagesCache.length ? pagesCache : pagesOnScreen())
+    if (!page) return
+    const doc = (view.renderer.getContents?.() ?? []).find(c => c.index === page.index)?.doc
+    const existing = bookmarks.find(b => isFixedLayout ? b.cfi === page.cfi
+        : b.cfi === page.cfi || (() => { const r = doc && bookmarkRect(b.cfi, page.index, doc); return r && page.contains(r) })())
+    if (existing) post('removeBookmark', { cfi: existing.cfi })
+    else post('addBookmark', bookmarkPayload(page))
+}
+
+// ---------------------------------------------------------------------------
+// Find in book
+
+let searchToken = 0
+
+async function search(query) {
+    const token = ++searchToken
+    view?.clearSearch()
+    if (!view || !query) return post('searchDone', { query, count: 0 })
+    let count = 0
+    try {
+        for await (const result of view.search({
+            query,
+            draw: Overlayer.highlight,
+            drawOptions: { color: '#ffcc00' },
+        })) {
+            if (token !== searchToken) return // superseded by a newer search
+            if (result === 'done') break
+            if (result.subitems) {
+                count += result.subitems.length
+                post('searchResults', {
+                    query,
+                    label: result.label?.trim() ?? '',
+                    items: result.subitems.map(({ cfi, excerpt }) => ({
+                        cfi, pre: excerpt?.pre ?? '', match: excerpt?.match ?? '', post: excerpt?.post ?? '',
+                    })),
+                })
+            } else if (typeof result.progress === 'number') {
+                post('searchProgress', { query, progress: result.progress })
+            }
+        }
+    } catch (e) {
+        post('log', { level: 'error', message: `search failed: ${e}` })
+    }
+    if (token === searchToken) post('searchDone', { query, count })
+}
+
+// ---------------------------------------------------------------------------
+// Contents
+//
+// Books without a table of contents get one built from their sections'
+// first headings. Each section also gets a chapter label, used by the
+// slider while dragging and for books without a contents list.
+
+async function synthesiseContents(book) {
+    const items = []
+    for (const section of book.sections) {
+        if (section.linear === 'no' || !section.createDocument) continue
+        try {
+            const doc = await section.createDocument()
+            const heading = doc.querySelector('h1, h2, h3, h4, h5, h6')
+            const text = (heading?.textContent || doc.title || '').replace(/\s+/g, ' ').trim()
+            items.push({ label: text || `Section ${items.length + 1}`, href: section.id, depth: 0 })
+        } catch { /* unreadable section: leave it out */ }
+    }
+    return items
+}
+
+async function sendContents(book) {
+    let toc = flattenTOC(book.toc)
+    const synthesised = !toc.length
+    if (synthesised) toc = await synthesiseContents(book)
+    const byHref = new Map(toc.map(t => [t.href, t.label]))
+    let last = ''
+    const sectionLabels = book.sections.map((section, i) => {
+        const label = synthesised ? byHref.get(section.id) : view.getProgressOf(i)?.tocItem?.label?.trim()
+        if (label) last = label
+        return last
+    })
+    post('contents', { toc, sectionLabels, synthesised })
 }
 
 post('ready')

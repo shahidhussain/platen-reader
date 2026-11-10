@@ -117,6 +117,8 @@ final class ReaderSettings: ObservableObject {
     @Published var lineWidth: LineWidth { didSet { save("lineWidth", lineWidth.rawValue) } }
     @Published var fontFamily: String { didSet { save("fontFamily", fontFamily) } }
     @Published var hyphenate: Bool { didSet { save("hyphenate", hyphenate) } }
+    /// Optional "N pages left in chapter" in the location line (paginated).
+    @Published var showPagesLeftInChapter: Bool { didSet { save("showPagesLeftInChapter", showPagesLeftInChapter) } }
 
     private init() {
         func string(_ key: String) -> String? { UserDefaults.standard.string(forKey: key) }
@@ -136,6 +138,7 @@ final class ReaderSettings: ObservableObject {
         lineWidth = string("lineWidth").flatMap(LineWidth.init) ?? .medium
         fontFamily = string("fontFamily") ?? ""
         hyphenate = bool("hyphenate", true)
+        showPagesLeftInChapter = bool("showPagesLeftInChapter", false)
     }
 
     private func save(_ key: String, _ value: Any) {

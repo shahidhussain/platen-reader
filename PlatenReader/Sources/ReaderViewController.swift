@@ -22,6 +22,8 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
 
     private var webView: ReaderWebView!
     private var overlayHost: NSHostingView<OverlayBar>!
+    private var sidebarHost: NSHostingView<SidebarView>!
+    private var explainerHost: NSView?
     private var spinner: NSProgressIndicator!
     private var failureHost: NSView?
 
@@ -70,6 +72,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         webView.allowsBackForwardNavigationGestures = false
         webView.setValue(false, forKey: "drawsBackground") // the page draws the theme colour
         webView.keyHandler = { [weak self] event in self?.handleKey(event) ?? false }
+        webView.menuCustomiser = { [weak self] menu in self?.customiseContextMenu(menu) }
         webView.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(webView)
 
@@ -77,7 +80,9 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         let actions = OverlayActions(
             previousPage: { [weak self] in self?.js("platen.prev()") },
             nextPage: { [weak self] in self?.js("platen.next()") },
-            goToFraction: { [weak self] f in self?.js("platen.goToFraction(\(f))") },
+            goToFraction: { [weak self] f in self?.js("platen.jumpToFraction(\(f))") },
+            goBack: { [weak self] in self?.goBackInHistory(nil) },
+            toggleContents: { [weak self] in self?.toggleContents(nil) },
             setFlow: { [weak self] flow in self?.setFlow(flow) },
             setTheme: { [weak self] theme in
                 guard let self else { return }
@@ -91,6 +96,22 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         overlayHost.alphaValue = 0
         overlayHost.isHidden = true
         root.addSubview(overlayHost)
+
+        // Contents, bookmarks and search: slides over the left of the page.
+        let sidebarActions = SidebarActions(
+            goToTOCItem: { [weak self] item in self?.jump(to: item.href) },
+            goToBookmark: { [weak self] bookmark in self?.jump(to: bookmark.cfi) },
+            removeBookmark: { [weak self] bookmark in self?.removeBookmark(cfi: bookmark.cfi) },
+            search: { [weak self] query in self?.startSearch(query) },
+            goToHit: { [weak self] hit in self?.goToHit(hit) },
+            close: { [weak self] in self?.setSidebar(visible: false) }
+        )
+        sidebarHost = NSHostingView(rootView: SidebarView(state: state, actions: sidebarActions))
+        sidebarHost.translatesAutoresizingMaskIntoConstraints = false
+        // Fill the window's height; do not shrink to fit a short list.
+        sidebarHost.sizingOptions = [.minSize]
+        sidebarHost.isHidden = true
+        root.addSubview(sidebarHost)
 
         // Quiet progress indicator, shown only if opening takes > 500 ms.
         spinner = NSProgressIndicator()
@@ -111,6 +132,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             overlayHost.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 16),
             overlayHost.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
             overlayHost.widthAnchor.constraint(equalToConstant: 720).withPriority(.defaultHigh),
+
+            sidebarHost.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            sidebarHost.topAnchor.constraint(equalTo: root.topAnchor),
+            sidebarHost.bottomAnchor.constraint(equalTo: root.bottomAnchor),
 
             spinner.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: root.centerYAnchor),
@@ -186,6 +211,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         record.lastKnownPath = url.path
         record.lastOpened = Date()
         self.record = record
+        state.bookmarks = record.bookmarks
         if book.isFixedLayout {
             state.flow = .paginated
         } else if let mode = record.readingMode.flatMap(ReadingFlow.init) {
@@ -253,8 +279,24 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             let elapsed = (CFAbsoluteTimeGetCurrent() - openStarted) * 1000
             log.info("First page visible after \(elapsed, format: .fixed(precision: 0)) ms")
             #if DEBUG
-            DebugHooks.afterFirstRender(webView: webView, bookName: document.fileURL?.deletingPathExtension().lastPathComponent ?? "book") { [weak self] script in
-                self?.webView.evaluateJavaScript(script, completionHandler: nil)
+            DebugHooks.afterFirstRender(webView: webView, bookName: document.fileURL?.deletingPathExtension().lastPathComponent ?? "book", root: view) { [weak self] step in
+                guard let self else { return }
+                if step.hasPrefix("@tab:"), let tab = ReaderState.SidebarTab(rawValue: String(step.dropFirst(5))) {
+                    self.setSidebar(visible: true, tab: tab)
+                } else if step.hasPrefix("@search:") {
+                    self.setSidebar(visible: true, tab: .search)
+                    self.startSearch(String(step.dropFirst("@search:".count)))
+                } else if step.hasPrefix("@") {
+                    NSApp.sendAction(NSSelectorFromString(String(step.dropFirst())), to: self, from: nil)
+                } else {
+                    self.webView.evaluateJavaScript(step) { result, error in
+                        if let result = result as? String { log.info("step result: \(result, privacy: .public)") }
+                        // Steps often return a Promise, which WebKit cannot pass back; that is fine.
+                        if let error = error as? NSError, error.code != 5 {
+                            log.error("step failed: \(error.localizedDescription, privacy: .public)")
+                        }
+                    }
+                }
             }
             #endif
 
@@ -264,17 +306,68 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             state.isFixedLayout = body["fixedLayout"] as? Bool ?? false
             state.isRightToLeft = (body["dir"] as? String) == "rtl"
             state.sectionFractions = (body["sectionFractions"] as? [NSNumber])?.map(\.doubleValue) ?? []
+            view.window?.windowController?.synchronizeWindowTitleWithDocumentName()
+            sendBookmarksToPage()
+            showFirstRunExplainerIfNeeded()
+
+        case "contents":
+            // Arrives after the first page is on screen (built in the background).
             state.toc = ((body["toc"] as? [[String: Any]]) ?? []).enumerated().map { index, item in
                 ReaderState.TOCItem(id: index, label: item["label"] as? String ?? "",
                                     href: item["href"] as? String ?? "", depth: item["depth"] as? Int ?? 0)
             }
-            view.window?.windowController?.synchronizeWindowTitleWithDocumentName()
-            showFirstRunExplainerIfNeeded()
+            state.sectionLabels = body["sectionLabels"] as? [String] ?? []
+            log.debug("contents: \(self.state.toc.count) entries\((body["synthesised"] as? Bool) == true ? " (built from headings)" : "", privacy: .public)")
+
+        case "back":
+            state.backLabel = body["label"] as? String
+            log.debug("back label: \(self.state.backLabel ?? "none", privacy: .public)")
+
+        case "pageBookmarked":
+            state.isPageBookmarked = body["bookmarked"] as? Bool ?? false
+            log.debug("page bookmarked: \(self.state.isPageBookmarked)")
+
+        case "addBookmark":
+            addBookmark(from: body)
+
+        case "removeBookmark":
+            if let cfi = body["cfi"] as? String { removeBookmark(cfi: cfi) }
+
+        case "selection":
+            let text = body["text"] as? String ?? ""
+            state.selection = text.isEmpty ? nil
+                : ReaderState.Selection(text: text, chapter: body["chapter"] as? String ?? "", page: body["page"] as? String)
+            log.debug("selection: \(text.count) characters")
+
+        case "searchResults":
+            guard (body["query"] as? String) == activeSearchQuery else { break }
+            let items = body["items"] as? [[String: Any]] ?? []
+            var nextID = state.allHits.count
+            let hits = items.map { item -> ReaderState.SearchHit in
+                defer { nextID += 1 }
+                return ReaderState.SearchHit(id: nextID, cfi: item["cfi"] as? String ?? "",
+                                             pre: item["pre"] as? String ?? "", match: item["match"] as? String ?? "",
+                                             post: item["post"] as? String ?? "")
+            }
+            state.searchGroups.append(.init(id: state.searchGroups.count, label: body["label"] as? String ?? "", hits: hits))
+
+        case "searchProgress":
+            if (body["query"] as? String) == activeSearchQuery {
+                state.searchProgress = (body["progress"] as? NSNumber)?.doubleValue ?? 0
+            }
+
+        case "searchDone":
+            if (body["query"] as? String) == activeSearchQuery {
+                state.searchRunning = false
+                state.searchDoneQuery = activeSearchQuery
+            }
 
         case "relocate":
             state.fraction = (body["fraction"] as? NSNumber)?.doubleValue ?? state.fraction
             state.chapter = body["chapter"] as? String ?? ""
             state.printedPage = body["page"] as? String
+            state.chapterHref = body["chapterHref"] as? String
+            state.pagesLeftInChapter = (body["pagesLeft"] as? NSNumber)?.intValue
             view.window?.subtitle = state.chapter
             if let cfi = body["cfi"] as? String, var record {
                 record.lastCFI = cfi
@@ -357,8 +450,12 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         case 124: nextPageRight(nil) // →
         case 125: js(state.flow == .scrolled ? "platen.scrollLines(1)" : "platen.next()") // ↓
         case 126: js(state.flow == .scrolled ? "platen.scrollLines(-1)" : "platen.prev()") // ↑
-        case 53: // Esc: hide the overlay; exit full screen if it is already hidden
-            if overlayVisible {
+        case 53: // Esc: close the panel or overlay; exit full screen if neither is showing
+            if explainerHost != nil {
+                dismissExplainer()
+            } else if state.sidebarVisible {
+                setSidebar(visible: false)
+            } else if overlayVisible {
                 setOverlay(visible: false)
             } else if view.window?.styleMask.contains(.fullScreen) == true {
                 view.window?.toggleFullScreen(nil)
@@ -455,18 +552,234 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         guard !state.isFixedLayout, flow != state.flow else { return }
         state.flow = flow
         pushSettings()
-        // M1: flash the click-zone explainer for the first three switches.
+        // Briefly show the click zones for the new mode, for the first three
+        // switches only.
+        let count = UserDefaults.standard.integer(forKey: ReadingControlsExplainer.switchCountKey)
+        if count < 3 {
+            UserDefaults.standard.set(count + 1, forKey: ReadingControlsExplainer.switchCountKey)
+            showExplainer(flash: true)
+        }
     }
 
-    // MARK: - First-run explainer (placeholder until M1's zone overlay)
+    // MARK: - Click-zone explainer
 
     private func showFirstRunExplainerIfNeeded() {
-        // M1: draw the "Back / Show controls / Forward" zones over the page.
-        // For the spike, briefly show the overlay so its existence is obvious.
-        let key = "hasSeenReadingControls"
+        let key = ReadingControlsExplainer.seenKey
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
-        setOverlay(visible: true)
+        showExplainer(flash: false)
+    }
+
+    /// Shows the zones over the page. Any click dismisses them; a "flash"
+    /// (after a mode switch) also goes away on its own.
+    private func showExplainer(flash: Bool) {
+        dismissExplainer()
+        let host = ExplainerHostView(
+            rootView: ReadingControlsExplainer(flow: state.flow, rightToLeft: state.isRightToLeft))
+        host.onClick = { [weak self] in self?.dismissExplainer() }
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.alphaValue = 0
+        view.addSubview(host, positioned: .below, relativeTo: overlayHost)
+        NSLayoutConstraint.activate([
+            host.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.topAnchor.constraint(equalTo: view.topAnchor),
+            host.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        explainerHost = host
+        NSAnimationContext.runAnimationGroup { $0.duration = reducedMotion ? 0 : 0.15; host.animator().alphaValue = 1 }
+        if flash {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self, weak host] in
+                if let host, self?.explainerHost === host { self?.dismissExplainer() }
+            }
+        }
+        #if DEBUG
+        DebugHooks.snapshotView(view, name: "explainer")
+        #endif
+    }
+
+    private func dismissExplainer() {
+        guard let host = explainerHost else { return }
+        explainerHost = nil
+        NSAnimationContext.runAnimationGroup({ $0.duration = reducedMotion ? 0 : 0.15; host.animator().alphaValue = 0 },
+                                             completionHandler: { host.removeFromSuperview() })
+        view.window?.makeFirstResponder(webView)
+    }
+
+    private var reducedMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+    // MARK: - Contents, jumps and bookmarks
+
+    /// A jump through the contents, a bookmark or the slider: reader.js
+    /// remembers where the reader was, for the Back button.
+    private func jump(to target: String, keepOrigin: Bool = false) {
+        guard bookSentToShell else { return }
+        webView.callAsyncJavaScript("platen.jumpTo(target, keep)", arguments: ["target": target, "keep": keepOrigin],
+                                    in: nil, in: .page, completionHandler: nil)
+        view.window?.makeFirstResponder(webView)
+    }
+
+    private func setSidebar(visible: Bool, tab: ReaderState.SidebarTab? = nil) {
+        if let tab { state.sidebarTab = tab }
+        guard visible != state.sidebarVisible else { return }
+        state.sidebarVisible = visible
+        if visible {
+            sidebarHost.isHidden = false
+            setOverlay(visible: false)
+        } else {
+            view.window?.makeFirstResponder(webView)
+            // Search highlights are temporary: they go when the panel closes.
+            if state.sidebarTab == .search || !state.searchGroups.isEmpty { js("platen.clearSearch()") }
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = reducedMotion ? 0 : 0.15
+            sidebarHost.animator().alphaValue = visible ? 1 : 0
+        }, completionHandler: { [weak self] in
+            guard let self else { return }
+            self.sidebarHost.isHidden = !self.state.sidebarVisible
+        })
+        sidebarHost.setAccessibilityElement(visible)
+    }
+
+    private func sendBookmarksToPage() {
+        let list = state.bookmarks.map { ["cfi": $0.cfi] }
+        guard bookSentToShell else { return }
+        webView.callAsyncJavaScript("platen.setBookmarks(list)", arguments: ["list": list], in: nil, in: .page, completionHandler: nil)
+    }
+
+    private func addBookmark(from body: [String: Any]) {
+        guard var record, let cfi = body["cfi"] as? String,
+              !record.bookmarks.contains(where: { $0.cfi == cfi }) else { return }
+        let bookmark = BookRecord.Bookmark(
+            cfi: cfi,
+            snippet: body["snippet"] as? String ?? "",
+            chapter: (body["chapter"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            page: body["page"] as? String,
+            fraction: (body["fraction"] as? NSNumber)?.doubleValue)
+        record.bookmarks.append(bookmark)
+        // Keep the list in reading order.
+        record.bookmarks.sort { ($0.fraction ?? 0) < ($1.fraction ?? 0) }
+        saveBookmarks(record)
+        NSAccessibility.post(element: webView as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: String(localized: "Bookmark added"), .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
+
+    private func removeBookmark(cfi: String) {
+        guard var record else { return }
+        record.bookmarks.removeAll { $0.cfi == cfi }
+        saveBookmarks(record)
+    }
+
+    private func saveBookmarks(_ record: BookRecord) {
+        self.record = record
+        state.bookmarks = record.bookmarks
+        PositionStore.shared.saveNow(record) // bookmarks are saved at once
+        sendBookmarksToPage()
+    }
+
+    // MARK: - Find in book
+
+    private var activeSearchQuery = ""
+
+    private func startSearch(_ query: String) {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeSearchQuery = query
+        state.searchQuery = query
+        state.searchGroups = []
+        state.currentHitID = nil
+        state.searchDoneQuery = nil
+        state.searchProgress = 0
+        state.searchRunning = !query.isEmpty
+        guard bookSentToShell else { return }
+        webView.callAsyncJavaScript("platen.search(q)", arguments: ["q": query], in: nil, in: .page, completionHandler: nil)
+    }
+
+    private func goToHit(_ hit: ReaderState.SearchHit) {
+        let keep = state.currentHitID != nil // Back returns to before the first result
+        state.currentHitID = hit.id
+        jump(to: hit.cfi, keepOrigin: keep)
+    }
+
+    private func stepThroughHits(by step: Int) {
+        let hits = state.allHits
+        guard !hits.isEmpty else { return findInBook(nil) }
+        let current = hits.firstIndex { $0.id == state.currentHitID }
+        let next = current.map { ($0 + step + hits.count) % hits.count } ?? (step > 0 ? 0 : hits.count - 1)
+        goToHit(hits[next])
+    }
+
+    // MARK: - Getting text out
+
+    /// The selected text followed by a citation line: author, title,
+    /// chapter, and printed page where available. Plain and rich text.
+    private func copyWithCitation() {
+        guard let selection = state.selection else { return }
+        var parts: [String] = []
+        if !state.author.isEmpty { parts.append(state.author) }
+        let titleIndex = parts.count
+        if !state.title.isEmpty { parts.append(state.title) }
+        if !selection.chapter.isEmpty { parts.append(selection.chapter) }
+        if let page = selection.page { parts.append(String(localized: "p. \(page)")) }
+
+        let quote = "“\(selection.text)”"
+        let plain = parts.isEmpty ? quote : "\(quote)\n— \(parts.joined(separator: ", "))"
+
+        let rich = NSMutableAttributedString(string: quote)
+        if !parts.isEmpty {
+            let base = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            rich.append(NSAttributedString(string: "\n— "))
+            for (i, part) in parts.enumerated() {
+                if i > 0 { rich.append(NSAttributedString(string: ", ")) }
+                let italic = NSFontManager.shared.convert(base, toHaveTrait: .italicFontMask)
+                rich.append(NSAttributedString(string: part, attributes: i == titleIndex && !state.title.isEmpty ? [.font: italic] : [.font: base]))
+            }
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let rtf = try? rich.data(from: NSRange(location: 0, length: rich.length),
+                                 documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+        pasteboard.declareTypes([.string] + (rtf == nil ? [] : [.rtf]), owner: nil)
+        pasteboard.setString(plain, forType: .string)
+        if let rtf { pasteboard.setData(rtf, forType: .rtf) }
+    }
+
+    /// Adds Platen's items to WebKit's context menu (which already has Look
+    /// Up, Translate, Copy and Share) and removes browser-only items.
+    private func customiseContextMenu(_ menu: NSMenu) {
+        let browserOnly: Set<String> = [
+            "WKMenuItemIdentifierReload", "WKMenuItemIdentifierGoBack", "WKMenuItemIdentifierGoForward",
+            "WKMenuItemIdentifierOpenFrameInNewWindow", "WKMenuItemIdentifierOpenLinkInNewWindow",
+            "WKMenuItemIdentifierDownloadLinkedFile", "WKMenuItemIdentifierOpenImageInNewWindow",
+            "WKMenuItemIdentifierDownloadImage", "WKMenuItemIdentifierOpenMediaInNewWindow",
+            "WKMenuItemIdentifierDownloadMedia",
+        ]
+        for item in menu.items where browserOnly.contains(item.identifier?.rawValue ?? "") {
+            menu.removeItem(item)
+        }
+        while menu.items.first?.isSeparatorItem == true { menu.removeItem(at: 0) }
+
+        var items: [NSMenuItem] = []
+        if let selection = state.selection {
+            let copyIndex = menu.items.firstIndex { $0.identifier?.rawValue == "WKMenuItemIdentifierCopy" }
+            let cite = NSMenuItem(title: String(localized: "Copy with Citation"), action: #selector(copyWithCitation(_:)), keyEquivalent: "")
+            cite.target = self
+            if let copyIndex { menu.insertItem(cite, at: copyIndex + 1) } else { items.append(cite) }
+            let short = selection.text.count > 24 ? String(selection.text.prefix(24)) + "…" : selection.text
+            let find = NSMenuItem(title: String(localized: "Search Book for “\(short)”"), action: #selector(searchForSelection(_:)), keyEquivalent: "")
+            find.target = self
+            items.append(find)
+        } else {
+            let mark = NSMenuItem(title: state.isPageBookmarked ? String(localized: "Remove Bookmark") : String(localized: "Bookmark This Page"),
+                                  action: #selector(toggleBookmark(_:)), keyEquivalent: "")
+            mark.target = self
+            let contents = NSMenuItem(title: String(localized: "Show Contents"), action: #selector(showContentsFromMenu(_:)), keyEquivalent: "")
+            contents.target = self
+            items += [mark, contents]
+        }
+        if !items.isEmpty {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            items.forEach(menu.addItem)
+        }
     }
 
     // MARK: - Saving
@@ -490,7 +803,32 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     @objc func nextPageRight(_ sender: Any?) { js("platen.goRight()") }
     @objc func previousChapter(_ sender: Any?) { js("platen.prevSection()") }
     @objc func nextChapter(_ sender: Any?) { js("platen.nextSection()") }
-    @objc func goBackInHistory(_ sender: Any?) { js("platen.back()") }
+    @objc func goBackInHistory(_ sender: Any?) { js("platen.goBack()") }
+    @objc func toggleContents(_ sender: Any?) {
+        setSidebar(visible: !(state.sidebarVisible && state.sidebarTab != .search),
+                   tab: state.sidebarTab == .search ? .contents : nil)
+    }
+    @objc func showContentsFromMenu(_ sender: Any?) { setSidebar(visible: true, tab: .contents) }
+    @objc func toggleBookmark(_ sender: Any?) { js("platen.toggleBookmark()") }
+    @objc func findInBook(_ sender: Any?) {
+        setSidebar(visible: true, tab: .search)
+        state.searchFocusRequest += 1
+    }
+    @objc func findNext(_ sender: Any?) { stepThroughHits(by: 1) }
+    @objc func findPrevious(_ sender: Any?) { stepThroughHits(by: -1) }
+    @objc func searchForSelection(_ sender: Any?) {
+        guard let text = state.selection?.text else { return }
+        setSidebar(visible: true, tab: .search)
+        startSearch(String(text.prefix(200)))
+    }
+    @objc func copyWithCitation(_ sender: Any?) { copyWithCitation() }
+    @objc func shareSelection(_ sender: Any?) {
+        guard let text = state.selection?.text else { return }
+        let picker = NSSharingServicePicker(items: [text])
+        let anchor = NSRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        picker.show(relativeTo: anchor, of: view, preferredEdge: .minY)
+    }
+    @objc func showReadingControls(_ sender: Any?) { showExplainer(flash: false) }
     @objc func showPaginated(_ sender: Any?) { setFlow(.paginated) }
     @objc func showScroll(_ sender: Any?) { setFlow(.scrolled) }
     @objc func makeTextBigger(_ sender: Any?) { settings.biggerText() }
@@ -530,6 +868,19 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             return !state.isFixedLayout && settings.fontSizeIndex > 0
         case #selector(makeTextDefaultSize(_:)):
             return !state.isFixedLayout
+        case #selector(goBackInHistory(_:)):
+            return ready && state.backLabel != nil
+        case #selector(toggleBookmark(_:)):
+            item.title = state.isPageBookmarked ? String(localized: "Remove Bookmark") : String(localized: "Bookmark This Page")
+            return ready
+        case #selector(toggleContents(_:)):
+            item.title = state.sidebarVisible && state.sidebarTab != .search
+                ? String(localized: "Hide Contents") : String(localized: "Show Contents")
+            return ready
+        case #selector(findNext(_:)), #selector(findPrevious(_:)):
+            return ready && !state.allHits.isEmpty
+        case #selector(copyWithCitation(_:)), #selector(shareSelection(_:)), #selector(searchForSelection(_:)):
+            return ready && state.selection != nil
         case #selector(toggleReaderControls(_:)):
             item.title = overlayVisible ? String(localized: "Hide Controls") : String(localized: "Show Controls")
             return ready
@@ -565,6 +916,12 @@ final class ReaderRootView: NSView {
 /// (which would otherwise try to scroll the shell page).
 final class ReaderWebView: WKWebView {
     var keyHandler: ((NSEvent) -> Bool)?
+    var menuCustomiser: ((NSMenu) -> Void)?
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        menuCustomiser?(menu)
+        super.willOpenMenu(menu, with: event)
+    }
 
     override func keyDown(with event: NSEvent) {
         if keyHandler?(event) == true { return }
@@ -576,5 +933,16 @@ extension NSLayoutConstraint {
     func withPriority(_ priority: NSLayoutConstraint.Priority) -> NSLayoutConstraint {
         self.priority = priority
         return self
+    }
+}
+
+/// Hosts the click-zone explainer; any click dismisses it.
+final class ExplainerHostView: NSHostingView<ReadingControlsExplainer> {
+    var onClick: (() -> Void)?
+    override func mouseDown(with event: NSEvent) { onClick?() }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Take every click inside our bounds, rather than letting SwiftUI pass
+        // clicks on empty areas through to the page.
+        frame.contains(point) ? self : nil
     }
 }

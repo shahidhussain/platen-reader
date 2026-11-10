@@ -9,11 +9,17 @@ vendor bundle are left out: Swift reads the zip and serves entries over
 
 ## Local patches
 
-None yet. If you patch a file, list it here with the reason, so updates can
-re-apply it.
+If you patch a file, list it here with the reason, so updates can re-apply it.
+
+- `paginator.js`, `#scrollTo`: page-turn animation shortened from 300 ms to
+  180 ms, per the spec's 150–200 ms horizontal slide. Marked `// Platen:`.
 
 ## How to update
 
 1. `git clone https://github.com/johnfactotum/foliate-js && cd foliate-js && git checkout <commit>`
 2. Copy the same file list over this folder (see `scripts/update-foliate.sh`).
 3. Update the commit above, re-apply local patches, and run the robustness corpus.
+- `fixed-layout.js`, `#createFrame` and `getContents()`: each frame records
+  its section index, and `getContents()` returns it (upstream has a TODO).
+  Platen needs it to place bookmark ribbons on fixed-layout pages. Marked
+  `// Platen`.

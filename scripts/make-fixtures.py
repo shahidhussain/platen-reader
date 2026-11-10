@@ -273,6 +273,12 @@ def main():
                            manifest_extra=['<item id="font" href="fonts/obf.ttf" media-type="font/ttf"/>'],
                            identifier=ident))
 
+    # KEPUB: Kobo's koboSpan markup and fixed-size column wrappers.
+    spans = " ".join(f'<span class="koboSpan" id="kobo.1.{i}">{paragraph(rng, 1)}</span>' for i in range(1, 40))
+    kepub_body = f'''<div id="book-columns" style="column-count:2;width:600px;height:800px"><div id="book-inner">
+<h1>Kobo chapter</h1><p>{spans}</p></div></div>'''
+    made.append(simple("kobo.kepub.epub", "KEPUB Book", [("k1.xhtml", xhtml("Kobo", kepub_body))]))
+
     for m in made:
         print(f"{os.path.getsize(m):>10,}  {os.path.relpath(m, ROOT)}")
 

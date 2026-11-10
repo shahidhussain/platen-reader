@@ -11,40 +11,40 @@ You need Xcode 16 or later and macOS 14 or later.
 1. Open `PlatenReader.xcodeproj` and run the **PlatenReader** scheme.
 2. Use File > Open… to open a book, or generate test books with `python3 scripts/make-fixtures.py` and open one from `Fixtures/generated/`.
 
-To run the core tests: `swift test --package-path PlatenCore`.
+To run the core tests: `swift test --package-path PlatenCore`. To check the robustness corpus against a Debug build: `python3 scripts/make-fixtures.py && scripts/check-corpus.sh`.
 
-## Status: M0 (spike) complete
+## Status: M1 in progress
 
-What works:
+**Done in M0 (spike):**
 
 - A document-based app with one window per book. Open Recent, tabs and window restoration come from the system.
 - Books are read into memory in one read (up to 50 MB) or lazily through a file handle, then served to the web view through `platen://` with no extraction to disk.
 - Paginated mode with automatic, one-page or two-page layout, plus continuous scroll. Fixed-layout books always paginate.
-- Click zones (back, show controls, forward). Keys: ← → Space PgUp PgDn, ⌘← ⌘→ for chapters, ⌘[ for back, ⌘+ ⌘− ⌘0 for text size, Esc.
-- A trackpad horizontal swipe tracks the fingers and snaps to a page. A vertical wheel turns one page per gesture.
-- Reading position is saved as a CFI, keyed by OPF identifier plus file fingerprint, and restored on open. A book with no saved position opens at the start of the main text.
-- Overlay: the title bar fades in, plus a bottom bar with the location line, a progress slider with chapter ticks, page buttons and an Aa popover.
-- Light, Sepia and Dark themes, following the system appearance. Font, size, line spacing and line width are adjustable.
-- Settings: General, Appearance, File Types (make Platen the default) and Advanced.
-- Robustness:
-  - Malformed XHTML falls back to HTML parsing.
-  - Path case and percent or Unicode mismatches are resolved.
-  - IDPF and Adobe font de-obfuscation.
-  - Zip64, prefixed data and truncated zips; a missing package file is rebuilt from the surviving chapters.
-  - ADEPT, FairPlay, LCP and Kindle DRM, and KFX files, get a plain message.
-- Security: book scripts are disabled and remote loads are blocked.
+- Click zones, keys, trackpad swipe tracking, and the overlay with its slider and Aa popover.
+- Reading position saved as a CFI and restored on open; themes following the system appearance; Settings.
+- Robustness: malformed XHTML, path mismatches, font de-obfuscation, Zip64 and damaged zips, DRM and KFX messages. Book scripts and remote loads are blocked.
 
-Measured on this machine (Debug build, cold launch plus open): about 270 ms to the first visible page for a 2 MB novel, and about 175 ms for small books.
+**Done so far in M1:**
 
-## Not yet done (M1)
+- **Contents panel (⌘T)** with Contents, Bookmarks and Search tabs. The current chapter is highlighted. Books with no table of contents get one built from their headings.
+- **Bookmarks:** ⌘D, a click in a page's top-right corner, or the context menu. A red ribbon marks the page and a faint outline appears on hover. Each page of a two-page spread has its own corner, and fixed-layout pages work too. Bookmarks are listed with chapter, printed page and first line.
+- **Find in book (⌘F, ⌘G, ⇧⌘G, ⌘E):** results are grouped by chapter with the match in context, and matches are highlighted on the page until the panel closes.
+- **Back button:** "Back to p. 87" or "Back to Chapter 3" after any jump (contents, link, bookmark, search, slider), kept until the reader turns a page. Also ⌘[.
+- **Copy with Citation (⇧⌘C):** the quote, then author, *title*, chapter and printed page, as plain and rich text. Share Selection…; context-menu items (Copy with Citation, Search Book for "…", Bookmark This Page, Show Contents), with browser-only items removed.
+- **Click-zone explainer** on first open, flashed on the first three mode switches, and from Help > Show Reading Controls.
+- The slider shows the chapter name while dragging. "N pages left in chapter" is optional, in Settings > General.
+- Page turns animate in 180 ms. KEPUB column wrappers are neutralised.
+- `scripts/check-corpus.sh` opens every fixture and checks the result (14 of 14 pass). Core timing tests and a GitHub Actions workflow are in place.
 
-- Contents and bookmarks sidebar (⌘T), bookmarks with the corner ribbon (⌘D), and Find in book (⌘F/⌘G).
-- Copy with Citation, Share and the custom context-menu items.
-- First-run click-zone explainer (for now the overlay is shown once instead), and Help > Show Reading Controls.
-- Back button in the overlay, slider chapter labels while dragging, and "pages left in chapter".
-- Hover ribbon, top-edge reveal in full screen, and a 150–200 ms page-turn animation (foliate uses 300 ms).
-- MOBI/AZW3 path is wired but untested. It needs real DRM-free sample files.
-- Real-world corpus (Standard Ebooks, Gutenberg, W3C EPUB 3 tests), UI tests, timing tests in CI, SMB and iCloud-offloaded opens, VoiceOver pass, notarised release and Homebrew cask.
+Measured here (Debug build, cold launch plus open): about 290 ms to the first visible page for a 2 MB novel.
+
+## Not yet done
+
+- **Checked only by script so far:** real mouse, keyboard and trackpad input (clicks in corners, hover outline, context menu, swipe feel) and VoiceOver. Needs a pass by hand.
+- **Formats and sources:** MOBI and AZW3 with real DRM-free samples; SMB and iCloud-offloaded opens; the real-world corpus (Standard Ebooks, Gutenberg, the W3C EPUB 3 tests).
+- **UI:** top-edge reveal in full screen; publisher colours softened only where they fail contrast in Sepia and Dark; a font picker listing all installed fonts.
+- **Testing:** XCUITests for open, page turn, mode switch and bookmarks, and running the corpus check in CI.
+- **Releasing:** a notarised build on GitHub releases and a Homebrew cask. These need a Developer ID certificate and App Store Connect API key, held as repository secrets.
 
 ## Licence
 

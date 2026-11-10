@@ -48,3 +48,18 @@ final class PositionStoreTests: XCTestCase {
         XCTAssertNil(store.load(key: "a"))
     }
 }
+
+final class BookmarkCompatibilityTests: XCTestCase {
+    /// Files written before bookmarks gained chapter/page/fraction still load.
+    func testOldBookmarkWithoutOptionalFieldsDecodes() throws {
+        let json = """
+        {"schemaVersion":1,"key":"k","fingerprint":"f","bookmarks":[
+          {"cfi":"epubcfi(/6/2)","created":"2026-01-01T00:00:00Z","snippet":"Hi"}]}
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let record = try decoder.decode(BookRecord.self, from: Data(json.utf8))
+        XCTAssertEqual(record.bookmarks.first?.snippet, "Hi")
+        XCTAssertNil(record.bookmarks.first?.chapter)
+    }
+}

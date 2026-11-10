@@ -1,0 +1,29 @@
+# Builds and tests Platen Reader on every push and pull request.
+#
+# Signed, notarised release builds for tagged versions are not set up yet:
+# they need a Developer ID certificate and App Store Connect API key stored
+# as repository secrets (see README, "Releasing").
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Core unit and timing tests
+        run: swift test --package-path PlatenCore
+
+      - name: Build the app
+        run: |
+          xcodebuild -project PlatenReader.xcodeproj -scheme PlatenReader \
+            -configuration Debug -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Generate the robustness corpus
+        run: python3 scripts/make-fixtures.py
