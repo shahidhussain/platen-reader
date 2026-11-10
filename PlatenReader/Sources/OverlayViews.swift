@@ -22,7 +22,7 @@ struct OverlayBar: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
     let actions: OverlayActions
-    let sidebarActions: SidebarActions
+    let sidebarActions: ContentsActions
 
     @State private var dragFraction: Double?
     @State private var showTypography = false
@@ -70,7 +70,7 @@ struct OverlayBar: View {
                 .help("Contents, Bookmarks and Search (⌘T)")
                 .accessibilityLabel(Text("Contents, Bookmarks and Search"))
                 .popover(isPresented: $state.sidebarVisible, arrowEdge: .top) {
-                    SidebarView(state: state, actions: sidebarActions)
+                    ContentsPopover(state: state, actions: sidebarActions)
                 }
 
                 Button(action: state.isRightToLeft ? actions.nextPage : actions.previousPage) {

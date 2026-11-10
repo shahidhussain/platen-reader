@@ -122,7 +122,7 @@
     "Enter Full Screen" : {
 
     },
-    "EPUB, KEPUB, MOBI or AZW3. You can also drop a book here, or double-click one in Finder." : {
+    "EPUB, KEPUB, MOBI or AZW3. You can also drop a book here." : {
 
     },
     "File" : {
@@ -153,9 +153,6 @@
 
     },
     "Font" : {
-
-    },
-    "General" : {
 
     },
     "Go" : {
@@ -299,9 +296,6 @@
     "Remove Bookmark (⌘D)" : {
 
     },
-    "Reset" : {
-
-    },
     "Save Image…" : {
 
     },
@@ -326,9 +320,6 @@
     "Services" : {
 
     },
-    "Settings" : {
-
-    },
     "Settings…" : {
 
     },
@@ -339,6 +330,9 @@
 
     },
     "Show" : {
+
+    },
+    "Show Again" : {
 
     },
     "Show All" : {
@@ -356,10 +350,16 @@
     "Show Reading Controls" : {
 
     },
+    "Shows the click zones again for the next five books you open." : {
+
+    },
     "Slide" : {
 
     },
     "Smaller Text" : {
+
+    },
+    "Text" : {
 
     },
     "Text and Appearance" : {

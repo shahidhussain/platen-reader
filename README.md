@@ -55,7 +55,7 @@ Measured here (Debug build, cold launch plus open): about 290 ms to the first vi
 
 - **Checked only by script so far:** real mouse, keyboard and trackpad input (clicks in corners, hover outline, context menu, swipe feel) and VoiceOver. Needs a pass by hand.
 - **Formats and sources:** MOBI and AZW3 with real DRM-free samples; SMB and iCloud-offloaded opens; the real-world corpus (Standard Ebooks, Gutenberg, the W3C EPUB 3 tests).
-- **UI:** top-edge reveal in full screen; publisher colours softened only where they fail contrast in Sepia and Dark; a font picker listing all installed fonts.
+- **UI:** top-edge reveal in full screen; a font picker listing all installed fonts.
 - **Testing:** XCUITests for open, page turn, mode switch and bookmarks, and running the corpus check in CI.
 - **Releasing:** a notarised build on GitHub releases and a Homebrew cask. These need a Developer ID certificate and App Store Connect API key, held as repository secrets.
 

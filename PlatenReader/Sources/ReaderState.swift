@@ -55,8 +55,6 @@ final class ReaderState: ObservableObject {
     // Location
     @Published var chapter = ""
     @Published var chapterHref: String?
-    /// Printed page number from the book's page list, when it has one.
-    @Published var printedPage: String?
     @Published var fraction: Double = 0
     @Published var pagesLeftInChapter: Int?
     /// Where each section starts, as a fraction of the book (slider ticks).
@@ -98,7 +96,6 @@ final class ReaderState: ObservableObject {
         flow == .paginated && !isFixedLayout && ReaderSettings.shared.pageLayout == .two && columnsOnScreen < 2
     }
 
-    var hasContents: Bool { !toc.isEmpty || !bookmarks.isEmpty }
     var allHits: [SearchHit] { searchGroups.flatMap(\.hits) }
 
     /// "Chapter 4 · 37%", optionally with pages left in the chapter.

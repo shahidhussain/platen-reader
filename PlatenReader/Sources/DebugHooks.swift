@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import WebKit
+import os
 
 /// Debug-only hooks for automated checks without screen-recording access.
 ///
@@ -46,6 +47,50 @@ enum DebugHooks {
             view.cacheDisplay(in: view.bounds, to: rep)
             let url = URL(fileURLWithPath: dir).appendingPathComponent("\(name)\(suffix).png")
             try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        }
+    }
+}
+
+/// Runs one scripted step (see PLATEN_STEPS above).
+extension ReaderViewController {
+    func runDebugStep(_ step: String) {
+        if step.hasPrefix("@tab:"), let tab = ReaderState.SidebarTab(rawValue: String(step.dropFirst(5))) {
+            self.setSidebar(visible: true, tab: tab)
+        } else if step.hasPrefix("@search:") {
+            self.setSidebar(visible: true, tab: .search)
+            self.startSearch(String(step.dropFirst("@search:".count)))
+        } else if step.hasPrefix("@key:") {
+            // "@key:cmd+w": a real keystroke, through the app's
+            // normal key handling (menus first).
+            let spec = String(step.dropFirst(5)).lowercased()
+            var flags: NSEvent.ModifierFlags = []
+            if spec.contains("cmd+") { flags.insert(.command) }
+            if spec.contains("shift+") { flags.insert(.shift) }
+            let key = String(spec.split(separator: "+").last ?? "")
+            if let window = self.view.window,
+               let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
+                                            timestamp: ProcessInfo.processInfo.systemUptime,
+                                            windowNumber: window.windowNumber, context: nil,
+                                            characters: key, charactersIgnoringModifiers: key,
+                                            isARepeat: false,
+                                            keyCode: ["w": 13, "q": 12, "t": 17, "f": 3, "d": 2, "c": 8, "k": 40][key] ?? 0) {
+                NSApp.sendEvent(event)
+            }
+        } else if step.hasPrefix("@") {
+            // Through this window's responder chain, as a menu shortcut
+            // would be (the app may not be frontmost during checks).
+            let action = NSSelectorFromString(String(step.dropFirst()))
+            if self.view.window?.firstResponder?.tryToPerform(action, with: nil) != true {
+                NSApp.sendAction(action, to: self, from: nil)
+            }
+        } else {
+            self.webView.evaluateJavaScript(step) { result, error in
+                if let result = result as? String { log.info("step result: \(result, privacy: .public)") }
+                // Steps often return a Promise, which WebKit cannot pass back; that is fine.
+                if let error = error as? NSError, error.code != 5 {
+                    log.error("step failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
         }
     }
 }
