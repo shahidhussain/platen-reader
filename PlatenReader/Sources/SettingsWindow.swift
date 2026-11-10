@@ -35,11 +35,8 @@ private struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
-            Picker("Default reading mode", selection: $settings.defaultFlow) {
-                ForEach(ReadingFlow.allCases) { Text($0.label).tag($0) }
-            }
-            Picker("Page layout", selection: $settings.pageLayout) {
-                ForEach(PageLayout.allCases) { Text($0.label).tag($0) }
+            Picker("Layout", selection: $settings.defaultLayout) {
+                ForEach(ReadingLayout.allCases) { Text("\($0.label) (⌘\($0.shortcut))").tag($0) }
             }
             Toggle("Animate page turns", isOn: $settings.animatePageTurns)
             Toggle("Hyphenate text in paginated mode", isOn: $settings.hyphenate)

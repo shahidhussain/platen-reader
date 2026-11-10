@@ -32,7 +32,6 @@ final class ImageZoomView: NSView {
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.animates = true
         imageView.isEditable = false
-        imageView.wantsLayer = true
         imageView.shadow = {
             let shadow = NSShadow()
             shadow.shadowColor = .black.withAlphaComponent(0.3)
@@ -63,62 +62,69 @@ final class ImageZoomView: NSView {
         bounds.fill()
     }
 
-    /// Where the picture sits when fully shown: as large as fits with a
-    /// margin, but never enlarged beyond twice its natural size (small
-    /// pictures blown up to fill a big screen just look blurred).
+    /// Where the picture sits when fully shown: as large as the window
+    /// allows (keeping its proportions), with a small margin.
     private var fittedRect: NSRect {
-        let margin: CGFloat = 40
-        let bounds = self.bounds.insetBy(dx: margin, dy: margin)
-        let size = pointSize
-        guard size.width > 0, size.height > 0, bounds.width > 0, bounds.height > 0 else { return bounds }
-        let scale = min(bounds.width / size.width, bounds.height / size.height, 2)
+        let margin: CGFloat = 24
+        let area = bounds.insetBy(dx: margin, dy: margin)
+        let size = image.size
+        guard size.width > 0, size.height > 0, area.width > 0, area.height > 0 else { return area }
+        let scale = min(area.width / size.width, area.height / size.height)
         let w = size.width * scale, h = size.height * scale
-        return NSRect(x: self.bounds.midX - w / 2, y: self.bounds.midY - h / 2, width: w, height: h).integral
-    }
-
-    /// The picture's natural size in points on this screen.
-    private var pointSize: NSSize {
-        let rep = image.representations.first
-        let pixels = NSSize(width: rep?.pixelsWide ?? 0, height: rep?.pixelsHigh ?? 0)
-        let scale = window?.backingScaleFactor ?? 2
-        if pixels.width > 0 { return NSSize(width: pixels.width / scale, height: pixels.height / scale) }
-        return image.size
+        return NSRect(x: bounds.midX - w / 2, y: bounds.midY - h / 2, width: w, height: h).integral
     }
 
     func present(from source: NSRect, animated: Bool) {
         sourceRect = source.width > 0 ? source : fittedRect
-        imageView.frame = sourceRect
-        animate(animated, alpha: 1, frame: fittedRect, completion: nil)
+        animate(animated, from: sourceRect, to: fittedRect, alpha: (0, 1), completion: nil)
     }
 
     func dismiss(animated: Bool, completion: @escaping () -> Void) {
-        animate(animated, alpha: 0, frame: sourceRect, completion: completion)
+        animate(animated, from: imageView.frame, to: sourceRect, alpha: (backdropAlpha, 0), completion: completion)
     }
 
-    private func animate(_ animated: Bool, alpha: CGFloat, frame: NSRect, completion: (() -> Void)?) {
-        animating = true
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = animated ? 0.25 : 0
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            context.allowsImplicitAnimation = true
-            imageView.animator().frame = frame
-            animator().alphaValue = 1
-        }, completionHandler: { [weak self] in
-            self?.animating = false
+    // The zoom is driven frame by frame from the display link rather than
+    // with AppKit's implicit animations: animating a layer-backed view's
+    // frame can start from the wrong place (offset by half its size), which
+    // made the picture jump before it grew.
+    private var displayLink: CADisplayLink?
+    private var animation: (start: CFTimeInterval, duration: CFTimeInterval, from: NSRect, to: NSRect,
+                            alpha: (CGFloat, CGFloat), completion: (() -> Void)?)?
+
+    private func animate(_ animated: Bool, from: NSRect, to: NSRect, alpha: (CGFloat, CGFloat),
+                         completion: (() -> Void)?) {
+        displayLink?.invalidate()
+        guard animated else {
+            imageView.frame = to
+            backdropAlpha = alpha.1
+            animating = false
             completion?()
-        })
-        // The backdrop fades with the picture's movement.
-        if animated {
-            let steps = 12
-            for i in 1...steps {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25 * Double(i) / Double(steps)) { [weak self] in
-                    guard let self else { return }
-                    let t = CGFloat(i) / CGFloat(steps)
-                    self.backdropAlpha = alpha == 1 ? t : 1 - t
-                }
-            }
-        } else {
-            backdropAlpha = alpha
+            return
+        }
+        animating = true
+        imageView.frame = from
+        backdropAlpha = alpha.0
+        animation = (CACurrentMediaTime(), 0.24, from, to, alpha, completion)
+        let link = displayLink(target: self, selector: #selector(step(_:)))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        guard let a = animation else { link.invalidate(); return }
+        let t = min(1, (CACurrentMediaTime() - a.start) / a.duration)
+        // Ease in and out.
+        let e = CGFloat(t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2)
+        func mix(_ x: CGFloat, _ y: CGFloat) -> CGFloat { x + (y - x) * e }
+        imageView.frame = NSRect(x: mix(a.from.minX, a.to.minX), y: mix(a.from.minY, a.to.minY),
+                                 width: mix(a.from.width, a.to.width), height: mix(a.from.height, a.to.height))
+        backdropAlpha = mix(a.alpha.0, a.alpha.1)
+        if t >= 1 {
+            link.invalidate()
+            displayLink = nil
+            animation = nil
+            animating = false
+            a.completion?()
         }
     }
 

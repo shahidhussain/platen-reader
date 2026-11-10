@@ -13,15 +13,45 @@ enum ReadingFlow: String, CaseIterable, Identifiable {
     }
 }
 
-/// How many pages to show side by side.
-enum PageLayout: String, CaseIterable, Identifiable {
-    case automatic, one, two
+/// How many pages to show side by side in paginated mode.
+enum PageLayout: String {
+    case one, two
+}
+
+/// The one Layout choice the reader sees: one page, two pages (side by side
+/// when the window is wide enough) or continuous scroll. It is stored as two
+/// parts: paginated or scroll (remembered per book) and one or two pages
+/// (a global setting). The order matches the shortcuts ⌘1, ⌘2 and ⌘3.
+enum ReadingLayout: String, CaseIterable, Identifiable {
+    case onePage, twoPages, scroll
     var id: String { rawValue }
+
+    init(flow: ReadingFlow, pages: PageLayout) {
+        self = flow == .scrolled ? .scroll : pages == .one ? .onePage : .twoPages
+    }
+
+    var flow: ReadingFlow { self == .scroll ? .scrolled : .paginated }
+    var pages: PageLayout? {
+        switch self {
+        case .onePage: return .one
+        case .twoPages: return .two
+        case .scroll: return nil
+        }
+    }
+
     var label: String {
         switch self {
-        case .automatic: return String(localized: "Automatic")
-        case .one: return String(localized: "One Page")
-        case .two: return String(localized: "Two Pages")
+        case .onePage: return String(localized: "One Page")
+        case .twoPages: return String(localized: "Two Pages")
+        case .scroll: return String(localized: "Scroll")
+        }
+    }
+
+    var shortcut: String {
+        switch self {
+        case .onePage: return "1"
+        case .twoPages: return "2"
+        case .scroll: return "3"
         }
     }
 }
@@ -40,7 +70,8 @@ enum LineWidth: String, CaseIterable, Identifiable {
 
 /// The three reading themes (see spec, "Themes").
 enum Theme: String, CaseIterable, Identifiable {
-    case light, sepia, dark
+    /// Black is Dark with a true black background, for OLED screens.
+    case light, sepia, dark, black
     var id: String { rawValue }
 
     var label: String {
@@ -48,6 +79,7 @@ enum Theme: String, CaseIterable, Identifiable {
         case .light: return String(localized: "Light")
         case .sepia: return String(localized: "Sepia")
         case .dark: return String(localized: "Dark")
+        case .black: return String(localized: "Black")
         }
     }
 
@@ -56,6 +88,7 @@ enum Theme: String, CaseIterable, Identifiable {
         case .light: return "#ffffff"
         case .sepia: return "#f5ecd7"
         case .dark: return "#1e1e20" // near-black, not pure black
+        case .black: return "#000000"
         }
     }
 
@@ -64,6 +97,7 @@ enum Theme: String, CaseIterable, Identifiable {
         case .light: return "#1c1c1e"
         case .sepia: return "#5b4636"
         case .dark: return "#d4d4d4"
+        case .black: return "#c8c8c8" // a little dimmer: white on black glares
         }
     }
 
@@ -71,11 +105,11 @@ enum Theme: String, CaseIterable, Identifiable {
         switch self {
         case .light: return "#0b57d0"
         case .sepia: return "#8a4b1f"
-        case .dark: return "#8ab4f8"
+        case .dark, .black: return "#8ab4f8"
         }
     }
 
-    var isDark: Bool { self == .dark }
+    var isDark: Bool { self == .dark || self == .black }
 
     var nsBackground: NSColor { NSColor(hex: background) }
 
@@ -89,7 +123,7 @@ enum Theme: String, CaseIterable, Identifiable {
 /// The one Appearance setting: follow the system (Light by day, Dark by
 /// night), or always use one theme.
 enum AppearanceChoice: String, CaseIterable, Identifiable {
-    case automatic, light, sepia, dark
+    case automatic, light, sepia, dark, black
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -97,6 +131,7 @@ enum AppearanceChoice: String, CaseIterable, Identifiable {
         case .light: return String(localized: "Light")
         case .sepia: return String(localized: "Sepia")
         case .dark: return String(localized: "Dark")
+        case .black: return String(localized: "Black")
         }
     }
 }
@@ -137,7 +172,7 @@ final class ReaderSettings: ObservableObject {
             UserDefaults.standard.object(forKey: key) == nil ? fallback : UserDefaults.standard.bool(forKey: key)
         }
         defaultFlow = string("defaultFlow").flatMap(ReadingFlow.init) ?? .paginated
-        pageLayout = string("pageLayout").flatMap(PageLayout.init) ?? .automatic
+        pageLayout = string("pageLayout").flatMap(PageLayout.init) ?? .two
         animatePageTurns = bool("animatePageTurns", true)
         appearance = string("appearance").flatMap(AppearanceChoice.init) ?? .automatic
         let index = UserDefaults.standard.object(forKey: "fontSizeIndex") as? Int ?? Self.defaultFontSizeIndex
@@ -155,6 +190,15 @@ final class ReaderSettings: ObservableObject {
 
     var fontSize: Double { Self.fontSizes[fontSizeIndex] }
 
+    /// The layout new books open in (Settings > General).
+    var defaultLayout: ReadingLayout {
+        get { ReadingLayout(flow: defaultFlow, pages: pageLayout) }
+        set {
+            defaultFlow = newValue.flow
+            if let pages = newValue.pages { pageLayout = pages }
+        }
+    }
+
     /// The theme to use under a given system appearance.
     func theme(for systemAppearance: NSAppearance) -> Theme {
         switch appearance {
@@ -163,6 +207,7 @@ final class ReaderSettings: ObservableObject {
         case .light: return .light
         case .sepia: return .sepia
         case .dark: return .dark
+        case .black: return .black
         }
     }
 

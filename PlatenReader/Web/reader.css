@@ -82,8 +82,19 @@ foliate-view::part(filter) {
     #ribbons .corner svg { transition: none; }
 }
 
-/* Page numbers, centred below each page (filled in by reader.js). */
-foliate-view {
-    font: 15px -apple-system, system-ui, sans-serif;
+/* Page numbers, centred below each page (laid out by reader.js). */
+#page-numbers {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    font: 11px -apple-system, system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
+    color: var(--platen-fg);
+}
+#page-numbers span {
+    position: absolute;
+    transform: translateX(-50%);
+    opacity: .6;
+    white-space: nowrap;
 }

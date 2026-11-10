@@ -134,8 +134,8 @@ const bookCSS = s => `
 const columnCount = s => {
     if (s.flow === 'scrolled') return 1
     if (s.pageLayout === 'one') return 1
-    if (s.pageLayout === 'two') return 2
-    // Automatic: two pages if each half of the window is wide enough.
+    // Two pages, side by side when each half of the window can hold a
+    // readable line; a narrow window falls back to one page.
     const half = window.innerWidth / 2
     return half >= minCharsForTwoColumns * s.fontSize * charWidthEm * 1.15 ? 2 : 1
 }
@@ -334,7 +334,9 @@ const reportSelection = (doc, index) => {
 // the page is set to the page's width. (foliate-js notices the change in size
 // and re-paginates.)
 function fitWideTables(doc) {
-    const pageWidth = doc.body?.getBoundingClientRect().width
+    // foliate-js lays pages out as CSS columns on the root element.
+    const pageWidth = parseFloat(getComputedStyle(doc.documentElement).columnWidth)
+        || doc.body?.getBoundingClientRect().width
     if (!pageWidth) return
     for (const table of doc.querySelectorAll('table'))
         if (table.getBoundingClientRect().width > pageWidth + 1)
@@ -350,16 +352,10 @@ function fitWideTables(doc) {
 // One gesture never moves more than one page. Vertical scrolling and mouse
 // wheels are turned into single page turns in Swift.
 
-const setPageNumbersHidden = hidden => {
-    for (const el of view?.renderer?.feet ?? [])
-        el.style.visibility = hidden ? 'hidden' : ''
-}
-
 const swipe = {
     move(dx) {
         if (!view || isFixedLayout) return
         ribbons.hidden = true // they would not move with the page
-        setPageNumbersHidden(true)
         view.renderer.scrollBy?.(dx, 0)
     },
     // direction: 1 or -1 for a flick, which turns the page however short
@@ -368,7 +364,6 @@ const swipe = {
         if (!view || isFixedLayout) return
         view.renderer.snap?.(direction, 0)
         ribbons.hidden = false
-        setPageNumbersHidden(false)
     },
 }
 
@@ -405,6 +400,9 @@ const onRelocate = ({ detail }) => {
         noteMovement(lastReason)
         scheduleRibbons()
         updatePageNumbers(detail)
+        // Page width changes with the layout; re-check tables each time.
+        if (!isFixedLayout && settings?.flow !== 'scrolled')
+            for (const { doc } of view.renderer.getContents?.() ?? []) if (doc) fitWideTables(doc)
     })
     post('relocate', {
         pagesLeft,
@@ -430,18 +428,32 @@ const onRelocate = ({ detail }) => {
 // page, one under each page of a two-page spread. foliate-js gives each page
 // (column) a footer element in the bottom margin.
 //
-// Books with a page list (printed page numbers) show those. Otherwise the
-// numbers are screen pages: exact within a chapter, and estimated for where
-// each chapter starts, from the size of the text before it. The estimate is
+// The numbers are screen pages, so they run in order under every page:
+// exact within a chapter, and estimated for where each chapter starts, from
+// the size of the text before it. (Printed page numbers, where a book has
+// them, span several screen pages; they are used for citations, bookmarks
+// and "Back to p. 87" instead.) The estimate is
 // calibrated once per layout (text size, window size…), so numbers do not
 // shift as the reader moves between chapters.
 
 let pagesPerBook = null    // estimated screen pages in the whole book
 let calibratedFor = ''     // the layout the estimate was made for
 
+// The numbers are drawn in a strip of our own rather than in foliate's
+// footers, which stay put while the text moves. The strip holds numbers for
+// the spread on screen and the spreads either side, and slides with the text
+// during a swipe, so each number stays under its page.
+const numberStrip = document.createElement('div')
+numberStrip.id = 'page-numbers'
+numberStrip.setAttribute('aria-hidden', 'true') // the overlay says where you are
+document.body.append(numberStrip)
+let stripStart = 0 // the scroll position the strip was laid out for
+
 function updatePageNumbers(detail) {
     const r = view?.renderer
     const feet = r?.feet
+    numberStrip.replaceChildren()
+    numberStrip.style.transform = ''
     if (!feet?.length || isFixedLayout || settings?.flow === 'scrolled') return
     const columns = feet.length
     const index = detail.section?.current ?? r.getContents?.()[0]?.index
@@ -451,12 +463,7 @@ function updatePageNumbers(detail) {
     const columnsInSection = textPages * columns
     const firstColumn = (r.page - 1) * columns
 
-    const pages = view.book?.pageList?.length ? printedPageLabels(feet.length) : null
-    if (pages) {
-        feet.forEach((el, i) => { el.textContent = pages[i] ?? '' })
-        return
-    }
-
+    // label(column in section) → the number under that page.
     const layout = [settings.fontSize, settings.lineHeight, settings.lineWidth, settings.fontFamily,
                     columns, innerWidth, innerHeight].join('|')
     const share = (fractions[index + 1] ?? 1) - (fractions[index] ?? 0)
@@ -464,27 +471,38 @@ function updatePageNumbers(detail) {
         pagesPerBook = columnsInSection / share
         calibratedFor = layout
     }
-    if (!pagesPerBook) {
-        feet.forEach(el => { el.textContent = '' })
-        return
-    }
+    if (!pagesPerBook) return
     const sectionStart = Math.round((fractions[index] ?? 0) * pagesPerBook)
-    feet.forEach((el, i) => {
-        const column = firstColumn + i
-        el.textContent = column >= 0 && column < columnsInSection ? String(sectionStart + column + 1) : ''
-    })
+    const label = column => column >= 0 && column < columnsInSection ? String(sectionStart + column + 1) : ''
+
+    // Where each page's number goes: the centre of foliate's (empty) footer
+    // cell for that column. Spreads either side are a page-width away.
+    const rtl = view.book?.dir === 'rtl'
+    const cells = feet.map(el => el.parentElement.getBoundingClientRect())
+    for (const spread of [-1, 0, 1]) {
+        cells.forEach((cell, i) => {
+            const text = label(firstColumn + spread * columns + i)
+            if (!text) return
+            const el = document.createElement('span')
+            el.textContent = text
+            el.style.left = `${cell.left + cell.width / 2 + spread * r.size * (rtl ? -1 : 1)}px`
+            el.style.top = `${cell.top}px`
+            el.style.height = el.style.lineHeight = `${cell.height}px`
+            numberStrip.append(el)
+        })
+    }
+    stripStart = r.start
 }
 
-// Printed page labels for each page on screen, from the book's page list.
-function printedPageLabels(count) {
-    const pages = pagesOnScreen()
-    if (!pages.length) return null
-    // pagesOnScreen() runs left to right; footers run in reading order.
-    const labels = pages.map(p => p.page ?? '')
-    if (view.book?.dir === 'rtl') labels.reverse()
-    while (labels.length < count) labels.push('')
-    return labels
+// Keep the strip under the text while it moves (swipes, snapping back).
+function followScroll() {
+    const r = view?.renderer
+    if (!r || !numberStrip.childElementCount) return
+    const delta = r.start - stripStart
+    const rtl = view.book?.dir === 'rtl'
+    numberStrip.style.transform = `translateX(${rtl ? delta : -delta}px)`
 }
+
 
 // ---------------------------------------------------------------------------
 // Commands from Swift
@@ -510,11 +528,11 @@ window.platen = {
             view.addEventListener('load', ({ detail: { doc, index } }) => {
                 if (!isFixedLayout) {
                     rescalePublisherFontSizes(doc)
-                    requestAnimationFrame(() => fitWideTables(doc))
                 }
                 attachPointerHandlers(doc, index)
             })
             view.renderer.addEventListener('relocate', e => { lastReason = e.detail.reason })
+            view.renderer.addEventListener('scroll', followScroll)
             view.addEventListener('external-link', e => {
                 // Never navigate the reader; let Swift open it in the browser.
                 e.preventDefault()
@@ -568,6 +586,29 @@ window.platen = {
     },
     toggleBookmark,
     search,
+    // For the page-turn animation (drawn natively from snapshots): turn
+    // with no slide, and resolve once the new page has been painted. Says
+    // whether the page changed and how many pages are side by side.
+    async turnInstantly(direction) {
+        if (!view) return { moved: false, columns: 1 }
+        const r = view.renderer
+        const before = view.lastLocation?.cfi
+        const animated = r.hasAttribute('animated')
+        r.removeAttribute('animated')
+        const relocated = new Promise(resolve => {
+            const timer = setTimeout(resolve, 400) // at the start or end of the book
+            view.addEventListener('relocate', () => { clearTimeout(timer); resolve() }, { once: true })
+        })
+        ;({ left: () => view.goLeft(), right: () => view.goRight(),
+            next: () => view.next(), prev: () => view.prev() })[direction]?.()
+        await relocated
+        if (animated) r.setAttribute('animated', '')
+        // Two frames: the first lays out, the second is on screen.
+        await new Promise(requestAnimationFrame)
+        await new Promise(requestAnimationFrame)
+        const columns = isFixedLayout ? Math.max(1, pagesOnScreen().length) : (r.feet?.length ?? 1)
+        return { moved: view.lastLocation?.cfi !== before, columns }
+    },
     swipeMove: dx => swipe.move(dx),
     swipeEnd: direction => swipe.end(direction),
     // For debugging and automated checks (scripts/run-debug.sh steps).

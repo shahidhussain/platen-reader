@@ -29,8 +29,16 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     private var titleBacking: PassThroughEffectView!
     private var titleBackingHeight: NSLayoutConstraint!
     private var imageZoom: ImageZoomView?
+    /// The strip under the (transparent) title bar that drags the window.
+    private var dragStrip: WindowDragView!
+    /// Covers the page while the contents panel is open; a click on it
+    /// closes the panel.
+    private var sidebarDismisser: ClickCatcherView!
     private var scrollMonitor: Any?
     private var swipe = SwipeTracker()
+    private var pageTurn: PageTurnView?
+    /// Counts turns, so a turn that was overtaken by a newer one is dropped.
+    private var turnGeneration = 0
     private var spinner: NSProgressIndicator!
     private var failureHost: NSView?
 
@@ -85,12 +93,13 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
 
         // Overlay (bottom bar). Starts hidden.
         let actions = OverlayActions(
-            previousPage: { [weak self] in self?.js("platen.prev()") },
-            nextPage: { [weak self] in self?.js("platen.next()") },
+            previousPage: { [weak self] in self?.turn(.prev) },
+            nextPage: { [weak self] in self?.turn(.next) },
             goToFraction: { [weak self] f in self?.js("platen.jumpToFraction(\(f))") },
             goBack: { [weak self] in self?.goBackInHistory(nil) },
             toggleContents: { [weak self] in self?.toggleContents(nil) },
-            setFlow: { [weak self] flow in self?.setFlow(flow) },
+            setLayout: { [weak self] layout in self?.setLayout(layout) },
+            toggleBookmark: { [weak self] in self?.toggleBookmark(nil) },
             interacted: { [weak self] in self?.restartHideTimer() }
         )
         overlayHost = NSHostingView(rootView: OverlayBar(state: state, actions: actions))
@@ -101,8 +110,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
 
         // Contents, bookmarks and search: slides over the left of the page.
         let sidebarActions = SidebarActions(
-            goToTOCItem: { [weak self] item in self?.jump(to: item.href) },
-            goToBookmark: { [weak self] bookmark in self?.jump(to: bookmark.cfi) },
+            // Choosing a chapter or bookmark closes the panel; search results
+            // keep it open so the reader can step through them.
+            goToTOCItem: { [weak self] item in self?.jump(to: item.href); self?.setSidebar(visible: false) },
+            goToBookmark: { [weak self] bookmark in self?.jump(to: bookmark.cfi); self?.setSidebar(visible: false) },
             removeBookmark: { [weak self] bookmark in self?.removeBookmark(cfi: bookmark.cfi) },
             search: { [weak self] query in self?.startSearch(query) },
             goToHit: { [weak self] hit in self?.goToHit(hit) },
@@ -113,6 +124,11 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         // Fill the window's height; do not shrink to fit a short list.
         sidebarHost.sizingOptions = [.minSize]
         sidebarHost.isHidden = true
+        sidebarDismisser = ClickCatcherView()
+        sidebarDismisser.onClick = { [weak self] in self?.setSidebar(visible: false) }
+        sidebarDismisser.isHidden = true
+        sidebarDismisser.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(sidebarDismisser)
         root.addSubview(sidebarHost)
 
         titleBacking = PassThroughEffectView()
@@ -122,6 +138,13 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         titleBacking.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(titleBacking)
         titleBackingHeight = titleBacking.heightAnchor.constraint(equalToConstant: 28)
+
+        // The web view fills the whole window, title bar area included, and
+        // web views never let a click move the window. This strip, the
+        // height of the title bar, gives the window back its drag handle.
+        dragStrip = WindowDragView()
+        dragStrip.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(dragStrip)
 
         // Quiet progress indicator, shown only if opening takes > 500 ms.
         spinner = NSProgressIndicator()
@@ -151,6 +174,16 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             titleBacking.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             titleBacking.topAnchor.constraint(equalTo: root.topAnchor),
             titleBackingHeight,
+
+            dragStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            dragStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            dragStrip.topAnchor.constraint(equalTo: root.topAnchor),
+            dragStrip.heightAnchor.constraint(equalTo: titleBacking.heightAnchor),
+
+            sidebarDismisser.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            sidebarDismisser.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            sidebarDismisser.topAnchor.constraint(equalTo: root.topAnchor),
+            sidebarDismisser.bottomAnchor.constraint(equalTo: root.bottomAnchor),
 
             spinner.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: root.centerYAnchor),
@@ -461,9 +494,9 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         if state.flow == .scrolled || zone == "centre" {
             setOverlay(visible: !overlayVisible)
         } else if zone == "left" {
-            js("platen.goLeft()")
+            turn(.left)
         } else {
-            js("platen.goRight()")
+            turn(.right)
         }
     }
 
@@ -480,13 +513,13 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         }
         switch event.keyCode {
         case 49: // space
-            js(shift ? "platen.prev()" : "platen.next()")
-        case 121: js("platen.next()") // page down
-        case 116: js("platen.prev()") // page up
+            turn(shift ? .prev : .next)
+        case 121: turn(.next) // page down
+        case 116: turn(.prev) // page up
         case 123: previousPageLeft(nil) // ←
         case 124: nextPageRight(nil) // →
-        case 125: js(state.flow == .scrolled ? "platen.scrollLines(1)" : "platen.next()") // ↓
-        case 126: js(state.flow == .scrolled ? "platen.scrollLines(-1)" : "platen.prev()") // ↑
+        case 125: if state.flow == .scrolled { js("platen.scrollLines(1)") } else { turn(.next) } // ↓
+        case 126: if state.flow == .scrolled { js("platen.scrollLines(-1)") } else { turn(.prev) } // ↑
         case 53: // Esc: close the panel or overlay; exit full screen if neither is showing
             if imageZoom != nil {
                 closeImage()
@@ -562,7 +595,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = duration
             titleBar?.animator().alphaValue = titleBarVisible || fullScreen ? 1 : 0
-            titleBacking.animator().alphaValue = titleBarVisible && !fullScreen ? 1 : 0
+            titleBacking.animator().alphaValue = titleBarVisible && !fullScreen ? 0.55 : 0 // translucent
             overlayHost.animator().alphaValue = overlayVisible ? 1 : 0
         }, completionHandler: { [weak self] in
             guard let self else { return }
@@ -598,6 +631,15 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         view.window?.backgroundColor = theme.nsBackground
         // Chrome and the overlay follow the page's lightness.
         view.window?.appearance = theme.appearance
+    }
+
+    /// One page, two pages or scroll (⌘1, ⌘2, ⌘3). The page count is a
+    /// global setting; paginated or scroll is remembered for this book.
+    private func setLayout(_ layout: ReadingLayout) {
+        if let pages = layout.pages, pages != settings.pageLayout {
+            settings.pageLayout = pages // re-styles every open window
+        }
+        setFlow(layout.flow)
     }
 
     private func setFlow(_ flow: ReadingFlow) {
@@ -675,6 +717,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         if let tab { state.sidebarTab = tab }
         guard visible != state.sidebarVisible else { return }
         state.sidebarVisible = visible
+        sidebarDismisser.isHidden = !visible
         if visible {
             sidebarHost.isHidden = false
             setOverlay(visible: false)
@@ -851,8 +894,8 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
 
     // MARK: - Menu actions (found through the responder chain)
 
-    @objc func previousPageLeft(_ sender: Any?) { js("platen.goLeft()") }
-    @objc func nextPageRight(_ sender: Any?) { js("platen.goRight()") }
+    @objc func previousPageLeft(_ sender: Any?) { turn(.left) }
+    @objc func nextPageRight(_ sender: Any?) { turn(.right) }
     @objc func previousChapter(_ sender: Any?) { js("platen.prevSection()") }
     @objc func nextChapter(_ sender: Any?) { js("platen.nextSection()") }
     @objc func goBackInHistory(_ sender: Any?) { js("platen.goBack()") }
@@ -881,16 +924,14 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         picker.show(relativeTo: anchor, of: view, preferredEdge: .minY)
     }
     @objc func showReadingControls(_ sender: Any?) { showExplainer(flash: false) }
-    @objc func showPaginated(_ sender: Any?) { setFlow(.paginated) }
-    @objc func showScroll(_ sender: Any?) { setFlow(.scrolled) }
+    @objc func setLayoutFromMenu(_ sender: NSMenuItem) {
+        if let layout = (sender.representedObject as? String).flatMap(ReadingLayout.init) { setLayout(layout) }
+    }
     @objc func makeTextBigger(_ sender: Any?) { settings.biggerText() }
     @objc func makeTextSmaller(_ sender: Any?) { settings.smallerText() }
     @objc func makeTextDefaultSize(_ sender: Any?) { settings.defaultTextSize() }
     @objc func toggleReaderControls(_ sender: Any?) { setOverlay(visible: !overlayVisible) }
 
-    @objc func setPageLayout(_ sender: NSMenuItem) {
-        if let layout = (sender.representedObject as? String).flatMap(PageLayout.init) { settings.pageLayout = layout }
-    }
 
     @objc func setThemeFromMenu(_ sender: NSMenuItem) {
         if let choice = (sender.representedObject as? String).flatMap(AppearanceChoice.init) {
@@ -901,16 +942,14 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let ready = book != nil && failureHost == nil
         switch item.action {
-        case #selector(showPaginated(_:)):
-            item.state = state.flow == .paginated ? .on : .off
+        case #selector(setLayoutFromMenu(_:)):
+            let layout = (item.representedObject as? String).flatMap(ReadingLayout.init)
+            item.state = layout == ReadingLayout(flow: state.flow, pages: settings.pageLayout) ? .on : .off
+            if layout == .scroll {
+                item.toolTip = state.isFixedLayout ? String(localized: "Fixed-layout books are always paginated.") : nil
+                return ready && !state.isFixedLayout
+            }
             return ready
-        case #selector(showScroll(_:)):
-            item.state = state.flow == .scrolled ? .on : .off
-            item.toolTip = state.isFixedLayout ? String(localized: "Fixed-layout books are always paginated.") : nil
-            return ready && !state.isFixedLayout
-        case #selector(setPageLayout(_:)):
-            item.state = (item.representedObject as? String) == settings.pageLayout.rawValue ? .on : .off
-            return ready && state.flow == .paginated && !state.isFixedLayout
         case #selector(setThemeFromMenu(_:)):
             item.state = (item.representedObject as? String) == settings.appearance.rawValue ? .on : .off
             return true
@@ -979,7 +1018,7 @@ extension ReaderViewController {
             let delta = abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) ? -event.scrollingDeltaY : -event.scrollingDeltaX
             guard delta != 0, event.timestamp >= swipe.wheelQuietUntil else { return true }
             swipe.wheelQuietUntil = event.timestamp + 0.25
-            js(delta > 0 ? "platen.next()" : "platen.prev()")
+            turn(delta > 0 ? .next : .prev)
             return true
         }
 
@@ -1006,8 +1045,8 @@ extension ReaderViewController {
                 if abs(swipe.total) > 30 {
                     swipe.turned = true
                     let forward = swipe.total > 0
-                    if swipe.axis == .horizontal { js(forward ? "platen.goRight()" : "platen.goLeft()") }
-                    else { js(forward ? "platen.next()" : "platen.prev()") }
+                    if swipe.axis == .horizontal { turn(forward ? .right : .left) }
+                    else { turn(forward ? .next : .prev) }
                 }
             }
         case .ended, .cancelled:
@@ -1058,6 +1097,82 @@ struct SwipeTracker {
     }
 }
 
+// MARK: - Turning pages
+
+/// A page turn: by the side of the window (left/right, as clicked or as the
+/// arrow keys say) or in reading order (next/previous).
+enum PageTurn: String {
+    case left, right, next, prev
+}
+
+extension ReaderViewController {
+    /// Turns a page, with the page-turn animation when turned on (Settings >
+    /// General > Animate page turns, unless Reduce Motion is on). In scroll
+    /// mode "next" and "previous" move by a screen instead.
+    fileprivate func turn(_ command: PageTurn) {
+        guard bookSentToShell else { return }
+        let paginated = state.flow == .paginated || state.isFixedLayout
+        guard paginated, settings.animatePageTurns, !reducedMotion, imageZoom == nil else {
+            return js(Self.turnScript[command]!)
+        }
+        // Which way the leaf travels on screen.
+        let leafMovesLeft: Bool
+        switch command {
+        case .right: leafMovesLeft = true
+        case .left: leafMovesLeft = false
+        case .next: leafMovesLeft = !state.isRightToLeft
+        case .prev: leafMovesLeft = state.isRightToLeft
+        }
+
+        // A turn already under way ends at once; this one starts afresh.
+        if let previous = pageTurn {
+            previous.finish()
+            previous.removeFromSuperview()
+            pageTurn = nil
+        }
+        turnGeneration += 1
+        let generation = turnGeneration
+
+        // 1. Snapshot the page as it is (A).
+        webView.takeSnapshot(with: nil) { [weak self] before, _ in
+            guard let self, generation == self.turnGeneration,
+                  let a = before?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                self?.js(Self.turnScript[command]!)
+                return
+            }
+            // 2. Cover the page with A, then turn the real page instantly.
+            let overlay = PageTurnView(frame: self.webView.frame)
+            overlay.autoresizingMask = [.width, .height]
+            self.view.addSubview(overlay, positioned: .above, relativeTo: self.webView)
+            overlay.cover(with: a)
+            self.pageTurn = overlay
+            let remove = { [weak self, weak overlay] in
+                overlay?.removeFromSuperview()
+                if self?.pageTurn === overlay { self?.pageTurn = nil }
+            }
+            self.webView.callAsyncJavaScript("return await platen.turnInstantly(d)", arguments: ["d": command.rawValue],
+                                             in: nil, in: .page) { result in
+                guard generation == self.turnGeneration,
+                      case .success(let value) = result, let info = value as? [String: Any],
+                      info["moved"] as? Bool == true else { return remove() }
+                let twoPages = (info["columns"] as? NSNumber)?.intValue ?? 1 >= 2
+                // 3. Snapshot the new page (B) and animate from A to B.
+                self.webView.takeSnapshot(with: nil) { after, _ in
+                    guard generation == self.turnGeneration,
+                          let b = after?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return remove() }
+                    log.debug("page turn: animating (\(twoPages ? "two pages" : "one page", privacy: .public))")
+                    overlay.run(before: a, after: b, direction: leafMovesLeft ? .towardLeft : .towardRight,
+                                twoPages: twoPages, completion: remove)
+                }
+            }
+        }
+    }
+
+    private static let turnScript: [PageTurn: String] = [
+        .left: "platen.goLeft()", .right: "platen.goRight()", .next: "platen.next()", .prev: "platen.prev()",
+    ]
+}
+
 // MARK: - Pictures
 
 extension ReaderViewController {
@@ -1095,6 +1210,29 @@ extension ReaderViewController {
 }
 
 // MARK: - Supporting views
+
+/// Lets the window be dragged by its top edge (and zoomed with a double
+/// click, following the user's Dock setting), as a title bar would.
+final class WindowDragView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        if event.clickCount == 2 {
+            let action = UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") ?? "Maximize"
+            if action == "Minimize" { window.performMiniaturize(nil) }
+            else if action != "None" { window.performZoom(nil) }
+        } else {
+            window.performDrag(with: event)
+        }
+    }
+}
+
+/// An invisible view that takes any click inside it.
+final class ClickCatcherView: NSView {
+    var onClick: (() -> Void)?
+    override func mouseDown(with event: NSEvent) { onClick?() }
+    override func rightMouseDown(with event: NSEvent) { onClick?() }
+}
 
 /// A visual-effect view that never takes clicks, so the page underneath
 /// still gets them.

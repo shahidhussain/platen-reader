@@ -7,7 +7,8 @@ struct OverlayActions {
     var goToFraction: (Double) -> Void
     var goBack: () -> Void
     var toggleContents: () -> Void
-    var setFlow: (ReadingFlow) -> Void
+    var setLayout: (ReadingLayout) -> Void
+    var toggleBookmark: () -> Void
     /// Called whenever the user interacts, so the overlay does not auto-hide
     /// while it is being used.
     var interacted: () -> Void
@@ -95,6 +96,14 @@ struct OverlayBar: View {
                 .help(state.isRightToLeft ? "Previous Page" : "Next Page")
                 .accessibilityLabel(state.isRightToLeft ? Text("Previous Page") : Text("Next Page"))
 
+                // Bookmarks the page on screen (or removes its bookmark).
+                Button(action: actions.toggleBookmark) {
+                    Image(systemName: state.isPageBookmarked ? "bookmark.fill" : "bookmark")
+                        .foregroundStyle(state.isPageBookmarked ? Color.red : Color.primary)
+                }
+                .help(state.isPageBookmarked ? String(localized: "Remove Bookmark (⌘D)") : String(localized: "Bookmark This Page (⌘D)"))
+                .accessibilityLabel(state.isPageBookmarked ? Text("Remove Bookmark") : Text("Bookmark This Page"))
+
                 Button {
                     showTypography.toggle()
                     actions.interacted()
@@ -114,7 +123,13 @@ struct OverlayBar: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // Translucent, so the bar reads as something laid over the page: a
+        // light blur at about half strength lets the page show through.
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(0.55)
+        }
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
         .frame(maxWidth: 760)
         // The overlay must stay while its popover is open.
@@ -244,14 +259,14 @@ struct TypographyPopover: View {
             Picker("Appearance", selection: $settings.appearance) {
                 ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
 
-            Picker("Layout", selection: Binding(get: { state.flow }, set: actions.setFlow)) {
-                ForEach(ReadingFlow.allCases) { Text($0.label).tag($0) }
+            Picker("Layout", selection: Binding(get: { ReadingLayout(flow: state.flow, pages: settings.pageLayout) },
+                                                set: actions.setLayout)) {
+                ForEach(ReadingLayout.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
-            .disabled(state.isFixedLayout)
-            .help(state.isFixedLayout ? String(localized: "Fixed-layout books are always paginated.") : "")
+            .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
         }
         .formStyle(.grouped)
         .frame(width: 400)

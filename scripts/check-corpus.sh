@@ -43,7 +43,7 @@ check kobo.kepub.epub         "$TEXT"                                  "Kobo cha
 check truncated.epub          "-"                                      "rebuilt package"
 # 12 px text must follow the text size setting, keeping its proportion to
 # the root size (12/16 = 0.75), and nothing may be wider than the page.
-check fixed-font-sizes.epub   "(d=>'ratio:'+parseFloat(getComputedStyle(d.querySelector('p.px')).fontSize)/parseFloat(getComputedStyle(d.documentElement).fontSize)+' over:'+[...d.body.querySelectorAll('*')].some(e=>e.getBoundingClientRect().width>d.body.getBoundingClientRect().width+1))(platen.view.renderer.getContents()[0].doc)" "ratio:0.75 over:false"
+check fixed-font-sizes.epub   "(d=>'ratio:'+parseFloat(getComputedStyle(d.querySelector('p.px')).fontSize)/parseFloat(getComputedStyle(d.documentElement).fontSize)+' over:'+[...d.body.querySelectorAll('*')].some(e=>[...e.getClientRects()].some(r=>r.width>parseFloat(getComputedStyle(d.documentElement).columnWidth)+1)))(platen.view.renderer.getContents()[0].doc)" "ratio:0.75 over:false"
 check drm-adept.epub          "-"                                      "drm(PlatenCore.DRMScheme.adobeADEPT)"
 
 exit $FAILED

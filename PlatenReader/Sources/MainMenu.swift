@@ -100,17 +100,12 @@ enum MainMenu {
 
     private static func viewMenu() -> NSMenu {
         let menu = NSMenu(title: String(localized: "View"))
-        menu.addItem(item(String(localized: "Paginated"), #selector(ReaderViewController.showPaginated(_:)), "1"))
-        menu.addItem(item(String(localized: "Scroll"), #selector(ReaderViewController.showScroll(_:)), "2"))
-        menu.addItem(.separator())
-
-        let layout = NSMenuItem(title: String(localized: "Page Layout"), action: nil, keyEquivalent: "")
-        let layoutMenu = NSMenu(title: layout.title)
-        for option in PageLayout.allCases {
-            layoutMenu.addItem(item(option.label, #selector(ReaderViewController.setPageLayout(_:)), represented: option.rawValue))
+        // ⌘1 one page, ⌘2 two pages, ⌘3 scroll.
+        for layout in ReadingLayout.allCases {
+            menu.addItem(item(layout.label, #selector(ReaderViewController.setLayoutFromMenu(_:)), layout.shortcut,
+                              represented: layout.rawValue))
         }
-        layout.submenu = layoutMenu
-        menu.addItem(layout)
+        menu.addItem(.separator())
 
         let theme = NSMenuItem(title: String(localized: "Appearance"), action: nil, keyEquivalent: "")
         let themeMenu = NSMenu(title: theme.title)

@@ -28,6 +28,9 @@
     "Automatic" : {
 
     },
+    "Automatic matches macOS: Light in Light Mode, Dark in Dark Mode." : {
+
+    },
     "Back" : {
 
     },
@@ -82,16 +85,13 @@
     "Copy" : {
 
     },
+    "Copy Image" : {
+
+    },
     "Copy with Citation" : {
 
     },
     "Dark" : {
-
-    },
-    "Dark appearance" : {
-
-    },
-    "Data folder" : {
 
     },
     "Default reading mode" : {
@@ -133,13 +133,7 @@
     "Fixed-layout books are always paginated." : {
 
     },
-    "Follow system appearance" : {
-
-    },
     "Font" : {
-
-    },
-    "Forward" : {
 
     },
     "General" : {
@@ -176,9 +170,6 @@
 
     },
     "Light" : {
-
-    },
-    "Light appearance" : {
 
     },
     "Line spacing" : {
@@ -232,6 +223,12 @@
     "Open…" : {
 
     },
+    "or press C" : {
+
+    },
+    "Or press C." : {
+
+    },
     "p. %@" : {
 
     },
@@ -242,6 +239,9 @@
 
     },
     "Paginated" : {
+
+    },
+    "Picture" : {
 
     },
     "Platen Reader" : {
@@ -262,7 +262,7 @@
     "Quit %@" : {
 
     },
-    "Reading controls: click the left of the page to go back, the right to go forward, and the middle to show controls." : {
+    "Reading controls: click the left of the page for the previous page, the right for the next page, and the middle to show controls, or press C." : {
 
     },
     "Reading positions and bookmarks" : {
@@ -272,6 +272,9 @@
 
     },
     "Reset" : {
+
+    },
+    "Save Image…" : {
 
     },
     "Scroll" : {
@@ -304,6 +307,9 @@
     "Share Selection…" : {
 
     },
+    "Share…" : {
+
+    },
     "Show" : {
 
     },
@@ -313,13 +319,7 @@
     "Show Contents" : {
 
     },
-    "Show controls" : {
-
-    },
     "Show Controls" : {
-
-    },
-    "Show in Finder" : {
 
     },
     "Show pages left in chapter" : {
@@ -338,9 +338,6 @@
 
     },
     "Text Size" : {
-
-    },
-    "Theme" : {
 
     },
     "This book could not be opened." : {
