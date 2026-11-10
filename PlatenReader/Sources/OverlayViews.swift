@@ -22,9 +22,13 @@ struct OverlayBar: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
     let actions: OverlayActions
+    let sidebarActions: SidebarActions
 
     @State private var dragFraction: Double?
     @State private var showTypography = false
+    @State private var showLayout = false
+    /// The bar is slightly see-through, and solid while the pointer is on it.
+    @State private var hovering = false
 
     private var locationText: String {
         if let f = dragFraction {
@@ -60,12 +64,13 @@ struct OverlayBar: View {
             .frame(minHeight: 22)
 
             HStack(spacing: 18) {
-                if state.hasContents {
-                    Button(action: actions.toggleContents) {
-                        Image(systemName: "list.bullet")
-                    }
-                    .help("Contents and Bookmarks (⌘T)")
-                    .accessibilityLabel(Text("Contents and Bookmarks"))
+                Button(action: actions.toggleContents) {
+                    Image(systemName: "list.bullet")
+                }
+                .help("Contents, Bookmarks and Search (⌘T)")
+                .accessibilityLabel(Text("Contents, Bookmarks and Search"))
+                .popover(isPresented: $state.sidebarVisible, arrowEdge: .top) {
+                    SidebarView(state: state, actions: sidebarActions)
                 }
 
                 Button(action: state.isRightToLeft ? actions.nextPage : actions.previousPage) {
@@ -104,14 +109,28 @@ struct OverlayBar: View {
                 .help(state.isPageBookmarked ? String(localized: "Remove Bookmark (⌘D)") : String(localized: "Bookmark This Page (⌘D)"))
                 .accessibilityLabel(state.isPageBookmarked ? Text("Remove Bookmark") : Text("Bookmark This Page"))
 
+                // Layout: one page, two pages or scroll, and line width.
+                Button {
+                    showLayout.toggle()
+                    actions.interacted()
+                } label: {
+                    Image(systemName: state.flow == .scrolled ? "scroll"
+                          : settings.pageLayout == .two ? "book" : "doc.plaintext")
+                }
+                .help(String(localized: "Layout"))
+                .accessibilityLabel(Text("Layout"))
+                .popover(isPresented: $showLayout, arrowEdge: .top) {
+                    LayoutPopover(state: state, actions: actions)
+                }
+
                 Button {
                     showTypography.toggle()
                     actions.interacted()
                 } label: {
                     Text("Aa").font(.title3.weight(.medium))
                 }
-                .help("Text and Theme")
-                .accessibilityLabel(Text("Text and Theme"))
+                .help("Text and Appearance")
+                .accessibilityLabel(Text("Text and Appearance"))
                 .popover(isPresented: $showTypography, arrowEdge: .top) {
                     TypographyPopover(state: state, actions: actions)
                 }
@@ -123,20 +142,27 @@ struct OverlayBar: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
-        // Translucent, so the bar reads as something laid over the page: a
-        // light blur at about half strength lets the page show through.
+        // Slightly see-through (about 18%), so the bar reads as something
+        // laid over the page; solid while the pointer is over it.
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .opacity(0.55)
+                .fill(.regularMaterial)
+                .opacity(hovering ? 1 : 0.82)
+        }
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.15)) { hovering = inside }
         }
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
         .frame(maxWidth: 760)
         // The overlay must stay while its popover is open.
-        .onChange(of: showTypography) { _, open in
+        .onChange(of: showTypography || showLayout) { _, open in
             state.overlayPopoverOpen = open
             actions.interacted()
         }
+        // One popover at a time.
+        .onChange(of: state.sidebarVisible) { _, open in if open { showTypography = false; showLayout = false } }
+        .onChange(of: showTypography) { _, open in if open { showLayout = false } }
+        .onChange(of: showLayout) { _, open in if open { showTypography = false } }
     }
 }
 
@@ -214,8 +240,8 @@ struct ProgressSlider: View {
     }
 }
 
-/// The Aa popover: text size, font, line spacing, line width, theme and
-/// reading mode. These are the same global settings as in Settings.
+/// The Aa popover: text size, font, line spacing and appearance. These are
+/// the same global settings as in Settings.
 struct TypographyPopover: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
@@ -250,26 +276,47 @@ struct TypographyPopover: View {
             }
             .disabled(state.isFixedLayout)
 
-            Picker("Line Width", selection: $settings.lineWidth) {
-                ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .disabled(state.isFixedLayout)
-
             Picker("Appearance", selection: $settings.appearance) {
                 ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.menu)
+        }
+        .formStyle(.grouped)
+        .frame(width: 360)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
 
+/// The layout popover: one page, two pages or scroll, and the line width.
+struct LayoutPopover: View {
+    @ObservedObject var state: ReaderState
+    @ObservedObject var settings = ReaderSettings.shared
+    let actions: OverlayActions
+
+    var body: some View {
+        Form {
             Picker("Layout", selection: Binding(get: { ReadingLayout(flow: state.flow, pages: settings.pageLayout) },
                                                 set: actions.setLayout)) {
                 ForEach(ReadingLayout.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
+
+            if state.twoPagesTooNarrow {
+                Text("The window is too narrow for two pages. Make it wider to see them side by side.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Picker("Line Width", selection: $settings.lineWidth) {
+                ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .disabled(state.isFixedLayout)
         }
         .formStyle(.grouped)
-        .frame(width: 400)
+        .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
     }
 }

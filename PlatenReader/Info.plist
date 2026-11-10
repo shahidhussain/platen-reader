@@ -33,6 +33,10 @@
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
 
+	<!-- One running copy of the app at a time (the app also hands over to an
+	     already-running copy itself; see AppDelegate). -->
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
 	<!-- The book types Platen opens. Rank "Alternate" so installing Platen
 	     never silently takes over; Settings > File Types makes it the default. -->
 	<key>CFBundleDocumentTypes</key>

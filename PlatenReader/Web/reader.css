@@ -85,12 +85,20 @@ foliate-view::part(filter) {
 /* Page numbers, centred below each page (laid out by reader.js). */
 #page-numbers {
     position: fixed;
-    inset: 0;
+    top: 0;
+    bottom: 0;
+    overflow: hidden;
     pointer-events: none;
     z-index: 5;
     font: 11px -apple-system, system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
     color: var(--platen-fg);
+}
+#page-numbers > div {
+    position: absolute;
+    top: 0;
+    width: 100vw;
+    height: 100%;
 }
 #page-numbers span {
     position: absolute;

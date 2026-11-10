@@ -31,19 +31,23 @@ To run the core tests: `swift test --package-path PlatenCore`. To check the robu
 - **Find in book (⌘F, ⌘G, ⇧⌘G, ⌘E):** results are grouped by chapter with the match in context, and matches are highlighted on the page until the panel closes.
 - **Back button:** "Back to p. 87" or "Back to Chapter 3" after any jump (contents, link, bookmark, search, slider), kept until the reader turns a page. Also ⌘[.
 - **Copy with Citation (⇧⌘C):** the quote, then author, *title*, chapter and printed page, as plain and rich text. Share Selection…; context-menu items (Copy with Citation, Search Book for "…", Bookmark This Page, Show Contents), with browser-only items removed.
-- **Click-zone explainer** on first open, flashed on the first three mode switches, and from Help > Show Reading Controls.
+- **Click-zone explainer** on the first five opens, flashed on the first three mode switches, and from Help > Show Reading Controls.
 - The slider shows the chapter name while dragging. "N pages left in chapter" is optional, in Settings > General.
 - Page turns animate in 180 ms. KEPUB column wrappers are neutralised.
 - **Trackpad swipes** are read natively (finger phases, momentum ignored): the page follows the fingers, a flick or a drag past halfway turns one page, and anything less springs back. A mouse wheel turns one page per notch.
 - **Page numbers** centred under each page (one per page in a two-page spread). They are screen pages and move with the text.
-- **Page-turn animation:** a quick leaf turn round the spine, drawn natively from before-and-after snapshots (about a quarter of a second).
+- **Page-turn animation** (Settings > General: Page Curl, Slide or None; trackpad swipes always slide), drawn natively from before-and-after snapshots. With two pages the leaf bends like paper (a chain of hinged strips), is shaded by its angle and casts a shadow on the pages beneath.
+- **No blank pages between chapters:** the old page stays on screen until the next chapter is laid out (a small foliate-js patch).
+- **Readable colours:** publisher text colours with too little contrast against the theme are replaced by the theme's text colour.
 - **Pictures:** click one to zoom it to fill the window; right-click for Copy Image, Save Image… and Share….
 - **Publisher sizes in px, pt or keywords** are rewritten to rem so the text size setting works on every book. Over-wide tables and blocks are kept inside the page.
 - The title bar floats over the page, so showing the controls no longer re-flows the text. The controls stay up while the Aa popover is open. C shows and hides them.
 - One **Appearance** setting: Automatic, Light, Sepia, Dark or Black (for OLED screens).
-- One **Layout** setting: One Page (⌘1), Two Pages (⌘2) or Scroll (⌘3).
-- A bookmark button in the controls; the window can be dragged by its top edge; a click outside the contents panel closes it.
-- `scripts/check-corpus.sh` opens every fixture and checks the result (15 of 15 pass). Core timing tests and a GitHub Actions workflow are in place.
+- One **Layout** setting: One Page (⌘1), Two Pages (⌘2) or Scroll (⌘3). Layout and line width have their own popover in the controls; Aa holds text and appearance.
+- Contents, bookmarks and search open in a popover from the Contents button. A bookmark button sits in the controls.
+- A welcome window with an Open Book… button at launch; one running copy of the app; ⌘W closes the front window whatever has focus.
+- The click-zone explainer shows for the first five books opened. A note explains when Two Pages shows one page because the window is narrow.
+- `scripts/check-corpus.sh` opens every fixture and checks the result (16 of 16 pass). Core timing tests and a GitHub Actions workflow are in place.
 
 Measured here (Debug build, cold launch plus open): about 290 ms to the first visible page for a 2 MB novel.
 

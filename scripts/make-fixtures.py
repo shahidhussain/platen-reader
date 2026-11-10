@@ -272,6 +272,16 @@ def main():
                        extra_files=[("OEBPS/picture.png", png(400, 300, (90, 140, 200)))],
                        manifest_extra=['<item id="pic" href="picture.png" media-type="image/png"/>']))
 
+    # Publisher colours that vanish on some themes: black headings (invisible
+    # on Dark and Black) and white text (invisible on Light). Whatever the
+    # theme, the reader must swap unreadable colours for the theme's own.
+    colours = xhtml("Colours", """<h1 class="block3">Black heading</h1>
+<p>""" + paragraph(rng) + """</p>
+<h2 class="block3">Another black heading</h2>
+<p class="ghost">White text. """ + paragraph(rng) + """</p>""",
+        extra_head='<style>.block3 { color: black } .ghost { color: #fff }</style>')
+    made.append(simple("low-contrast.epub", "Low Contrast", [("c1.xhtml", colours)]))
+
     # DRM: Adobe ADEPT markers (content is not actually encrypted).
     enc = """<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
 <enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/>

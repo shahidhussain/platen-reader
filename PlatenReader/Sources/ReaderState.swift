@@ -90,6 +90,14 @@ final class ReaderState: ObservableObject {
     /// does not hide underneath it.
     @Published var overlayPopoverOpen = false
 
+    /// How many pages are side by side on screen right now.
+    @Published var columnsOnScreen = 1
+
+    /// Two Pages is chosen but the window is too narrow, so one page shows.
+    var twoPagesTooNarrow: Bool {
+        flow == .paginated && !isFixedLayout && ReaderSettings.shared.pageLayout == .two && columnsOnScreen < 2
+    }
+
     var hasContents: Bool { !toc.isEmpty || !bookmarks.isEmpty }
     var allHits: [SearchHit] { searchGroups.flatMap(\.hits) }
 

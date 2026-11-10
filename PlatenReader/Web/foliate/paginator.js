@@ -663,10 +663,21 @@ export class Paginator extends HTMLElement {
                     `break-${x}: ${y ?? ''}column`))
         })
     }
+    // Platen: the page being left stays on screen (as a "ghost") until the
+    // new section is laid out, so moving between chapters never shows a
+    // blank page. It is pinned where it was and removed in #display.
+    #ghost = null
     #createView() {
+        this.#ghost?.remove()
+        this.#ghost = null
         if (this.#view) {
             this.#view.destroy()
-            this.#container.removeChild(this.#view.element)
+            const el = this.#view.element
+            Object.assign(el.style, {
+                position: 'absolute', left: `${el.offsetLeft}px`, top: `${el.offsetTop}px`,
+                pointerEvents: 'none',
+            })
+            this.#ghost = el
         }
         this.#view = new View({
             container: this,
@@ -996,6 +1007,9 @@ export class Paginator extends HTMLElement {
         }
         await this.scrollToAnchor((typeof anchor === 'function'
             ? anchor(this.#view.document) : anchor) ?? 0, select)
+        // Platen: the new page is in place; the old one can go.
+        this.#ghost?.remove()
+        this.#ghost = null
         if (hasFocus) this.focusView()
     }
     #canGoToIndex(index) {
@@ -1066,7 +1080,9 @@ export class Paginator extends HTMLElement {
             index: this.#adjacentIndex(dir),
             anchor: prev ? () => 1 : () => 0,
         })
-        if (shouldGo || !this.hasAttribute('animated')) await wait(100)
+        // Platen: no pause after an instant turn within a section, so holding
+        // or tapping an arrow key turns pages as fast as the keys come.
+        if (shouldGo) await wait(100)
         this.#locked = false
     }
     prev(distance) {

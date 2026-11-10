@@ -21,6 +21,7 @@ final class BookDocument: NSDocument {
 
     override func makeWindowControllers() {
         addWindowController(ReaderWindowController(document: self))
+        WelcomeWindowController.closeIfOpen()
     }
 
     // MARK: Read-only

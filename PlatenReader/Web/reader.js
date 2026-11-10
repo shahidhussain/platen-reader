@@ -71,7 +71,12 @@ let settings = null
 let isFixedLayout = false
 
 // Approximate characters per line for each line-width setting.
-const lineWidthChars = { narrow: 55, medium: 66, wide: 80 }
+// Narrow is a classic book measure; Wide lets text run much closer to the
+// edges of a large window.
+const lineWidthChars = { narrow: 66, medium: 80, wide: 120 }
+// With two pages side by side: how much of each half of the window a page
+// may use (the rest is margin and the gap at the spine).
+const twoPageShare = { narrow: 0.72, medium: 0.86, wide: 1 }
 // Average glyph width as a fraction of font size, for typical book faces.
 const charWidthEm = 0.5
 // Spec: show two pages when each column can hold about 50 characters.
@@ -151,9 +156,12 @@ const applyLayout = () => {
 
     const columns = columnCount(settings)
     const lineWidth = lineWidthChars[settings.lineWidth] * settings.fontSize * charWidthEm
-    // In forced two-page mode the columns must fit in the window, whatever
-    // the line width setting says.
-    const inline = columns === 2 ? Math.min(lineWidth, window.innerWidth / 2) : lineWidth
+    // Two pages: each page gets a share of half the window, so the three
+    // widths stay distinct even when the character counts would all be
+    // wider than the half (they still cap it on very large screens).
+    const inline = columns === 2
+        ? Math.min(lineWidth, window.innerWidth / 2 * twoPageShare[settings.lineWidth])
+        : lineWidth
     r.setAttribute('flow', settings.flow)
     r.setAttribute('max-column-count', columns)
     r.setAttribute('max-inline-size', `${Math.round(inline)}px`)
@@ -255,6 +263,77 @@ async function zoomImage(img, rect) {
         post('image', { data: btoa(binary), mimeType: blob.type, alt: img.alt ?? '', rect })
     } catch (e) {
         post('log', { level: 'error', message: `image zoom failed: ${e}` })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Readable colours
+//
+// The theme sets the page's background and text colour, but a book's own
+// styles can still colour particular elements: headings in black, say, which
+// vanish on the Dark and Black themes. After each section loads (and when the
+// theme changes) every element with text is checked against the background
+// it sits on, and any colour with too little contrast is replaced by the
+// theme's text colour. Colours that are readable are left alone, so
+// publishers' coloured headings survive where they work.
+
+// WCAG relative luminance and contrast ratio.
+const parseColour = value => {
+    const m = /rgba?\(([^)]+)\)/.exec(value ?? '')
+    if (!m) return null
+    const [r, g, b, a = 1] = m[1].split(/[ ,/]+/).filter(Boolean).map(Number)
+    return { r, g, b, a }
+}
+const luminance = ({ r, g, b }) => {
+    const channel = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4 }
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+}
+const contrast = (x, y) => {
+    const [a, b] = [luminance(x), luminance(y)].sort((p, q) => q - p)
+    return (a + 0.05) / (b + 0.05)
+}
+const hexColour = hex => {
+    const n = parseInt(hex.replace('#', ''), 16)
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255, a: 1 }
+}
+
+// Below this ratio text is hard to read (WCAG's minimum for large text).
+const minContrast = 3
+
+function ensureReadableColours(doc) {
+    if (!settings || !doc?.body) return
+    const win = doc.defaultView
+    const pageBackground = hexColour(settings.theme.background)
+    // Undo earlier fixes first: the theme may have changed.
+    for (const el of doc.querySelectorAll('[data-platen-colour]')) {
+        el.style.removeProperty('color')
+        el.removeAttribute('data-platen-colour')
+    }
+    // The background an element's text is drawn on: its own, or the
+    // nearest ancestor's that is not transparent (the page, by default).
+    const backgroundOf = el => {
+        for (let e = el; e && e !== doc.body && e !== doc.documentElement; e = e.parentElement) {
+            const bg = parseColour(win.getComputedStyle(e).backgroundColor)
+            if (bg && bg.a > 0.5) return bg
+        }
+        return pageBackground
+    }
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: n => n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+    })
+    const seen = new Set()
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const el = node.parentElement
+        if (!el || seen.has(el)) continue
+        seen.add(el)
+        const colour = parseColour(win.getComputedStyle(el).color)
+        if (!colour) continue
+        const background = backgroundOf(el)
+        if (background !== pageBackground) continue // a box of the publisher's own: leave it
+        if (contrast(colour, pageBackground) < minContrast) {
+            el.style.setProperty('color', settings.theme.foreground, 'important')
+            el.setAttribute('data-platen-colour', '')
+        }
     }
 }
 
@@ -362,7 +441,16 @@ const swipe = {
     // it was; 0 to settle on whichever page is mostly in view.
     end(direction) {
         if (!view || isFixedLayout) return
-        view.renderer.snap?.(direction, 0)
+        // A swipe always settles with a slide, whatever the page-turn
+        // setting (unless Reduce Motion is on).
+        const r = view.renderer
+        const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+        const animated = r.hasAttribute('animated')
+        if (!reduceMotion) r.setAttribute('animated', '')
+        r.snap?.(direction, 0)
+        if (!animated) setTimeout(() => {
+            if (!(settings?.animated)) r.removeAttribute('animated')
+        }, 400)
         ribbons.hidden = false
     },
 }
@@ -406,6 +494,8 @@ const onRelocate = ({ detail }) => {
     })
     post('relocate', {
         pagesLeft,
+        // Pages side by side (Two Pages falls back to one in a narrow window).
+        columns: r.feet?.length ?? 1,
         chapterHref: tocItem?.href ?? null,
         cfi,
         fraction: fraction ?? 0,
@@ -443,10 +533,14 @@ let calibratedFor = ''     // the layout the estimate was made for
 // footers, which stay put while the text moves. The strip holds numbers for
 // the spread on screen and the spreads either side, and slides with the text
 // during a swipe, so each number stays under its page.
+// The strip sits in a window the width of the page area, so the numbers of
+// the neighbouring pages (ready to slide in) are hidden in the margins.
+const numberWindow = document.createElement('div')
+numberWindow.id = 'page-numbers'
+numberWindow.setAttribute('aria-hidden', 'true') // the overlay says where you are
 const numberStrip = document.createElement('div')
-numberStrip.id = 'page-numbers'
-numberStrip.setAttribute('aria-hidden', 'true') // the overlay says where you are
-document.body.append(numberStrip)
+numberWindow.append(numberStrip)
+document.body.append(numberWindow)
 let stripStart = 0 // the scroll position the strip was laid out for
 
 function updatePageNumbers(detail) {
@@ -454,6 +548,13 @@ function updatePageNumbers(detail) {
     const feet = r?.feet
     numberStrip.replaceChildren()
     numberStrip.style.transform = ''
+    // The page area is centred in the window and one "page" (spread) wide.
+    if (r?.size) {
+        const left = Math.max(0, (innerWidth - r.size) / 2)
+        numberWindow.style.left = `${left}px`
+        numberWindow.style.width = `${r.size}px`
+        numberStrip.style.left = `${-left}px`
+    }
     if (!feet?.length || isFixedLayout || settings?.flow === 'scrolled') return
     const columns = feet.length
     const index = detail.section?.current ?? r.getContents?.()[0]?.index
@@ -528,6 +629,7 @@ window.platen = {
             view.addEventListener('load', ({ detail: { doc, index } }) => {
                 if (!isFixedLayout) {
                     rescalePublisherFontSizes(doc)
+                    ensureReadableColours(doc)
                 }
                 attachPointerHandlers(doc, index)
             })
@@ -562,8 +664,11 @@ window.platen = {
         }
     },
     setSettings(s) {
+        const themeChanged = s.theme?.background !== settings?.theme?.background
         settings = s
         applyLayout()
+        if (themeChanged && !isFixedLayout)
+            for (const { doc } of view?.renderer?.getContents?.() ?? []) ensureReadableColours(doc)
     },
     goLeft: () => view?.goLeft(),
     goRight: () => view?.goRight(),

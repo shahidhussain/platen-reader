@@ -44,6 +44,8 @@ check truncated.epub          "-"                                      "rebuilt 
 # 12 px text must follow the text size setting, keeping its proportion to
 # the root size (12/16 = 0.75), and nothing may be wider than the page.
 check fixed-font-sizes.epub   "(d=>'ratio:'+parseFloat(getComputedStyle(d.querySelector('p.px')).fontSize)/parseFloat(getComputedStyle(d.documentElement).fontSize)+' over:'+[...d.body.querySelectorAll('*')].some(e=>[...e.getClientRects()].some(r=>r.width>parseFloat(getComputedStyle(d.documentElement).columnWidth)+1)))(platen.view.renderer.getContents()[0].doc)" "ratio:0.75 over:false"
+# Unreadable publisher colours are replaced, whichever theme is in use.
+check low-contrast.epub       "'recoloured:'+(platen.view.renderer.getContents()[0].doc.querySelectorAll('[data-platen-colour]').length>0)" "recoloured:true"
 check drm-adept.epub          "-"                                      "drm(PlatenCore.DRMScheme.adobeADEPT)"
 
 exit $FAILED

@@ -13,6 +13,13 @@ If you patch a file, list it here with the reason, so updates can re-apply it.
 
 - `paginator.js`, `#scrollTo`: page-turn animation shortened from 300 ms to
   180 ms, per the spec's 150–200 ms horizontal slide. Marked `// Platen:`.
+- `paginator.js`, `#createView` and `#display`: the page being left stays on
+  screen until the next section is laid out and scrolled into place, then is
+  removed in the same frame, so moving between chapters never flashes a
+  blank page. Marked `// Platen:`.
+- `paginator.js`, `#turnPage`: no 100 ms pause after an unanimated turn
+  within a section (upstream waits after every unanimated turn), so fast
+  key presses turn pages as fast as they come. Marked `// Platen:`.
 
 ## How to update
 

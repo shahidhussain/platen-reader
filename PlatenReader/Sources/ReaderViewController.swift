@@ -22,7 +22,6 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
 
     private var webView: ReaderWebView!
     private var overlayHost: NSHostingView<OverlayBar>!
-    private var sidebarHost: NSHostingView<SidebarView>!
     private var explainerHost: NSView?
     /// Backing for the title when it is shown, drawn by us so the real title
     /// bar can stay transparent (see `applyChromeVisibility`).
@@ -31,14 +30,14 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     private var imageZoom: ImageZoomView?
     /// The strip under the (transparent) title bar that drags the window.
     private var dragStrip: WindowDragView!
-    /// Covers the page while the contents panel is open; a click on it
-    /// closes the panel.
-    private var sidebarDismisser: ClickCatcherView!
     private var scrollMonitor: Any?
+    private var keyMonitor: Any?
     private var swipe = SwipeTracker()
     private var pageTurn: PageTurnView?
     /// Counts turns, so a turn that was overtaken by a newer one is dropped.
     private var turnGeneration = 0
+    /// When the last page turn was asked for, to spot rapid key presses.
+    private var lastTurnRequest: TimeInterval = 0
     private var spinner: NSProgressIndicator!
     private var failureHost: NSView?
 
@@ -91,6 +90,19 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         webView.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(webView)
 
+        // Contents, bookmarks and search: a popover from the overlay's
+        // Contents button.
+        let sidebarActions = SidebarActions(
+            // Choosing a chapter or bookmark closes the popover; search
+            // results keep it open so the reader can step through them.
+            goToTOCItem: { [weak self] item in self?.jump(to: item.href); self?.setSidebar(visible: false) },
+            goToBookmark: { [weak self] bookmark in self?.jump(to: bookmark.cfi); self?.setSidebar(visible: false) },
+            removeBookmark: { [weak self] bookmark in self?.removeBookmark(cfi: bookmark.cfi) },
+            search: { [weak self] query in self?.startSearch(query) },
+            goToHit: { [weak self] hit in self?.goToHit(hit) },
+            close: { [weak self] in self?.setSidebar(visible: false) }
+        )
+
         // Overlay (bottom bar). Starts hidden.
         let actions = OverlayActions(
             previousPage: { [weak self] in self?.turn(.prev) },
@@ -102,34 +114,11 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             toggleBookmark: { [weak self] in self?.toggleBookmark(nil) },
             interacted: { [weak self] in self?.restartHideTimer() }
         )
-        overlayHost = NSHostingView(rootView: OverlayBar(state: state, actions: actions))
+        overlayHost = NSHostingView(rootView: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions))
         overlayHost.translatesAutoresizingMaskIntoConstraints = false
         overlayHost.alphaValue = 0
         overlayHost.isHidden = true
         root.addSubview(overlayHost)
-
-        // Contents, bookmarks and search: slides over the left of the page.
-        let sidebarActions = SidebarActions(
-            // Choosing a chapter or bookmark closes the panel; search results
-            // keep it open so the reader can step through them.
-            goToTOCItem: { [weak self] item in self?.jump(to: item.href); self?.setSidebar(visible: false) },
-            goToBookmark: { [weak self] bookmark in self?.jump(to: bookmark.cfi); self?.setSidebar(visible: false) },
-            removeBookmark: { [weak self] bookmark in self?.removeBookmark(cfi: bookmark.cfi) },
-            search: { [weak self] query in self?.startSearch(query) },
-            goToHit: { [weak self] hit in self?.goToHit(hit) },
-            close: { [weak self] in self?.setSidebar(visible: false) }
-        )
-        sidebarHost = NSHostingView(rootView: SidebarView(state: state, actions: sidebarActions))
-        sidebarHost.translatesAutoresizingMaskIntoConstraints = false
-        // Fill the window's height; do not shrink to fit a short list.
-        sidebarHost.sizingOptions = [.minSize]
-        sidebarHost.isHidden = true
-        sidebarDismisser = ClickCatcherView()
-        sidebarDismisser.onClick = { [weak self] in self?.setSidebar(visible: false) }
-        sidebarDismisser.isHidden = true
-        sidebarDismisser.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(sidebarDismisser)
-        root.addSubview(sidebarHost)
 
         titleBacking = PassThroughEffectView()
         titleBacking.material = .titlebar
@@ -166,9 +155,6 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             overlayHost.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
             overlayHost.widthAnchor.constraint(equalToConstant: 720).withPriority(.defaultHigh),
 
-            sidebarHost.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            sidebarHost.topAnchor.constraint(equalTo: root.topAnchor),
-            sidebarHost.bottomAnchor.constraint(equalTo: root.bottomAnchor),
 
             titleBacking.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             titleBacking.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -179,11 +165,6 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             dragStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             dragStrip.topAnchor.constraint(equalTo: root.topAnchor),
             dragStrip.heightAnchor.constraint(equalTo: titleBacking.heightAnchor),
-
-            sidebarDismisser.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            sidebarDismisser.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            sidebarDismisser.topAnchor.constraint(equalTo: root.topAnchor),
-            sidebarDismisser.bottomAnchor.constraint(equalTo: root.bottomAnchor),
 
             spinner.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: root.centerYAnchor),
@@ -199,6 +180,12 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         settings.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.pushSettings() }
+            .store(in: &cancellables)
+
+        state.$sidebarVisible
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] open in if !open { DispatchQueue.main.async { self?.sidebarDidClose() } } }
             .store(in: &cancellables)
 
         // When the Aa popover closes, the overlay's hide countdown restarts.
@@ -235,7 +222,9 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     override func viewWillDisappear() {
         super.viewWillDisappear()
         if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         scrollMonitor = nil
+        keyMonitor = nil
     }
 
     // MARK: - Opening
@@ -347,8 +336,30 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
                 } else if step.hasPrefix("@search:") {
                     self.setSidebar(visible: true, tab: .search)
                     self.startSearch(String(step.dropFirst("@search:".count)))
+                } else if step.hasPrefix("@key:") {
+                    // "@key:cmd+w": a real keystroke, through the app's
+                    // normal key handling (menus first).
+                    let spec = String(step.dropFirst(5)).lowercased()
+                    var flags: NSEvent.ModifierFlags = []
+                    if spec.contains("cmd+") { flags.insert(.command) }
+                    if spec.contains("shift+") { flags.insert(.shift) }
+                    let key = String(spec.split(separator: "+").last ?? "")
+                    if let window = self.view.window,
+                       let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
+                                                    timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: window.windowNumber, context: nil,
+                                                    characters: key, charactersIgnoringModifiers: key,
+                                                    isARepeat: false,
+                                                    keyCode: ["w": 13, "q": 12, "t": 17, "f": 3, "d": 2, "c": 8, "k": 40][key] ?? 0) {
+                        NSApp.sendEvent(event)
+                    }
                 } else if step.hasPrefix("@") {
-                    NSApp.sendAction(NSSelectorFromString(String(step.dropFirst())), to: self, from: nil)
+                    // Through this window's responder chain, as a menu shortcut
+                    // would be (the app may not be frontmost during checks).
+                    let action = NSSelectorFromString(String(step.dropFirst()))
+                    if self.view.window?.firstResponder?.tryToPerform(action, with: nil) != true {
+                        NSApp.sendAction(action, to: self, from: nil)
+                    }
                 } else {
                     self.webView.evaluateJavaScript(step) { result, error in
                         if let result = result as? String { log.info("step result: \(result, privacy: .public)") }
@@ -429,6 +440,8 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             state.printedPage = body["page"] as? String
             state.chapterHref = body["chapterHref"] as? String
             state.pagesLeftInChapter = (body["pagesLeft"] as? NSNumber)?.intValue
+            state.columnsOnScreen = (body["columns"] as? NSNumber)?.intValue ?? 1
+            reportLayoutToSettings()
             view.window?.subtitle = state.chapter
             if let cfi = body["cfi"] as? String, var record {
                 record.lastCFI = cfi
@@ -553,6 +566,8 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     // MARK: - Overlay and chrome
 
     private func setOverlay(visible: Bool) {
+        // Popovers hang from the overlay, so they go with it.
+        if !visible && state.sidebarVisible { state.sidebarVisible = false }
         overlayVisible = visible
         titleBarVisible = visible
         applyChromeVisibility(animated: true)
@@ -567,7 +582,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         hideTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
             guard let self, self.overlayVisible else { return }
             // Never hide from under an open popover; closing it restarts this.
-            if self.state.overlayPopoverOpen { return }
+            if self.state.overlayPopoverOpen || self.state.sidebarVisible { return }
             if let window = self.view.window {
                 let point = self.overlayHost.convert(window.mouseLocationOutsideOfEventStream, from: nil)
                 if self.overlayHost.bounds.contains(point) { return self.restartHideTimer() }
@@ -604,6 +619,14 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         })
         // Keep VoiceOver from landing on invisible controls.
         overlayHost.setAccessibilityElement(overlayVisible)
+    }
+
+    /// Settings shows a note when Two Pages is chosen but the front book
+    /// window is too narrow for them.
+    func reportLayoutToSettings() {
+        guard view.window?.isKeyWindow == true else { return }
+        let narrow = state.twoPagesTooNarrow
+        if settings.frontWindowTooNarrowForTwoPages != narrow { settings.frontWindowTooNarrowForTwoPages = narrow }
     }
 
     func fullScreenChanged() {
@@ -657,10 +680,14 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
 
     // MARK: - Click-zone explainer
 
+    /// The click zones are shown over the page for the first few books
+    /// opened, until the reader has had a chance to learn them. Any click
+    /// dismisses them.
     private func showFirstRunExplainerIfNeeded() {
-        let key = ReadingControlsExplainer.seenKey
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-        UserDefaults.standard.set(true, forKey: key)
+        let key = ReadingControlsExplainer.shownCountKey
+        let count = UserDefaults.standard.integer(forKey: key)
+        guard count < ReadingControlsExplainer.opensToShow else { return }
+        UserDefaults.standard.set(count + 1, forKey: key)
         showExplainer(flash: false)
     }
 
@@ -713,27 +740,29 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         view.window?.makeFirstResponder(webView)
     }
 
+    /// Opens or closes the contents popover. It hangs from the Contents
+    /// button in the overlay, so the overlay is shown first.
     private func setSidebar(visible: Bool, tab: ReaderState.SidebarTab? = nil) {
         if let tab { state.sidebarTab = tab }
         guard visible != state.sidebarVisible else { return }
-        state.sidebarVisible = visible
-        sidebarDismisser.isHidden = !visible
         if visible {
-            sidebarHost.isHidden = false
-            setOverlay(visible: false)
+            let wasHidden = !overlayVisible
+            setOverlay(visible: true)
+            // The popover needs its button on screen to hang from.
+            DispatchQueue.main.asyncAfter(deadline: .now() + (wasHidden ? 0.05 : 0)) { [weak self] in
+                self?.state.sidebarVisible = true
+            }
         } else {
-            view.window?.makeFirstResponder(webView)
-            // Search highlights are temporary: they go when the panel closes.
-            if state.sidebarTab == .search || !state.searchGroups.isEmpty { js("platen.clearSearch()") }
+            state.sidebarVisible = false
         }
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = reducedMotion ? 0 : 0.15
-            sidebarHost.animator().alphaValue = visible ? 1 : 0
-        }, completionHandler: { [weak self] in
-            guard let self else { return }
-            self.sidebarHost.isHidden = !self.state.sidebarVisible
-        })
-        sidebarHost.setAccessibilityElement(visible)
+    }
+
+    /// The popover was closed (by us, Esc or a click outside it).
+    private func sidebarDidClose() {
+        view.window?.makeFirstResponder(webView)
+        // Search highlights are temporary: they go when the panel closes.
+        if state.sidebarTab == .search || !state.searchGroups.isEmpty { js("platen.clearSearch()") }
+        restartHideTimer()
     }
 
     private func sendBookmarksToPage() {
@@ -995,6 +1024,16 @@ extension ReaderViewController {
             guard let self, event.window === self.view.window else { return event }
             return self.handleScroll(event) ? nil : event
         }
+        // Reading keys (C, space, arrows, Esc…) are taken here, before
+        // WebKit, which does not always pass key presses on to its view.
+        // Only while the page itself has focus, so typing in a search field
+        // or popover is never affected.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.view.window,
+                  let responder = event.window?.firstResponder as? NSView,
+                  responder === self.webView || responder.isDescendant(of: self.webView) else { return event }
+            return self.handleKey(event) ? nil : event
+        }
     }
 
     /// Returns true if the event was used (and must not reach WebKit).
@@ -1005,7 +1044,6 @@ extension ReaderViewController {
         guard state.flow == .paginated || state.isFixedLayout else { return false }
         // Only over the page: the contents panel and overlay scroll normally.
         let point = view.convert(event.locationInWindow, from: nil)
-        if state.sidebarVisible && sidebarHost.frame.contains(point) { return false }
         if overlayVisible && overlayHost.frame.contains(point) { return false }
 
         // Momentum after the fingers lift never turns another page: one
@@ -1106,13 +1144,14 @@ enum PageTurn: String {
 }
 
 extension ReaderViewController {
-    /// Turns a page, with the page-turn animation when turned on (Settings >
-    /// General > Animate page turns, unless Reduce Motion is on). In scroll
+    /// Turns a page, with the page curl when chosen (Settings > General >
+    /// Page turn animation; not with Reduce Motion). Slide and None are
+    /// foliate-js's own turn, animated or not. In scroll
     /// mode "next" and "previous" move by a screen instead.
     fileprivate func turn(_ command: PageTurn) {
         guard bookSentToShell else { return }
         let paginated = state.flow == .paginated || state.isFixedLayout
-        guard paginated, settings.animatePageTurns, !reducedMotion, imageZoom == nil else {
+        guard paginated, settings.pageTurnStyle == .curl, !reducedMotion, imageZoom == nil else {
             return js(Self.turnScript[command]!)
         }
         // Which way the leaf travels on screen.
@@ -1122,6 +1161,22 @@ extension ReaderViewController {
         case .left: leafMovesLeft = false
         case .next: leafMovesLeft = !state.isRightToLeft
         case .prev: leafMovesLeft = state.isRightToLeft
+        }
+
+        // Pressing keys quickly (or holding one down) flips through pages:
+        // while turns come faster than a curl takes, they are instant. The
+        // curl returns as soon as the reader slows down.
+        let now = ProcessInfo.processInfo.systemUptime
+        let rapid = now - lastTurnRequest < 0.45
+        lastTurnRequest = now
+        if rapid {
+            turnGeneration += 1
+            if let previous = pageTurn {
+                previous.finish()
+                previous.removeFromSuperview()
+                pageTurn = nil
+            }
+            return js(Self.turnScript[command]!)
         }
 
         // A turn already under way ends at once; this one starts afresh.
@@ -1135,9 +1190,10 @@ extension ReaderViewController {
 
         // 1. Snapshot the page as it is (A).
         webView.takeSnapshot(with: nil) { [weak self] before, _ in
-            guard let self, generation == self.turnGeneration,
-                  let a = before?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-                self?.js(Self.turnScript[command]!)
+            // Overtaken by a newer turn: that one has already moved the page.
+            guard let self, generation == self.turnGeneration else { return }
+            guard let a = before?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                self.js(Self.turnScript[command]!) // no snapshot: turn without the curl
                 return
             }
             // 2. Cover the page with A, then turn the real page instantly.
@@ -1214,7 +1270,11 @@ extension ReaderViewController {
 /// Lets the window be dragged by its top edge (and zoomed with a double
 /// click, following the user's Dock setting), as a title bar would.
 final class WindowDragView: NSView {
-    override var mouseDownCanMoveWindow: Bool { true }
+    // The drag is done explicitly in mouseDown. (Also letting AppKit move the
+    // window by itself, through mouseDownCanMoveWindow, made two mechanisms
+    // compete for the same click, so the drag only sometimes took.)
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) {
         guard let window else { return }
         if event.clickCount == 2 {

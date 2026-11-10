@@ -120,6 +120,20 @@ enum Theme: String, CaseIterable, Identifiable {
     }
 }
 
+/// How a page turn (click, key or wheel) is animated. Trackpad swipes always
+/// slide: the page follows the fingers.
+enum PageTurnStyle: String, CaseIterable, Identifiable {
+    case curl, slide, none
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .curl: return String(localized: "Page Curl")
+        case .slide: return String(localized: "Slide")
+        case .none: return String(localized: "None")
+        }
+    }
+}
+
 /// The one Appearance setting: follow the system (Light by day, Dark by
 /// night), or always use one theme.
 enum AppearanceChoice: String, CaseIterable, Identifiable {
@@ -156,7 +170,7 @@ final class ReaderSettings: ObservableObject {
 
     @Published var defaultFlow: ReadingFlow { didSet { save("defaultFlow", defaultFlow.rawValue) } }
     @Published var pageLayout: PageLayout { didSet { save("pageLayout", pageLayout.rawValue) } }
-    @Published var animatePageTurns: Bool { didSet { save("animatePageTurns", animatePageTurns) } }
+    @Published var pageTurnStyle: PageTurnStyle { didSet { save("pageTurnStyle", pageTurnStyle.rawValue) } }
     @Published var appearance: AppearanceChoice { didSet { save("appearance", appearance.rawValue) } }
     @Published var fontSizeIndex: Int { didSet { save("fontSizeIndex", fontSizeIndex) } }
     @Published var lineHeight: Double { didSet { save("lineHeight", lineHeight) } }
@@ -165,6 +179,9 @@ final class ReaderSettings: ObservableObject {
     @Published var hyphenate: Bool { didSet { save("hyphenate", hyphenate) } }
     /// Optional "N pages left in chapter" in the location line (paginated).
     @Published var showPagesLeftInChapter: Bool { didSet { save("showPagesLeftInChapter", showPagesLeftInChapter) } }
+    /// Not saved: whether the front book window shows one page although Two
+    /// Pages is chosen (it is too narrow). Settings explains this.
+    @Published var frontWindowTooNarrowForTwoPages = false
 
     private init() {
         func string(_ key: String) -> String? { UserDefaults.standard.string(forKey: key) }
@@ -173,7 +190,9 @@ final class ReaderSettings: ObservableObject {
         }
         defaultFlow = string("defaultFlow").flatMap(ReadingFlow.init) ?? .paginated
         pageLayout = string("pageLayout").flatMap(PageLayout.init) ?? .two
-        animatePageTurns = bool("animatePageTurns", true)
+        // Older versions had an on/off switch; off becomes None.
+        pageTurnStyle = string("pageTurnStyle").flatMap(PageTurnStyle.init)
+            ?? (bool("animatePageTurns", true) ? .curl : .none)
         appearance = string("appearance").flatMap(AppearanceChoice.init) ?? .automatic
         let index = UserDefaults.standard.object(forKey: "fontSizeIndex") as? Int ?? Self.defaultFontSizeIndex
         fontSizeIndex = min(max(index, 0), Self.fontSizes.count - 1)
@@ -220,7 +239,9 @@ final class ReaderSettings: ObservableObject {
         [
             "flow": flow.rawValue,
             "pageLayout": pageLayout.rawValue,
-            "animated": animatePageTurns,
+            // foliate-js's own slide animation, for Slide (the curl is drawn
+            // natively, and swipes always slide; see reader.js).
+            "animated": pageTurnStyle == .slide,
             "fontSize": fontSize,
             "lineHeight": lineHeight,
             "lineWidth": lineWidth.rawValue,

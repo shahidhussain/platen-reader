@@ -11,9 +11,8 @@ struct SidebarActions {
     var close: () -> Void
 }
 
-/// The contents panel (⌘T): Contents, Bookmarks and Search tabs. It slides
-/// over the left of the page rather than resizing the window, so the text
-/// does not re-flow when it opens.
+/// The contents popover (⌘T): Contents, Bookmarks and Search tabs. It hangs
+/// from the Contents button in the overlay; a click outside it closes it.
 struct SidebarView: View {
     @ObservedObject var state: ReaderState
     let actions: SidebarActions
@@ -26,8 +25,7 @@ struct SidebarView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .padding(.horizontal, 12)
-            .padding(.top, 40) // clear of the window buttons
-            .padding(.bottom, 8)
+            .padding(.vertical, 10)
 
             Divider()
 
@@ -37,13 +35,9 @@ struct SidebarView: View {
             case .search: SearchPanel(state: state, actions: actions)
             }
         }
-        .frame(width: 300)
-        .frame(maxHeight: .infinity)
-        // Opaque rather than translucent: blurred book text behind a list
-        // of chapter titles is hard to read.
-        .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .trailing) { Divider() }
-        .onExitCommand(perform: actions.close) // Esc closes the panel
+        // A popover from the overlay's Contents button.
+        .frame(width: 340, height: 460)
+        .onExitCommand(perform: actions.close) // Esc closes the popover
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Contents and Bookmarks"))
     }
@@ -198,11 +192,14 @@ private struct EmptyPanel: View {
 /// Shown the first time any book opens, briefly when switching modes (first
 /// three switches only), and from Help > Show Reading Controls.
 struct ReadingControlsExplainer: View {
-    static let seenKey = "hasSeenReadingControls"
+    /// How many book opens show the zones (spec feedback: the first five).
+    static let opensToShow = 5
+    static let shownCountKey = "readingControlsShownCount"
     static let switchCountKey = "readingModeSwitchExplainerCount"
 
     static func resetTips() {
-        UserDefaults.standard.removeObject(forKey: seenKey)
+        UserDefaults.standard.removeObject(forKey: shownCountKey)
+        UserDefaults.standard.removeObject(forKey: "hasSeenReadingControls") // older key
         UserDefaults.standard.removeObject(forKey: switchCountKey)
     }
 

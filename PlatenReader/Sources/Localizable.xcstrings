@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en-GB",
   "strings" : {
+    "%@ (⌘%@)" : {
+      "localizations" : {
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (⌘%2$@)"
+          }
+        }
+      }
+    },
     "%lld pages left in chapter" : {
 
     },
@@ -10,6 +20,9 @@
     "%lld results" : {
 
     },
+    "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
+
+    },
     "Aa" : {
 
     },
@@ -17,9 +30,6 @@
 
     },
     "Advanced" : {
-
-    },
-    "Animate page turns" : {
 
     },
     "Appearance" : {
@@ -40,6 +50,9 @@
     "Back to %@ (⌘[)" : {
 
     },
+    "Black" : {
+
+    },
     "Bookmark" : {
 
     },
@@ -47,6 +60,9 @@
 
     },
     "Bookmark This Page" : {
+
+    },
+    "Bookmark This Page (⌘D)" : {
 
     },
     "Bookmarks" : {
@@ -79,7 +95,10 @@
     "Contents and Bookmarks" : {
 
     },
-    "Contents and Bookmarks (⌘T)" : {
+    "Contents, Bookmarks and Search" : {
+
+    },
+    "Contents, Bookmarks and Search (⌘T)" : {
 
     },
     "Copy" : {
@@ -94,9 +113,6 @@
     "Dark" : {
 
     },
-    "Default reading mode" : {
-
-    },
     "Default Text Size" : {
 
     },
@@ -104,6 +120,9 @@
 
     },
     "Enter Full Screen" : {
+
+    },
+    "EPUB, KEPUB, MOBI or AZW3. You can also drop a book here, or double-click one in Finder." : {
 
     },
     "File" : {
@@ -214,7 +233,13 @@
     "No results for “%@”" : {
 
     },
+    "None" : {
+
+    },
     "One Page" : {
+
+    },
+    "Open Book…" : {
 
     },
     "Open Recent" : {
@@ -232,10 +257,10 @@
     "p. %@" : {
 
     },
-    "Page layout" : {
+    "Page Curl" : {
 
     },
-    "Page Layout" : {
+    "Page turn animation" : {
 
     },
     "Paginated" : {
@@ -269,6 +294,9 @@
 
     },
     "Remove Bookmark" : {
+
+    },
+    "Remove Bookmark (⌘D)" : {
 
     },
     "Reset" : {
@@ -328,16 +356,25 @@
     "Show Reading Controls" : {
 
     },
+    "Slide" : {
+
+    },
     "Smaller Text" : {
 
     },
-    "Text and Theme" : {
+    "Text and Appearance" : {
 
     },
     "Text size" : {
 
     },
     "Text Size" : {
+
+    },
+    "The book window is too narrow for two pages. Make it wider to see them side by side." : {
+
+    },
+    "The window is too narrow for two pages. Make it wider to see them side by side." : {
 
     },
     "This book could not be opened." : {
