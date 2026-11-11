@@ -81,6 +81,7 @@ private struct WelcomeView: View {
             Image(systemName: "book")
                 .font(.system(size: 56, weight: .light))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true) // decoration: VoiceOver should start on the title
             Text("Platen Reader")
                 .font(.largeTitle.weight(.semibold))
             Button(action: open) {

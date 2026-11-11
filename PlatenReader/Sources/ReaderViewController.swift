@@ -21,6 +21,8 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     let state = ReaderState()
 
     var webView: ReaderWebView!
+    /// What VoiceOver reads: the text on screen (see BookPageAccessibilityView).
+    let bookPage = BookPageAccessibilityView()
     var overlayHost: NSHostingView<OverlayBar>!
     var explainerHost: NSView?
     /// Backing for the title when it is shown, drawn by us so the real title
@@ -94,6 +96,12 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         webView.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(webView)
 
+        // VoiceOver reads the book through this stand-in, not the web view.
+        bookPage.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(bookPage)
+        root.hiddenFromAccessibility = webView
+        webView.accessibilityStandIn = bookPage
+
         // Contents, bookmarks and search: a popover from the overlay's
         // Contents button.
         let sidebarActions = ContentsActions(
@@ -152,6 +160,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             webView.topAnchor.constraint(equalTo: root.topAnchor),
             webView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            bookPage.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            bookPage.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            bookPage.topAnchor.constraint(equalTo: root.topAnchor),
+            bookPage.bottomAnchor.constraint(equalTo: root.bottomAnchor),
 
             overlayHost.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             overlayHost.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
@@ -338,6 +350,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     func restartHideTimer() {
         hideTimer?.invalidate()
         guard overlayVisible else { return }
+        // With VoiceOver, the controls stay until dismissed (C or Esc):
+        // VoiceOver users move through them without the pointer, and the
+        // bar vanishing mid-way sent VoiceOver's cursor elsewhere.
+        if NSWorkspace.shared.isVoiceOverEnabled { return }
         hideTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
             guard let self, self.overlayVisible else { return }
             // Never hide from under an open popover; closing it restarts this.

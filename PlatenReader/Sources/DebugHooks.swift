@@ -60,6 +60,24 @@ extension ReaderViewController {
         } else if step.hasPrefix("@search:") {
             self.setSidebar(visible: true, tab: .search)
             self.startSearch(String(step.dropFirst("@search:".count)))
+        } else if step == "@ax" {
+            // What VoiceOver sees in this window: the accessibility tree,
+            // walked in-process, plus where focus and hit-testing land.
+            func describe(_ element: Any) -> String {
+                guard let e = element as? NSAccessibilityProtocol else { return "\(type(of: element))" }
+                let value = (e.accessibilityValue() as? String).map { " = " + String($0.prefix(60)) } ?? ""
+                return "\(e.accessibilityRole()?.rawValue ?? "?") [\(e.accessibilityRoleDescription() ?? "")] "
+                    + "\(e.accessibilityLabel() ?? "")\(value) (\(type(of: element)))"
+            }
+            func walk(_ element: Any, _ depth: Int) {
+                log.info("ax: \(String(repeating: "  ", count: depth), privacy: .public)\(describe(element), privacy: .public)")
+                guard depth < 12, let e = element as? NSAccessibilityProtocol else { return }
+                for child in e.accessibilityChildren() ?? [] { walk(child, depth + 1) }
+            }
+            if let content = self.view.window?.contentView { walk(content, 0) }
+            log.info("ax focused: \(describe(self.webView.accessibilityFocusedUIElement as Any), privacy: .public)")
+            let middle = NSPoint(x: self.view.window!.frame.midX, y: self.view.window!.frame.midY)
+            log.info("ax hit: \(describe(self.view.window?.contentView?.accessibilityHitTest(middle) as Any), privacy: .public)")
         } else if step.hasPrefix("@key:") {
             // "@key:cmd+w": a real keystroke, through the app's
             // normal key handling (menus first).

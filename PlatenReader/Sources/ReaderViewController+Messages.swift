@@ -39,7 +39,7 @@ extension ReaderViewController {
             showFirstRunExplainerIfNeeded()
             // VoiceOver: name the page after the book, and let the page know
             // whether VoiceOver is on (it then follows page turns).
-            webView.setAccessibilityLabel(state.title)
+            bookPage.name = state.title
             callPlaten("setVoiceOver", NSWorkspace.shared.isVoiceOverEnabled)
 
         case "contents":
@@ -126,9 +126,13 @@ extension ReaderViewController {
             log.error("reader error: \(body["message"] as? String ?? "", privacy: .public)\n\(body["stack"] as? String ?? "", privacy: .public)")
             showFailure(BookOpenError.unreadable(body["message"] as? String ?? ""))
 
-        case "readAloud":
-            // VoiceOver reads the page on screen (see accessibility.js).
-            if let text = body["text"] as? String, NSWorkspace.shared.isVoiceOverEnabled {
+        case "pageText":
+            // The text on screen, for VoiceOver (see accessibility.js). It
+            // becomes the page VoiceOver reads, and is read out at once when
+            // the page has just turned (or R was pressed).
+            let text = body["text"] as? String ?? ""
+            bookPage.text = text
+            if body["speak"] as? Bool == true, !text.isEmpty, NSWorkspace.shared.isVoiceOverEnabled {
                 NSAccessibility.post(element: view.window as Any, notification: .announcementRequested,
                                      userInfo: [.announcement: text,
                                                 .priority: NSAccessibilityPriorityLevel.high.rawValue])

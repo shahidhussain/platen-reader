@@ -31,6 +31,7 @@ scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next();@toggle
 - JavaScript, such as `platen.next()`. `platen.view` exposes the foliate view; string results are logged as `step result:`.
 - `@<selector>` sends a menu action, such as `@toggleContents:` or `@findNext:`.
 - `@search:<query>` runs a search; `@tab:<contents|bookmarks|search>` opens the panel on a tab.
+- `@ax` logs the window's accessibility tree as VoiceOver sees it (lines starting `ax:`).
 
 The screen-control tools may lack macOS permissions in this environment, so verify UI through these snapshots.
 

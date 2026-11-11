@@ -283,6 +283,9 @@ struct TypographyPopover: View {
         .formStyle(.grouped)
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
+        // VoiceOver names the popover rather than saying "scroll area".
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Text and Appearance"))
     }
 }
 
@@ -317,6 +320,8 @@ struct LayoutPopover: View {
         .formStyle(.grouped)
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Layout"))
     }
 }
 
