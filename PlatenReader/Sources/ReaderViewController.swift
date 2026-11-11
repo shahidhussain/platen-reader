@@ -56,6 +56,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     var hideTimer: Timer?
     var cancellables: Set<AnyCancellable> = []
     var appearanceObservation: NSKeyValueObservation?
+    var voiceOverObservation: NSKeyValueObservation?
 
     /// The book's own title, once known (used for the window title).
     var bookTitle: String? { state.title.isEmpty ? nil : state.title }
@@ -220,6 +221,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             DispatchQueue.main.async { self?.pushSettings() }
         }
         installScrollMonitor()
+        // VoiceOver turned on or off while a book is open.
+        voiceOverObservation = NSWorkspace.shared.observe(\.isVoiceOverEnabled) { [weak self] workspace, _ in
+            DispatchQueue.main.async { self?.callPlaten("setVoiceOver", workspace.isVoiceOverEnabled) }
+        }
     }
 
     override func viewWillDisappear() {
@@ -371,8 +376,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             // Hidden views take no clicks, so the page underneath gets them.
             self.overlayHost.isHidden = !self.overlayVisible
         })
-        // Keep VoiceOver from landing on invisible controls.
-        overlayHost.setAccessibilityElement(overlayVisible)
+        // VoiceOver skips the bar while it is hidden (hidden views are left
+        // out of the accessibility tree), and sees every control in it when
+        // shown. (Marking the bar itself as one accessibility element hid
+        // some of its buttons from VoiceOver.)
     }
 
     /// Settings shows a note when Two Pages is chosen but the front book

@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import SwiftUI
 import WebKit
 import os
 

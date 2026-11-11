@@ -37,6 +37,10 @@ extension ReaderViewController {
             view.window?.windowController?.synchronizeWindowTitleWithDocumentName()
             sendBookmarksToPage()
             showFirstRunExplainerIfNeeded()
+            // VoiceOver: name the page after the book, and let the page know
+            // whether VoiceOver is on (it then follows page turns).
+            webView.setAccessibilityLabel(state.title)
+            callPlaten("setVoiceOver", NSWorkspace.shared.isVoiceOverEnabled)
 
         case "contents":
             // Arrives after the first page is on screen (built in the background).
