@@ -227,6 +227,9 @@
     "No results for “%@”" : {
 
     },
+    "No text on this page" : {
+
+    },
     "None" : {
 
     },
@@ -249,6 +252,9 @@
 
     },
     "p. %@" : {
+
+    },
+    "page" : {
 
     },
     "Page Curl" : {
