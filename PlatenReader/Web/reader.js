@@ -22,7 +22,7 @@
 //   jumps.js        jumps and the Back button
 //   search.js       find in book
 //   contents.js     table of contents
-//   accessibility.js  names and page-following for VoiceOver
+//   accessibility.js  VoiceOver: names, and reading each page aloud
 
 import './foliate/view.js'
 import { EPUB } from './foliate/epub.js'
@@ -34,7 +34,7 @@ import { sendContents } from './modules/contents.js'
 import { attachPointerHandlers, swipe } from './modules/input.js'
 import { goBack, jump, noteMovement, rememberJumpOrigin } from './modules/jumps.js'
 import { applyLayout } from './modules/layout.js'
-import { followPage, nameBook, nameSection, setVoiceOver } from './modules/accessibility.js'
+import { nameBook, nameSection, pageChanged, readPage, setVoiceOver } from './modules/accessibility.js'
 import { followScroll, updatePageNumbers } from './modules/pagenumbers.js'
 import { clearSearch, search } from './modules/search.js'
 
@@ -99,7 +99,7 @@ const onRelocate = ({ detail }) => {
         updatePageNumbers(detail)
         // Keep the frame's name on the chapter being read (for VoiceOver).
         for (const { doc } of reader.view.renderer.getContents?.() ?? []) nameSection(doc, tocItem?.label?.trim())
-        followPage()
+        pageChanged(lastReason)
         // Page width changes with the layout; re-check tables each time.
         if (!reader.isFixedLayout && reader.settings?.flow !== 'scrolled')
             for (const { doc } of reader.view.renderer.getContents?.() ?? []) if (doc) fitWideTables(doc)
@@ -234,6 +234,7 @@ window.platen = {
     },
     // VoiceOver on or off (from Swift, which watches the system setting).
     setVoiceOver,
+    readPage,
     swipeMove: dx => swipe.move(dx),
     swipeEnd: direction => swipe.end(direction),
     // For debugging and automated checks (scripts/run-debug.sh steps).

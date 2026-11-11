@@ -1,26 +1,31 @@
 // Platen Reader: help for VoiceOver.
 //
-// The book is shown in a web view, so VoiceOver meets it as "web content".
-// Two things make that friendlier:
+// The book is shown in a web view, so VoiceOver meets it as web content,
+// and in paginated mode the whole chapter is laid out side by side with only
+// one page visible. Reading by moving VoiceOver's cursor through that is
+// awkward, and the cursor easily wanders onto a page that is not showing.
+// So, while VoiceOver is on:
 //
-// - Names. The page and each chapter's frame are named after the book and
-//   chapter, so VoiceOver says "The Trial, chapter 3" rather than an unnamed
-//   web area or frame.
-// - Following the page. In paginated mode the whole chapter is laid out side
-//   by side and only one page is visible, so VoiceOver's cursor can be left
-//   behind (or wander off-screen) when a page turns. While VoiceOver is on,
-//   each page turn moves keyboard focus, which VoiceOver follows, to the
-//   first paragraph on the new page; VoiceOver then reads from there.
+// - Each time the page changes, the text now on screen is sent to Swift,
+//   which asks VoiceOver to read it out (an accessibility announcement).
+//   Turning the page reads the next one; R reads the current page again.
+// - VoiceOver's cursor is left alone. (Moving it to the new page made
+//   VoiceOver scroll back to wherever that paragraph began, which turned
+//   the page back.)
+//
+// The page and each chapter's frame are also named after the book and the
+// chapter, so VoiceOver says "Legend, Prologue" rather than "web area".
 
 import { reader } from './state.js'
+import { post } from './bridge.js'
 
 let voiceOverOn = false
 let bookTitle = ''
-let focused = null
+let lastRead = null
 
 function setVoiceOver(on) {
     voiceOverOn = !!on
-    if (!voiceOverOn) clearFocus()
+    lastRead = null
 }
 
 // Names the web area after the book.
@@ -30,7 +35,7 @@ function nameBook(title) {
     reader.view?.setAttribute('aria-label', bookTitle)
 }
 
-// Names a chapter's frame, e.g. "The Trial, Chapter 3".
+// Names a chapter's frame, e.g. "Legend, Prologue".
 function nameSection(doc, chapter) {
     const frame = doc?.defaultView?.frameElement
     if (!frame) return
@@ -39,33 +44,25 @@ function nameSection(doc, chapter) {
     frame.setAttribute('aria-label', name)
 }
 
-function clearFocus() {
-    if (!focused) return
-    focused.removeAttribute('tabindex')
-    focused.removeAttribute('data-platen-reading')
-    focused = null
+// The text on screen: the visible range foliate reports (both pages in a
+// two-page spread), with runs of white space collapsed.
+const visibleText = () =>
+    (reader.view?.lastLocation?.range?.toString() ?? '').replace(/\s+/g, ' ').trim()
+
+// Called after every move. Reads the new page, unless this was only a
+// re-layout ("anchor": the same text, laid out again) or the same page.
+function pageChanged(reason) {
+    if (!voiceOverOn || reason === 'anchor') return
+    const cfi = reader.view?.lastLocation?.cfi
+    if (!cfi || cfi === lastRead) return
+    lastRead = cfi
+    readPage()
 }
 
-// Paragraph-like elements that VoiceOver reads as one piece.
-const blocks = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th, div'
-
-// Called after the view moves (a page turn, a jump). Moves focus to the
-// first paragraph that starts or continues on the page now on screen.
-function followPage() {
-    if (!voiceOverOn || reader.isFixedLayout) return
-    const range = reader.view?.lastLocation?.range
-    let node = range?.startContainer
-    if (!node) return
-    if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentElement
-    const target = node?.closest?.(blocks) ?? node
-    if (!target || target === focused) return
-    clearFocus()
-    target.setAttribute('tabindex', '-1')
-    target.setAttribute('data-platen-reading', '')
-    // preventScroll: the paragraph may have begun on the previous page;
-    // focusing it must not move the page back.
-    target.focus({ preventScroll: true })
-    focused = target
+// Asks VoiceOver (through Swift) to read the page on screen.
+function readPage() {
+    const text = visibleText()
+    if (text) post('readAloud', { text })
 }
 
-export { followPage, nameBook, nameSection, setVoiceOver }
+export { nameBook, nameSection, pageChanged, readPage, setVoiceOver }

@@ -33,6 +33,11 @@ extension ReaderViewController {
             setOverlay(visible: !overlayVisible)
             return true
         }
+        // R: VoiceOver reads the page on screen again.
+        if !shift, event.charactersIgnoringModifiers?.lowercased() == "r", NSWorkspace.shared.isVoiceOverEnabled {
+            js("platen.readPage()")
+            return true
+        }
         switch event.keyCode {
         case 49: // space
             turn(shift ? .prev : .next)

@@ -48,9 +48,6 @@ const bookCSS = s => `
         orphans: 2;
     }
     pre { white-space: pre-wrap !important; }
-    /* The paragraph VoiceOver is reading (see accessibility.js) takes focus;
-       it needs no focus ring. */
-    [data-platen-reading]:focus { outline: none !important; }
     /* Nothing may be wider than a page: in paginated mode anything wider
        spills into the next column and is drawn over its text. */
     body * { max-width: 100% !important; box-sizing: border-box; }

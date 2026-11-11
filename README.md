@@ -53,7 +53,7 @@ Measured here (Debug build, cold launch plus open): about 290 ms to the first vi
 
 ## Not yet done
 
-- **VoiceOver:** a first hand pass found unnamed controls and a reading cursor that did not follow page turns; both are fixed and need a second pass. Reading on continuously past the end of a page (VoiceOver's Read All) is not yet followed by the page.
+- **VoiceOver:** each page is read aloud as it turns (R repeats it), controls are named, and VoiceOver's own scrolling settles on whole pages. Needs another pass by hand; VoiceOver's Read All still runs on past the page without turning it.
 - **Formats and sources:** MOBI and AZW3 with real DRM-free samples; SMB and iCloud-offloaded opens; the real-world corpus (Standard Ebooks, Gutenberg, the W3C EPUB 3 tests).
 - **UI:** top-edge reveal in full screen; a font picker listing all installed fonts.
 - **Testing:** XCUITests for open, page turn, mode switch and bookmarks, and running the corpus check in CI.

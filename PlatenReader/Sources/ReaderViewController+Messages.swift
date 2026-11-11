@@ -126,6 +126,14 @@ extension ReaderViewController {
             log.error("reader error: \(body["message"] as? String ?? "", privacy: .public)\n\(body["stack"] as? String ?? "", privacy: .public)")
             showFailure(BookOpenError.unreadable(body["message"] as? String ?? ""))
 
+        case "readAloud":
+            // VoiceOver reads the page on screen (see accessibility.js).
+            if let text = body["text"] as? String, NSWorkspace.shared.isVoiceOverEnabled {
+                NSAccessibility.post(element: view.window as Any, notification: .announcementRequested,
+                                     userInfo: [.announcement: text,
+                                                .priority: NSAccessibilityPriorityLevel.high.rawValue])
+            }
+
         case "log":
             log.notice("js: \(body["message"] as? String ?? "", privacy: .public)")
 
