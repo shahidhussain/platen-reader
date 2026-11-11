@@ -12,7 +12,7 @@ A free, open source (MPL-2.0), file-first ebook viewer for macOS, with iOS to fo
   - `MainMenu`: the full command set. Actions go to the first responder.
 - `PlatenReader/Web/`: `reader.html/js/css`, the shell that drives foliate-js. `foliate/` is vendored at a pinned commit (see `foliate/VENDORED.md`).
 - `design/icon/`: the app icon. `make-icons.py` draws it (SVG, in several background colours; Honey is the one in use), Quick Look renders it, and `mask-icon.swift` makes the corners transparent. The sizes live in `PlatenReader/Sources/Assets.xcassets/AppIcon.appiconset`.
-- `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `check-corpus.sh` (opens each fixture and checks the result), `run-debug.sh` (headless open + snapshots), `update-foliate.sh`. The Xcode project is maintained in Xcode; `PlatenReader/Sources` is a synchronised folder, so new files need no project edits. The Xcode project is maintained in Xcode; `PlatenReader/Sources` is a synchronised folder, so new files need no project edits.
+- `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `check-corpus.sh` (opens each fixture and checks the result), `run-debug.sh` (headless open + snapshots), `update-foliate.sh`. The Xcode project is maintained in Xcode; `PlatenReader/Sources` is a synchronised folder, so new files need no project edits.
 - Reader features live in `reader.js` (opening, the `platen` commands) and `PlatenReader/Web/modules/` (one module per feature: layout, book fixes, input, page numbers, bookmarks, jumps, search, contents; shared state in `state.js`). The native side is `ContentsPopover.swift`, `OverlayViews.swift`, `PageTurnView.swift` and `ImageZoomView.swift`. `ReaderViewController` is split by job into `ReaderViewController+*.swift` (messages, input, page turn, contents, menu, pictures).
 
 ## Build and test
@@ -31,6 +31,7 @@ scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next();@toggle
 - JavaScript, such as `platen.next()`. `platen.view` exposes the foliate view; string results are logged as `step result:`.
 - `@<selector>` sends a menu action, such as `@toggleContents:` or `@findNext:`.
 - `@search:<query>` runs a search; `@tab:<contents|bookmarks|search>` opens the panel on a tab.
+- `@ax` logs the window's accessibility tree as VoiceOver sees it (lines starting `ax:`).
 
 The screen-control tools may lack macOS permissions in this environment, so verify UI through these snapshots.
 
@@ -47,4 +48,4 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 
 ## Status
 
-M0 (spike) is done. M1 is in progress on branch `m1`; see "Not yet done" in README.md.
+M0 (spike) is done. M1 is in progress: work happens on branch `m1` and is merged into `main` through pull requests (CI runs on them); see "Not yet done" in README.md.

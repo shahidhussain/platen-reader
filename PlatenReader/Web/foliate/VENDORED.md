@@ -17,6 +17,11 @@ If you patch a file, list it here with the reason, so updates can re-apply it.
   screen until the next section is laid out and scrolled into place, then is
   removed in the same frame, so moving between chapters never flashes a
   blank page. Marked `// Platen:`.
+- `paginator.js`, the container's scroll handler: in paginated mode, a scroll
+  the paginator did not make (VoiceOver bringing what it reads into view)
+  settles on the nearest whole page and is reported as a relocation. Not
+  while `holdAlignment` is set (Platen sets it during trackpad swipes).
+  Marked `// Platen:`.
 - `paginator.js`, `#turnPage`: no 100 ms pause after an unanimated turn
   within a section (upstream waits after every unanimated turn), so fast
   key presses turn pages as fast as they come. Marked `// Platen:`.

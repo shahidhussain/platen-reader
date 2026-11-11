@@ -64,20 +64,20 @@ struct OverlayBar: View {
             .frame(minHeight: 22)
 
             HStack(spacing: 18) {
+                // Every button here has a Label (a name and an icon, shown as
+                // the icon only): VoiceOver reads the name.
                 Button(action: actions.toggleContents) {
-                    Image(systemName: "list.bullet")
+                    Label(String(localized: "Contents, Bookmarks and Search"), systemImage: "list.bullet")
                 }
                 .help("Contents, Bookmarks and Search (⌘T)")
-                .accessibilityLabel(Text("Contents, Bookmarks and Search"))
                 .popover(isPresented: $state.sidebarVisible, arrowEdge: .top) {
                     ContentsPopover(state: state, actions: sidebarActions)
                 }
 
                 Button(action: state.isRightToLeft ? actions.nextPage : actions.previousPage) {
-                    Image(systemName: "chevron.left")
+                    Label((state.isRightToLeft ? String(localized: "Next Page") : String(localized: "Previous Page")), systemImage: "chevron.left")
                 }
-                .help(state.isRightToLeft ? "Next Page" : "Previous Page")
-                .accessibilityLabel(state.isRightToLeft ? Text("Next Page") : Text("Previous Page"))
+                .help((state.isRightToLeft ? String(localized: "Next Page") : String(localized: "Previous Page")))
 
                 ProgressSlider(
                     value: Binding(
@@ -96,29 +96,27 @@ struct OverlayBar: View {
                 )
 
                 Button(action: state.isRightToLeft ? actions.previousPage : actions.nextPage) {
-                    Image(systemName: "chevron.right")
+                    Label((state.isRightToLeft ? String(localized: "Previous Page") : String(localized: "Next Page")), systemImage: "chevron.right")
                 }
-                .help(state.isRightToLeft ? "Previous Page" : "Next Page")
-                .accessibilityLabel(state.isRightToLeft ? Text("Previous Page") : Text("Next Page"))
+                .help((state.isRightToLeft ? String(localized: "Previous Page") : String(localized: "Next Page")))
 
                 // Bookmarks the page on screen (or removes its bookmark).
                 Button(action: actions.toggleBookmark) {
-                    Image(systemName: state.isPageBookmarked ? "bookmark.fill" : "bookmark")
+                    Label(state.isPageBookmarked ? String(localized: "Remove Bookmark") : String(localized: "Bookmark This Page"),
+                          systemImage: state.isPageBookmarked ? "bookmark.fill" : "bookmark")
                         .foregroundStyle(state.isPageBookmarked ? Color.red : Color.primary)
                 }
                 .help(state.isPageBookmarked ? String(localized: "Remove Bookmark (⌘D)") : String(localized: "Bookmark This Page (⌘D)"))
-                .accessibilityLabel(state.isPageBookmarked ? Text("Remove Bookmark") : Text("Bookmark This Page"))
 
                 // Layout: one page, two pages or scroll, and line width.
                 Button {
                     showLayout.toggle()
                     actions.interacted()
                 } label: {
-                    Image(systemName: state.flow == .scrolled ? "scroll"
+                    Label(String(localized: "Layout"), systemImage: state.flow == .scrolled ? "scroll"
                           : settings.pageLayout == .two ? "book" : "doc.plaintext")
                 }
                 .help(String(localized: "Layout"))
-                .accessibilityLabel(Text("Layout"))
                 .popover(isPresented: $showLayout, arrowEdge: .top) {
                     LayoutPopover(state: state, actions: actions)
                 }
@@ -127,15 +125,16 @@ struct OverlayBar: View {
                     showTypography.toggle()
                     actions.interacted()
                 } label: {
-                    Text("Aa").font(.title3.weight(.medium))
+                    // "textformat" is the system's "Aa" symbol.
+                    Label(String(localized: "Text and Appearance"), systemImage: "textformat")
                 }
                 .help("Text and Appearance")
-                .accessibilityLabel(Text("Text and Appearance"))
                 .popover(isPresented: $showTypography, arrowEdge: .top) {
                     TypographyPopover(state: state, actions: actions)
                 }
             }
             .buttonStyle(.borderless)
+            .labelStyle(.iconOnly)
             .font(.title3)
             .imageScale(.large)
             .frame(minHeight: 32)
@@ -284,6 +283,9 @@ struct TypographyPopover: View {
         .formStyle(.grouped)
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
+        // VoiceOver names the popover rather than saying "scroll area".
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Text and Appearance"))
     }
 }
 
@@ -318,6 +320,8 @@ struct LayoutPopover: View {
         .formStyle(.grouped)
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Layout"))
     }
 }
 

@@ -23,9 +23,6 @@
     "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
 
     },
-    "Aa" : {
-
-    },
     "About %@" : {
 
     },
@@ -230,6 +227,9 @@
     "No results for “%@”" : {
 
     },
+    "No text on this page" : {
+
+    },
     "None" : {
 
     },
@@ -252,6 +252,9 @@
 
     },
     "p. %@" : {
+
+    },
+    "page" : {
 
     },
     "Page Curl" : {

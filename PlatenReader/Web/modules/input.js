@@ -119,6 +119,8 @@ const swipe = {
     move(dx) {
         if (!reader.view || reader.isFixedLayout) return
         ribbons.hidden = true // they would not move with the page
+        // The paginator must not settle the page while the fingers move it.
+        reader.view.renderer.holdAlignment = true
         reader.view.renderer.scrollBy?.(dx, 0)
     },
     // direction: 1 or -1 for a flick, which turns the page however short
@@ -131,6 +133,7 @@ const swipe = {
         const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
         const animated = r.hasAttribute('animated')
         if (!reduceMotion) r.setAttribute('animated', '')
+        r.holdAlignment = false
         r.snap?.(direction, 0)
         if (!animated) setTimeout(() => {
             if (!(reader.settings?.animated)) r.removeAttribute('animated')

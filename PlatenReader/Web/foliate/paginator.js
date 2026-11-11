@@ -561,6 +561,18 @@ export class Paginator extends HTMLElement {
             if (this.scrolled) {
                 if (this.#justAnchored) this.#justAnchored = false
                 else this.#afterScroll('scroll')
+            } else if (!this.#locked && !this.holdAlignment) {
+                // Platen: something other than the paginator scrolled the
+                // page, typically VoiceOver bringing what it is reading into
+                // view. Settle on the nearest whole page and report the move,
+                // rather than leaving the page half-turned and unreported.
+                // (holdAlignment is set while a trackpad swipe is under way.)
+                const { start, size } = this
+                if (!size) return
+                const settled = Math.abs(this.#scrollBounds?.[0] ?? 0)
+                const page = Math.round(start / size)
+                if (Math.abs(start - page * size) > 1) this.#scrollToPage(page, 'scroll')
+                else if (Math.abs(start - settled) > 1) this.#afterScroll('scroll')
             }
         }, 250))
 

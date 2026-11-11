@@ -1,8 +1,6 @@
 # Builds and tests Platen Reader on every push and pull request.
 #
-# Signed, notarised release builds for tagged versions are not set up yet:
-# they need a Developer ID certificate and App Store Connect API key stored
-# as repository secrets (see README, "Releasing").
+# Signed, notarised builds for version tags are made by release.yml.
 name: CI
 
 on:

@@ -21,6 +21,8 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     let state = ReaderState()
 
     var webView: ReaderWebView!
+    /// What VoiceOver reads: the text on screen (see BookPageAccessibilityView).
+    let bookPage = BookPageAccessibilityView()
     var overlayHost: NSHostingView<OverlayBar>!
     var explainerHost: NSView?
     /// Backing for the title when it is shown, drawn by us so the real title
@@ -56,6 +58,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     var hideTimer: Timer?
     var cancellables: Set<AnyCancellable> = []
     var appearanceObservation: NSKeyValueObservation?
+    var voiceOverObservation: NSKeyValueObservation?
 
     /// The book's own title, once known (used for the window title).
     var bookTitle: String? { state.title.isEmpty ? nil : state.title }
@@ -92,6 +95,12 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         webView.menuCustomiser = { [weak self] menu in self?.customiseContextMenu(menu) }
         webView.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(webView)
+
+        // VoiceOver reads the book through this stand-in, not the web view.
+        bookPage.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(bookPage)
+        root.hiddenFromAccessibility = webView
+        webView.accessibilityStandIn = bookPage
 
         // Contents, bookmarks and search: a popover from the overlay's
         // Contents button.
@@ -151,6 +160,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             webView.topAnchor.constraint(equalTo: root.topAnchor),
             webView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            bookPage.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            bookPage.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            bookPage.topAnchor.constraint(equalTo: root.topAnchor),
+            bookPage.bottomAnchor.constraint(equalTo: root.bottomAnchor),
 
             overlayHost.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             overlayHost.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
@@ -220,6 +233,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             DispatchQueue.main.async { self?.pushSettings() }
         }
         installScrollMonitor()
+        // VoiceOver turned on or off while a book is open.
+        voiceOverObservation = NSWorkspace.shared.observe(\.isVoiceOverEnabled) { [weak self] workspace, _ in
+            DispatchQueue.main.async { self?.callPlaten("setVoiceOver", workspace.isVoiceOverEnabled) }
+        }
     }
 
     override func viewWillDisappear() {
@@ -333,6 +350,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     func restartHideTimer() {
         hideTimer?.invalidate()
         guard overlayVisible else { return }
+        // With VoiceOver, the controls stay until dismissed (C or Esc):
+        // VoiceOver users move through them without the pointer, and the
+        // bar vanishing mid-way sent VoiceOver's cursor elsewhere.
+        if NSWorkspace.shared.isVoiceOverEnabled { return }
         hideTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
             guard let self, self.overlayVisible else { return }
             // Never hide from under an open popover; closing it restarts this.
@@ -371,8 +392,10 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             // Hidden views take no clicks, so the page underneath gets them.
             self.overlayHost.isHidden = !self.overlayVisible
         })
-        // Keep VoiceOver from landing on invisible controls.
-        overlayHost.setAccessibilityElement(overlayVisible)
+        // VoiceOver skips the bar while it is hidden (hidden views are left
+        // out of the accessibility tree), and sees every control in it when
+        // shown. (Marking the bar itself as one accessibility element hid
+        // some of its buttons from VoiceOver.)
     }
 
     /// Settings shows a note when Two Pages is chosen but the front book
