@@ -27,8 +27,6 @@ permissions:
 jobs:
   release:
     runs-on: macos-15
-    env:
-      KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +38,7 @@ jobs:
           P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
         run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
           KEYCHAIN_PASSWORD=$(uuidgen)
           echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
@@ -95,4 +94,4 @@ jobs:
 
       - name: Remove the temporary keychain
         if: always()
-        run: security delete-keychain "$KEYCHAIN" || true
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
