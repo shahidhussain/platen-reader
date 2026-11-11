@@ -57,7 +57,11 @@ Measured here (Debug build, cold launch plus open): about 290 ms to the first vi
 - **Formats and sources:** MOBI and AZW3 with real DRM-free samples; SMB and iCloud-offloaded opens; the real-world corpus (Standard Ebooks, Gutenberg, the W3C EPUB 3 tests).
 - **UI:** top-edge reveal in full screen; a font picker listing all installed fonts.
 - **Testing:** XCUITests for open, page turn, mode switch and bookmarks, and running the corpus check in CI.
-- **Releasing:** a notarised build on GitHub releases and a Homebrew cask. These need a Developer ID certificate and App Store Connect API key, held as repository secrets.
+- **Releasing:** a Homebrew cask (after the first notarised release).
+
+## Releasing
+
+Push a version tag (for example `git tag v0.1.0 && git push origin v0.1.0`) and `.github/workflows/release.yml` builds, signs, notarises and staples the app, then publishes `Platen-Reader-<version>.zip` on GitHub releases. The version shown in the app comes from the tag. The workflow needs six repository secrets, listed at the top of that file: the Developer ID Application certificate (.p12, base64) and its password, the team ID, and an App Store Connect API key (.p8, base64) with its key ID and issuer ID.
 
 ## Licence
 
