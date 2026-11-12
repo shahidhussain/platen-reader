@@ -1,0 +1,24 @@
+// Build settings that must be the same for the Mac and iOS apps.
+//
+// Both app targets build on this file (it is the project-level base
+// configuration), so the version, bundle ID and minimum OS versions are set
+// in one place and the two apps cannot drift apart. Settings that differ by
+// platform stay on each target in Xcode.
+//
+// The release workflow overrides MARKETING_VERSION and CURRENT_PROJECT_VERSION
+// on the xcodebuild command line, which takes precedence over this file.
+
+// One bundle ID for Mac and iOS: one App Store listing (universal purchase).
+// The direct-download Mac build keeps it too.
+PRODUCT_BUNDLE_IDENTIFIER = org.platenreader.PlatenReader
+PRODUCT_NAME = Platen Reader
+PRODUCT_MODULE_NAME = PlatenReader
+
+MARKETING_VERSION = 0.1
+CURRENT_PROJECT_VERSION = 1
+
+// The minimum systems from the spec's "Decisions made".
+MACOSX_DEPLOYMENT_TARGET = 14.0
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+
+SWIFT_VERSION = 5.0

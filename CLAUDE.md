@@ -5,11 +5,14 @@ A free, open source (MPL-2.0), file-first ebook viewer for macOS, with iOS to fo
 ## Layout
 
 - `PlatenCore/`: Swift package, platform-neutral (no AppKit, UIKit or WebKit). It holds the zip reader (Zip64, recovery scan), EPUB package parser, DRM detection, font de-obfuscation, path fix-ups, book identity and the per-book position store. Unit-tested.
+- `PlatenReader/Shared/`: code used by both the Mac and iOS apps (scheme handler with CSP and remote-load blocker, `ReaderState`, the settings model, the String Catalog, the log). A synchronised folder in both app targets. Nothing here may import AppKit or UIKit; platform parts go in `+AppKit` / `+UIKit` files in each app.
+- `Config/Shared.xcconfig`: the version, bundle ID and minimum OS versions, shared by both app targets.
 - `PlatenReader/Sources/`: macOS app (AppKit, with SwiftUI for the overlay and Settings). It is a file-system-synchronised group, so new files need no project edits.
   - `BookDocument`: an `NSDocument`. The reader loads the file itself, in the background.
   - `ReaderViewController`: WKWebView, overlay, click zones, keys, the JS bridge and position saving.
   - `ReaderSchemeHandler`: serves `platen://reader/app/*` (the shell) and `platen://reader/book/*` (book files from memory). It also holds the CSP and the remote-load blocker.
   - `MainMenu`: the full command set. Actions go to the first responder.
+- `PlatenReader iOS/`: the iOS and iPadOS app (target "PlatenReader iOS", same bundle ID): the document browser as the home screen, and a UIKit reader around the same web shell. M3 is planned phase by phase in `docs/m3-ios-plan.md`.
 - `PlatenReader/Web/`: `reader.html/js/css`, the shell that drives foliate-js. `foliate/` is vendored at a pinned commit (see `foliate/VENDORED.md`).
 - `design/icon/`: the app icon. `make-icons.py` draws it (SVG, in several background colours; Honey is the one in use), Quick Look renders it, and `mask-icon.swift` makes the corners transparent. The sizes live in `PlatenReader/Sources/Assets.xcassets/AppIcon.appiconset`.
 - `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `check-corpus.sh` (opens each fixture and checks the result), `run-debug.sh` (headless open + snapshots), `update-foliate.sh`. The Xcode project is maintained in Xcode; `PlatenReader/Sources` is a synchronised folder, so new files need no project edits.
@@ -25,6 +28,11 @@ python3 scripts/make-fixtures.py                           # regenerate corpus
 scripts/check-corpus.sh                                    # corpus must stay green
 scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next();@toggleContents:"
 # → log lines with open timings; PNG snapshots in build/snaps/
+xcodebuild -project PlatenReader.xcodeproj -scheme "PlatenReader iOS" -configuration Debug \
+  -destination "generic/platform=iOS Simulator" -derivedDataPath build/DerivedData \
+  CODE_SIGNING_ALLOWED=NO build                            # iOS app
+scripts/run-ios-debug.sh Fixtures/generated/novel.epub "@tap:right;@tap:centre"
+# → opens the book in the Simulator; log lines; screenshots in build/snaps-ios/
 ```
 
 `run-debug.sh` relies on Debug-only hooks (`DebugHooks.swift`). `PLATEN_SNAPSHOT_DIR` writes snapshots after the first render: `<book>-N.png` of the web view and `<book>-N-native.png` of the native views (the native one is taken 0.5 s later). `PLATEN_STEPS` runs semicolon-separated steps, one per second:
@@ -48,4 +56,4 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 
 ## Status
 
-M0 (spike) is done. M3 (iOS, iPadOS and the Mac App Store build) is planned in the spec's "iOS and iPadOS (M3)" section; do not start it until the user says so. On macOS 26 / iOS 26 and later the overlay uses Liquid Glass, with the existing materials as the fallback. M1 is in progress: work happens on branch `m1` and is merged into `main` through pull requests (CI runs on them); see "Not yet done" in README.md.
+M0 (spike) is done. M3 (iOS and iPadOS) has started, with the user's go-ahead: the plan and its phases are in `docs/m3-ios-plan.md`; phase 1 (the iOS target, the shared folder and a minimal reader) is done. On macOS 26 / iOS 26 and later the overlay uses Liquid Glass, with the existing materials as the fallback. M1 is in progress: work happens on branch `m1` and is merged into `main` through pull requests (CI runs on them); see "Not yet done" in README.md.

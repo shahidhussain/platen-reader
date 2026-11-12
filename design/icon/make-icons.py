@@ -98,6 +98,21 @@ def icon(name, top, bottom):
 '''
 
 
+def ios_icon(svg):
+    """The iOS and iPadOS version of an icon. iOS draws the rounded corners
+    itself and wants a full-bleed, opaque square, so the background fills the
+    whole 1024 square and the artwork is scaled up from the Mac icon's
+    824-pixel rounded square (100 to 924) to fill it."""
+    svg = re.sub(r'<rect x="100" y="100" width="824" height="824" rx="185" (fill="[^"]*")/>',
+                 r'<rect width="1024" height="1024" \1/>', svg)
+    head, rest = svg.split("</defs>", 1)
+    body, tail = rest.rsplit("</svg>", 1)
+    scale = 1024 / 824
+    background, art = body.split("/>", 1)
+    return (f'{head}</defs>{background}/>\n  <g transform="scale({scale:.6f}) translate(-100 -100)">'
+            f'{art}  </g>\n</svg>{tail}')
+
+
 def sheet(names):
     """All variants at full size and at 128, 64, 32 and 16 points, on light
     and dark backgrounds."""
@@ -134,4 +149,12 @@ if __name__ == "__main__":
     for name, (top, bottom) in BACKGROUNDS.items():
         open(os.path.join(HERE, f"spread-{name}.svg"), "w").write(icon(name, top, bottom))
     sheet(list(BACKGROUNDS))
-    print("wrote", ", ".join(f"spread-{n}.svg" for n in BACKGROUNDS), "and spread-comparison.svg")
+    # iOS uses Honey, like the Mac. Render it to a PNG with Quick Look, then
+    # flatten it (iOS icons must have no transparency):
+    #   qlmanage -t -s 1024 -o /tmp design/icon/spread-honey-ios.svg
+    #   python3 -c "from PIL import Image; Image.open('/tmp/spread-honey-ios.svg.png')\
+    #     .convert('RGB').save('PlatenReader iOS/Sources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png')"
+    honey = icon("honey", *BACKGROUNDS["honey"])
+    open(os.path.join(HERE, "spread-honey-ios.svg"), "w").write(ios_icon(honey))
+    print("wrote", ", ".join(f"spread-{n}.svg" for n in BACKGROUNDS),
+          "spread-comparison.svg and spread-honey-ios.svg")

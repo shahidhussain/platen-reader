@@ -59,9 +59,11 @@ Measured here (Debug build, cold launch plus open): about 290 ms to the first vi
 - **Testing:** XCUITests for open, page turn, mode switch and bookmarks, and running the corpus check in CI.
 - **Releasing:** a Homebrew cask (after the first notarised release).
 
-## Next: iOS, iPadOS and the App Store (M3)
+## In progress: iOS, iPadOS and the App Store (M3)
 
-Planned, not started. The iOS app and a Mac App Store build will ship together as one universal app. The decisions (opening books in place, touch controls, layout, settings, test devices, what is still needed for submission) are in the spec, under "iOS and iPadOS (M3)".
+The iOS app and a Mac App Store build will ship together as one universal app. The decisions (opening books in place, touch controls, layout, settings, test devices, what is still needed for submission) are in the spec, under "iOS and iPadOS (M3)"; the implementation plan is in [docs/m3-ios-plan.md](docs/m3-ios-plan.md).
+
+Phase 1 is done: the **PlatenReader iOS** scheme builds an iPhone and iPad app whose home screen is the system document browser. It opens books in place, turns pages on side taps and remembers the position, using the same core, web shell, scheme handler and content blocking as the Mac. Run it from Xcode on a Simulator, or with `scripts/run-ios-debug.sh <book>`. To run it on your own iPhone or iPad, choose your team under Signing & Capabilities first.
 
 ## Releasing
 

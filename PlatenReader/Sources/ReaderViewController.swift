@@ -5,8 +5,6 @@ import SwiftUI
 import WebKit
 import os
 
-let log = Logger(subsystem: "Platen Reader", category: "reader")
-
 /// The reader for one book: a web view running foliate-js, the overlay, the
 /// open-progress indicator and the failure message.
 ///

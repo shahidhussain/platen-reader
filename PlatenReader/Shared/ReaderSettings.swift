@@ -1,5 +1,8 @@
-import AppKit
 import Combine
+import Foundation
+
+// Shared by the Mac and iOS apps. Platform colour and appearance helpers live
+// in ReaderSettings+AppKit.swift (Mac) and ReaderSettings+UIKit.swift (iOS).
 
 /// Paginated (pages turn left and right) or continuous vertical scroll.
 enum ReadingFlow: String, CaseIterable, Identifiable {
@@ -110,14 +113,6 @@ enum Theme: String, CaseIterable, Identifiable {
     }
 
     var isDark: Bool { self == .dark || self == .black }
-
-    var nsBackground: NSColor { NSColor(hex: background) }
-
-    /// The AppKit appearance that matches, so window chrome and the overlay
-    /// look right over the page.
-    var appearance: NSAppearance? {
-        NSAppearance(named: isDark ? .darkAqua : .aqua)
-    }
 }
 
 /// How a page turn (click, key or wheel) is animated. Trackpad swipes always
@@ -218,11 +213,12 @@ final class ReaderSettings: ObservableObject {
         }
     }
 
-    /// The theme to use under a given system appearance.
-    func theme(for systemAppearance: NSAppearance) -> Theme {
+    /// The theme to use when the system is in Light (false) or Dark (true)
+    /// mode. Each platform asks its own way (see the +AppKit and +UIKit files).
+    func theme(systemIsDark: Bool) -> Theme {
         switch appearance {
         case .automatic:
-            return systemAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
+            return systemIsDark ? .dark : .light
         case .light: return .light
         case .sepia: return .sepia
         case .dark: return .dark
@@ -254,16 +250,5 @@ final class ReaderSettings: ObservableObject {
                 "dark": theme.isDark,
             ] as [String: Any],
         ]
-    }
-}
-
-extension NSColor {
-    /// "#rrggbb" → NSColor (sRGB).
-    convenience init(hex: String) {
-        let digits = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        let value = UInt32(digits, radix: 16) ?? 0
-        self.init(srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
-                  green: CGFloat((value >> 8) & 0xFF) / 255,
-                  blue: CGFloat(value & 0xFF) / 255, alpha: 1)
     }
 }
