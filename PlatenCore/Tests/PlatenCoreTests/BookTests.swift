@@ -125,9 +125,9 @@ final class BookTests: XCTestCase {
         }
     }
 
-    func testPlainTextIsUnsupported() {
-        let text = Data(String(repeating: "hello ", count: 100).utf8)
-        XCTAssertThrowsError(try Book.open(source: MemoryByteSource(data: text))) {
+    func testBinaryNonZipIsUnsupported() {
+        let binary = Data((0..<4096).map { UInt8($0 % 256) })
+        XCTAssertThrowsError(try Book.open(source: MemoryByteSource(data: binary))) {
             XCTAssertEqual($0 as? BookOpenError, .unsupportedFormat)
         }
     }

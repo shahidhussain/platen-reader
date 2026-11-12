@@ -46,6 +46,10 @@ check truncated.epub          "-"                                      "rebuilt 
 check fixed-font-sizes.epub   "(d=>'ratio:'+parseFloat(getComputedStyle(d.querySelector('p.px')).fontSize)/parseFloat(getComputedStyle(d.documentElement).fontSize)+' over:'+[...d.body.querySelectorAll('*')].some(e=>[...e.getClientRects()].some(r=>r.width>parseFloat(getComputedStyle(d.documentElement).columnWidth)+1)))(platen.view.renderer.getContents()[0].doc)" "ratio:0.75 over:false"
 # Unreadable publisher colours are replaced, whichever theme is in use.
 check low-contrast.epub       "'recoloured:'+(platen.view.renderer.getContents()[0].doc.querySelectorAll('[data-platen-colour]').length>0)" "recoloured:true"
+# Plain text: title from the header, three chapters in Contents, the book
+# serif by default, and the poem's line breaks kept.
+check gutenberg.txt           "(d=>'title:'+platen.view.book.metadata.title+' toc:'+platen.view.book.toc.length+' font:'+getComputedStyle(d.body).fontFamily.split(',')[0]+' poem:'+d.querySelectorAll('p.lines').length)(platen.view.renderer.getContents()[0].doc)" "title:A Plain Tale toc:3 font:\"Iowan Old Style\""
+check windows-1252.txt        "$TEXT"                                  "Café notes"
 check drm-adept.epub          "-"                                      "drm(PlatenCore.DRMScheme.adobeADEPT)"
 
 exit $FAILED

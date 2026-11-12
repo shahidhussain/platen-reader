@@ -289,10 +289,11 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         guard shellReady, let book, !bookSentToShell else { return }
         bookSentToShell = true
         var options: [String: Any] = [
-            "format": book.format.rawValue,
+            // Plain text arrives as a made-up EPUB, so the shell opens it as one.
+            "format": book.format == .text ? BookFormat.epub.rawValue : book.format.rawValue,
             "settings": settings.webPayload(theme: currentTheme, flow: state.flow),
         ]
-        if book.format == .epub {
+        if book.format != .mobi {
             options["sizes"] = book.entrySizes.mapValues { Int(clamping: $0) }
         }
         if let cfi = record?.lastCFI { options["lastCFI"] = cfi }
