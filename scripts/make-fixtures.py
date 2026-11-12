@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generates the synthetic part of Platen's robustness corpus.
 
-Writes EPUB files into Fixtures/generated/ (git-ignored). Each one exercises a
+Writes EPUB (and plain-text) files into Fixtures/generated/ (git-ignored). Each one exercises a
 case from the spec's "Format support and robustness" table. Real-world books
 (Standard Ebooks, Gutenberg, the W3C EPUB 3 test suite) belong in
 Fixtures/corpus/ when they may be redistributed, or Fixtures/local/ otherwise.
@@ -320,6 +320,30 @@ def main():
     kepub_body = f'''<div id="book-columns" style="column-count:2;width:600px;height:800px"><div id="book-inner">
 <h1>Kobo chapter</h1><p>{spans}</p></div></div>'''
     made.append(simple("kobo.kepub.epub", "KEPUB Book", [("k1.xhtml", xhtml("Kobo", kepub_body))]))
+
+    # Plain text, Project Gutenberg style: a header naming the title and
+    # author, a contents list, hard-wrapped paragraphs (joined back up by
+    # Platen), chapter headings (which become Contents) and a poem (which
+    # keeps its line breaks).
+    import textwrap
+    chapters = []
+    for n, name in enumerate(["The River", "The Bridge", "The Town"], start=1):
+        paras = "\n\n".join(textwrap.fill(paragraph(rng, 7), 70) for _ in range(6))
+        chapters.append(f"CHAPTER {'I' * n}.\n{name}\n\n{paras}")
+    poem = "    The woods are dark and deep,\n    And I have far to go,\n    And miles before I sleep."
+    gutenberg = ("The Project Gutenberg eBook of A Plain Tale\n\n"
+                 "Title: A Plain Tale\n\nAuthor: Tex T. Fyle\n\nLanguage: English\n\n"
+                 "*** START OF THE PROJECT GUTENBERG EBOOK A PLAIN TALE ***\n\n\n"
+                 "CONTENTS\n\n CHAPTER I.   The River\n CHAPTER II.  The Bridge\n CHAPTER III. The Town\n\n\n"
+                 + "\n\n\n".join(chapters[:1]) + "\n\n" + poem + "\n\n\n" + "\n\n\n".join(chapters[1:]) + "\n")
+    p = os.path.join(OUT, "gutenberg.txt")
+    open(p, "w", newline="\r\n").write(gutenberg)  # Windows line endings, as Gutenberg ships
+    made.append(p)
+
+    # Plain text in Windows-1252, not UTF-8 (older files often are).
+    p = os.path.join(OUT, "windows-1252.txt")
+    open(p, "wb").write(("Café notes\n\n" + textwrap.fill(paragraph(rng, 5), 70) + "\n\n\u201cQuoted,\u201d she said.\n").encode("cp1252"))
+    made.append(p)
 
     for m in made:
         print(f"{os.path.getsize(m):>10,}  {os.path.relpath(m, ROOT)}")

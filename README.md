@@ -1,6 +1,6 @@
 # Platen Reader
 
-A free, open source ebook viewer for macOS that behaves like Preview: double-click a book and you are reading it within a second. There is no library, no import step and no account. It reads EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI and AZW3, all DRM-free.
+A free, open source ebook viewer for macOS that behaves like Preview: double-click a book and you are reading it within a second. There is no library, no import step and no account. It reads EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI and AZW3, all DRM-free, and plain text.
 
 Platen is native Swift. Rendering uses [foliate-js](https://github.com/johnfactotum/foliate-js) inside WKWebView, and Swift handles everything about files, parsing and state.
 
@@ -34,6 +34,7 @@ To run the core tests: `swift test --package-path PlatenCore`. To check the robu
 - **Click-zone explainer** on the first five opens, flashed on the first three mode switches, and from Help > Show Reading Controls.
 - The slider shows the chapter name while dragging. "N pages left in chapter" is optional, in Settings > General.
 - Page turns animate in 180 ms. KEPUB column wrappers are neutralised.
+- **Plain text (.txt)** is shown as a book: hard-wrapped lines are joined into paragraphs (poetry and lists keep their line breaks), "Chapter 1"-style headings become Contents, and Gutenberg headers give the title and author. It is set in Iowan Old Style unless you choose a font.
 - **Trackpad swipes** are read natively (finger phases, momentum ignored): the page follows the fingers, a flick or a drag past halfway turns one page, and anything less springs back. A mouse wheel turns one page per notch.
 - **Page numbers** centred under each page (one per page in a two-page spread). They are screen pages and move with the text.
 - **Page-turn animation** (Settings > General: Page Curl, Slide or None; trackpad swipes always slide), drawn natively from before-and-after snapshots. With two pages the leaf bends like paper (a chain of hinged strips), is shaded by its angle and casts a shadow on the pages beneath.
@@ -47,7 +48,7 @@ To run the core tests: `swift test --package-path PlatenCore`. To check the robu
 - Contents, bookmarks and search open in a popover from the Contents button. A bookmark button sits in the controls.
 - A welcome window with an Open Book… button at launch; one running copy of the app; ⌘W closes the front window whatever has focus.
 - The click-zone explainer shows for the first five books opened. A note explains when Two Pages shows one page because the window is narrow.
-- `scripts/check-corpus.sh` opens every fixture and checks the result (16 of 16 pass). Core timing tests and a GitHub Actions workflow are in place.
+- `scripts/check-corpus.sh` opens every fixture and checks the result (18 of 18 pass). Core timing tests and a GitHub Actions workflow are in place.
 
 Measured here (Debug build, cold launch plus open): about 290 ms to the first visible page for a 2 MB novel.
 

@@ -20,6 +20,9 @@
     "%lld results" : {
 
     },
+    "Plain text is left out, since most text files are not books. Use its own button to open all text files in Platen." : {
+
+    },
     "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
 
     },
@@ -119,7 +122,7 @@
     "Enter Full Screen" : {
 
     },
-    "EPUB, KEPUB, MOBI or AZW3. You can also drop a book here." : {
+    "EPUB, KEPUB, MOBI, AZW3 or plain text. You can also drop a book here." : {
 
     },
     "File" : {
@@ -203,7 +206,7 @@
     "Make Platen the Default" : {
 
     },
-    "Make Platen the Default for All" : {
+    "Make Platen the Default for All Ebooks" : {
 
     },
     "Medium" : {
