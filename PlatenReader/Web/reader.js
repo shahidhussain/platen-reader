@@ -239,6 +239,9 @@ window.platen = {
     swipeEnd: direction => swipe.end(direction),
     // iOS: what is under a tap (see tapTarget in input.js).
     tapTarget,
+    // iOS: show the faint bookmark outline in each page corner (while the
+    // controls are up; touch screens have no hover to reveal it).
+    setCornerHints: on => document.getElementById('ribbons')?.classList.toggle('hints', !!on),
     // For debugging and automated checks (scripts/run-debug.sh steps).
     get view() { return reader.view },
     clearSearch,

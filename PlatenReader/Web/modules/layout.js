@@ -102,9 +102,14 @@ const applyLayout = () => {
     r.setAttribute('max-column-count', columns)
     r.setAttribute('max-inline-size', `${Math.round(inline)}px`)
     // In paginated mode the top margin leaves room for the bookmark ribbon
-    // below the (hidden) title bar.
-    r.setAttribute('margin', reader.settings.flow === 'scrolled' ? '44px' : '60px')
-    r.setAttribute('gap', '6%')
+    // below the (hidden) title bar. iOS sends its own margins (in points):
+    // above and below, clear of the Dynamic Island and home indicator, and
+    // at the sides (foliate puts the whole gap on each side of a page).
+    const { verticalMargin, sideMargin } = reader.settings
+    r.setAttribute('margin', verticalMargin ? `${Math.round(verticalMargin)}px`
+        : reader.settings.flow === 'scrolled' ? '44px' : '60px')
+    r.setAttribute('gap', sideMargin
+        ? `${(sideMargin / Math.max(window.innerWidth, 1) * 100).toFixed(2)}%` : '6%')
     r.setStyles?.(bookCSS(reader.settings))
 }
 

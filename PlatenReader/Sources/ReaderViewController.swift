@@ -48,8 +48,6 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     var hasRendered = false
     var openStarted = CFAbsoluteTimeGetCurrent()
 
-    /// The search whose results are being shown (stale results are dropped).
-    var activeSearchQuery = ""
 
     var overlayVisible = false
     var titleBarVisible = false

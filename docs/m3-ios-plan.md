@@ -55,6 +55,15 @@ PlatenReader iOS/Info.plist
 3. A minimal iOS app: a scene delegate with `UIDocumentBrowserViewController` as the home screen (opening in place, no document creation), and a UIKit `ReaderViewController` with the same WKWebView setup (scheme handler, CSP, remote-load blocker, navigation policy). It opens the book under security-scoped access through `Book.open(url:coordinated:)`, restores and saves the position, turns pages on side taps, and has a temporary Close button. "Open in Platen" from other apps opens through the same path. A Debug-only launch argument opens a given path, for testing.
 4. Exit: the iOS target builds; `novel.epub` opens in the Simulator at the saved position and pages turn; Mac build, core tests and corpus green; CI builds both.
 
+### Done ahead of plan (after phase 1)
+
+At the user's request, parts of phases 2 to 4 came forward:
+
+- **Shared decoding:** messages that only update what the overlay shows are decoded once, in `Shared/ReaderState+Messages.swift`, for both apps; bookmarks are added through `BookRecord.addBookmark(from:)`. The rest of phase 2 (a whole `ReaderSession`) is still to do.
+- **The overlay on iOS:** the Mac's bar, contents, Aa and Layout popovers moved to `Shared/` and are hosted on iOS. On compact widths the bar stacks (location; slider between the page buttons; a row of buttons). A floating round Close button with the title and chapter sits at the top left (no navigation bar). A gear button in the bar opens the settings sheet (`ReaderSettingsView`). The bookmark corner's faint outline shows while the controls are up.
+- **Page turns:** taps and the bar's buttons slide; swipes follow the finger (foliate's own touch handling). Page Curl is not drawn on iOS yet, so it is not offered there and the default slides; porting the curl is next.
+- **Text and margins:** the default size follows Dynamic Type (20 pt at the standard size) until the reader picks one; 24-point side margins on iPhone; top and bottom margins clear of the Dynamic Island and home indicator, steady when the status bar comes and goes.
+
 ### Phase 2: shared reader session
 
 Extract `ReaderSession` from the Mac `ReaderViewController` (book loading, record, bridge, message decoding into `ReaderState`, bookmarks, search, jumps, saving), with the Mac view controller as its host. Verify the Mac with `check-corpus.sh` and `run-debug.sh` snapshots before and after. The iOS reader then uses it, so contents, bookmarks, search, the Back button and page numbers arrive on iOS with no new logic.

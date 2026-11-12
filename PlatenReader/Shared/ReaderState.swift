@@ -74,6 +74,9 @@ final class ReaderState: ObservableObject {
     @Published var sidebarVisible = false
     @Published var sidebarTab: SidebarTab = .contents
     @Published var searchQuery = ""
+    /// The search whose results are being shown (results of older searches
+    /// are dropped). Not published: nothing displays it.
+    var activeSearchQuery = ""
     @Published var searchGroups: [SearchGroup] = []
     @Published var searchRunning = false
     @Published var searchProgress: Double = 0

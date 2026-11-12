@@ -151,9 +151,18 @@ enum AppearanceChoice: String, CaseIterable, Identifiable {
 final class ReaderSettings: ObservableObject {
     static let shared = ReaderSettings()
 
-    /// About 12 steps, per the spec. The default (18) suits a Retina laptop.
+    /// About 12 steps, per the spec.
     static let fontSizes: [Double] = [12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 27, 30]
-    static let defaultFontSizeIndex = 6
+
+    /// The size text starts at until the reader picks one. 18 suits a Retina
+    /// laptop (the Mac has no system text-size setting to follow); the iOS
+    /// app sets it from Dynamic Type at launch, before `shared` is first used.
+    static var preferredDefaultFontSize: Double = 18
+
+    /// The step nearest the preferred default size.
+    static var defaultFontSizeIndex: Int {
+        fontSizes.indices.min { abs(fontSizes[$0] - preferredDefaultFontSize) < abs(fontSizes[$1] - preferredDefaultFontSize) } ?? 6
+    }
     /// 0 means "publisher default".
     static let lineHeights: [Double] = [0, 1.2, 1.35, 1.5, 1.65, 1.8, 2.0]
     /// "" means "publisher default". The curated list; any installed font can
@@ -198,8 +207,26 @@ final class ReaderSettings: ObservableObject {
         showPagesLeftInChapter = bool("showPagesLeftInChapter", false)
     }
 
+    /// Set while the text size follows the default (see
+    /// `followDefaultFontSize`), so that is not saved as the reader's choice.
+    private var followingDefault = false
+
     private func save(_ key: String, _ value: Any) {
+        guard !followingDefault else { return }
         defaults.set(value, forKey: key)
+    }
+
+    /// Whether the reader has chosen a text size. Until they do, it follows
+    /// the default (on iOS, the system's Dynamic Type size).
+    var hasChosenFontSize: Bool { defaults.object(forKey: "fontSizeIndex") != nil }
+
+    /// Moves the text size to the current default, if the reader has not
+    /// chosen one (iOS calls this when the Dynamic Type size changes).
+    func followDefaultFontSize() {
+        guard !hasChosenFontSize, fontSizeIndex != Self.defaultFontSizeIndex else { return }
+        followingDefault = true
+        fontSizeIndex = Self.defaultFontSizeIndex
+        followingDefault = false
     }
 
     var fontSize: Double { Self.fontSizes[fontSizeIndex] }
@@ -228,7 +255,11 @@ final class ReaderSettings: ObservableObject {
 
     func biggerText() { fontSizeIndex = min(fontSizeIndex + 1, Self.fontSizes.count - 1) }
     func smallerText() { fontSizeIndex = max(fontSizeIndex - 1, 0) }
-    func defaultTextSize() { fontSizeIndex = Self.defaultFontSizeIndex }
+    /// ⌘0: back to the default size, which then follows the system again.
+    func defaultTextSize() {
+        fontSizeIndex = Self.defaultFontSizeIndex
+        defaults.removeObject(forKey: "fontSizeIndex")
+    }
 
     /// The settings object passed to reader.js (`platen.setSettings`).
     func webPayload(theme: Theme, flow: ReadingFlow) -> [String: Any] {

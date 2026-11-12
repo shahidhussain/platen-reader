@@ -9,11 +9,10 @@ import WebKit
 /// scheme handler, with the same Content-Security-Policy and remote-load
 /// blocker (see PlatenReader/Shared/ReaderSchemeHandler.swift).
 ///
-/// This is the M3 phase 1 reader: it opens the book in place, restores and
-/// saves the reading position, turns pages on side taps and shows a simple
-/// top bar with Close on a centre tap. The full overlay, contents, swipes
-/// and settings follow in later phases (docs/m3-ios-plan.md); the shared
-/// `ReaderSession` of phase 2 will take over most of the bookkeeping here.
+/// It opens the book in place, restores and saves the reading position,
+/// turns pages on side taps, and shows the overlay (the Mac's bar, plus a
+/// floating Close button) on a centre tap; see ReaderViewController+Overlay.
+/// The remaining phases are in docs/m3-ios-plan.md.
 ///
 /// Opening runs two things in parallel and joins them, as on the Mac:
 /// 1. the web view loads the reader shell, and
@@ -29,23 +28,29 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     /// Called when the reader taps Close; the document browser dismisses us.
     var onClose: (() -> Void)?
 
-    private var webView: WKWebView!
-    private var spinner: UIActivityIndicatorView!
-    private var topBar: UIVisualEffectView!
-    private var titleLabel: UILabel!
-    private var failureHost: UIViewController?
+    var webView: WKWebView!
+    var spinner: UIActivityIndicatorView!
+    var failureHost: UIViewController?
+    /// The overlay: the bar at the bottom and the Close button at the top.
+    var overlayHost: UIViewController?
+    var topControlsHost: UIViewController?
+    var hideTimer: Timer?
 
-    private var book: Book?
-    private var record: BookRecord?
-    private var shellReady = false
-    private var bookSentToShell = false
-    private var hasRendered = false
-    private var openStarted = CFAbsoluteTimeGetCurrent()
-    private var overlayVisible = false
+    var book: Book?
+    var record: BookRecord?
+    var shellReady = false
+    var bookSentToShell = false
+    var hasRendered = false
+    var openStarted = CFAbsoluteTimeGetCurrent()
+    var overlayVisible = false
     /// Whether text was selected just before the latest tap (reported by
     /// reader.js). A tap then only dismisses the selection.
-    private var hasSelection = false
-    private var cancellables: Set<AnyCancellable> = []
+    var hasSelection = false
+    /// The last settings sent to the page, so unchanged ones are not resent.
+    var lastPayload: [String: Any]?
+    /// See `webPayload`.
+    var largestVerticalInset: CGFloat = 0
+    var cancellables: Set<AnyCancellable> = []
 
     /// True while we hold access to a file outside our sandbox (a book in
     /// Files, iCloud Drive or a file provider). Released when the reader
@@ -109,25 +114,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         tap.delegate = self
         webView.addGestureRecognizer(tap)
 
-        // Temporary top bar (phase 1): the book's title and a Close button.
-        // The shared overlay replaces it in phase 3.
-        topBar = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
-        topBar.translatesAutoresizingMaskIntoConstraints = false
-        topBar.alpha = 0
-        topBar.isHidden = true
-        root.addSubview(topBar)
-
-        let close = UIButton(type: .system, primaryAction: UIAction(title: String(localized: "Close")) { [weak self] _ in
-            self?.close()
-        })
-        close.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel = UILabel()
-        titleLabel.font = .preferredFont(forTextStyle: .headline)
-        titleLabel.adjustsFontForContentSizeCategory = true
-        titleLabel.textAlignment = .center
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        topBar.contentView.addSubview(close)
-        topBar.contentView.addSubview(titleLabel)
+        installOverlay(in: root)
 
         // Quiet progress indicator, shown only if opening takes > 500 ms.
         spinner = UIActivityIndicatorView(style: .medium)
@@ -141,17 +128,6 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
             webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             webView.topAnchor.constraint(equalTo: root.topAnchor),
             webView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-
-            topBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            topBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            topBar.topAnchor.constraint(equalTo: root.topAnchor),
-            topBar.bottomAnchor.constraint(equalTo: safe.topAnchor, constant: 44),
-
-            close.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 16),
-            close.centerYAnchor.constraint(equalTo: safe.topAnchor, constant: 22),
-            titleLabel.centerXAnchor.constraint(equalTo: topBar.centerXAnchor),
-            titleLabel.centerYAnchor.constraint(equalTo: close.centerYAnchor),
-            titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: close.trailingAnchor, constant: 12),
 
             spinner.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: root.centerYAnchor),
@@ -219,7 +195,6 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
                     self.schemeHandler.book = book
                     self.state.title = book.title ?? ""
                     self.state.isFixedLayout = book.isFixedLayout
-                    self.titleLabel.text = book.title ?? url.deletingPathExtension().lastPathComponent
                     self.loadRecord(for: book)
                     self.sendBookIfReady()
                 case .failure(let error):
@@ -239,6 +214,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         record.lastOpened = Date()
         self.record = record
         state.bookmarks = record.bookmarks
+        if state.title.isEmpty { state.title = url.deletingPathExtension().lastPathComponent }
         if book.isFixedLayout {
             state.flow = .paginated
         } else if let mode = record.readingMode.flatMap(ReadingFlow.init) {
@@ -249,9 +225,11 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     private func sendBookIfReady() {
         guard shellReady, let book, !bookSentToShell else { return }
         bookSentToShell = true
+        let payload = webPayload
+        lastPayload = payload
         var options: [String: Any] = [
             "format": book.format.rawValue,
-            "settings": webPayload,
+            "settings": payload,
         ]
         if book.format == .epub {
             options["sizes"] = book.entrySizes.mapValues { Int(clamping: $0) }
@@ -279,7 +257,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         host.view.backgroundColor = .clear
         host.view.translatesAutoresizingMaskIntoConstraints = false
         addChild(host)
-        view.insertSubview(host.view, belowSubview: topBar)
+        view.insertSubview(host.view, belowSubview: overlayHost?.view ?? webView)
         NSLayoutConstraint.activate([
             host.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             host.view.centerYAnchor.constraint(equalTo: view.centerYAnchor),
@@ -287,26 +265,16 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         ])
         host.didMove(toParent: self)
         failureHost = host
-        // With no page to read, keep Close on screen.
-        titleLabel.text = url.deletingPathExtension().lastPathComponent
-        setOverlay(visible: true)
+        // With no page to read, keep Close on screen (and nothing else).
+        if state.title.isEmpty { state.title = url.deletingPathExtension().lastPathComponent }
+        overlayHost?.view.removeFromSuperview()
+        topControlsHost?.view.isHidden = false
+        topControlsHost?.view.alpha = 1
+        overlayVisible = true
+        setNeedsStatusBarAppearanceUpdate()
     }
 
-    // MARK: - Overlay
-
-    private func setOverlay(visible: Bool) {
-        overlayVisible = visible
-        if visible { topBar.isHidden = false }
-        let reduceMotion = UIAccessibility.isReduceMotionEnabled
-        UIView.animate(withDuration: reduceMotion ? 0 : 0.15, animations: {
-            self.topBar.alpha = visible ? 1 : 0
-            self.setNeedsStatusBarAppearanceUpdate()
-        }, completion: { _ in
-            // Hidden views take no taps, so the page underneath gets them.
-            self.topBar.isHidden = !self.overlayVisible
-        })
-        setNeedsUpdateOfHomeIndicatorAutoHidden()
-    }
+    // MARK: - Taps
 
     /// The fraction of the width on each side that turns pages, as on the
     /// Mac (input.js): the side zones are wider than the centre, because most
@@ -351,27 +319,57 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         }
     }
 
-    private func close() {
+    func close() {
         savePositionNow()
         onClose?()
     }
 
     // MARK: - Settings and theme
 
-    private var currentTheme: Theme { settings.theme(for: traitCollection) }
+    var currentTheme: Theme { settings.theme(for: traitCollection) }
 
-    private func pushSettings() {
+    func pushSettings() {
         applyTheme()
         guard bookSentToShell else { return }
-        callPlaten("setSettings", webPayload)
+        // Only when something changed: every new layout re-paginates the
+        // book, and doing that while it is still opening loses the place.
+        let payload = webPayload
+        guard !(payload as NSDictionary).isEqual(to: lastPayload ?? [:]) else { return }
+        lastPayload = payload
+        callPlaten("setSettings", payload)
     }
 
-    /// The settings for reader.js, plus `touch`: taps are recognised here
-    /// (see `pageTapped`), so the page reports no click zones of its own.
-    private var webPayload: [String: Any] {
+    /// The settings for reader.js, with what differs on iOS:
+    /// - `touch`: taps are recognised here (see `pageTapped`), so the page
+    ///   reports no click zones of its own;
+    /// - `animated`: page turns slide unless the setting is None (Page Curl
+    ///   is not drawn on iOS yet, so it slides too) or Reduce Motion is on;
+    /// - `sideMargin` and `verticalMargin`, in points: room at the sides, and
+    ///   above and below the text so it stays clear of the Dynamic Island,
+    ///   the status bar and the home indicator.
+    var webPayload: [String: Any] {
         var payload = settings.webPayload(theme: currentTheme, flow: state.flow)
         payload["touch"] = true
+        payload["animated"] = settings.pageTurnStyle != .none && !UIAccessibility.isReduceMotionEnabled
+        let insets = view.safeAreaInsets
+        let compact = traitCollection.horizontalSizeClass == .compact
+        payload["sideMargin"] = max(insets.left, insets.right) + (compact ? 24 : 44)
+        // The status bar comes and goes with the controls, which changes the
+        // top inset on some iPhones; the text must not move when it does, so
+        // the largest inset seen in this window shape is kept.
+        largestVerticalInset = max(largestVerticalInset, insets.top, insets.bottom)
+        payload["verticalMargin"] = largestVerticalInset + (compact ? 12 : 24)
         return payload
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        pushSettings() // margins follow the notch, rotation and Split View
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        largestVerticalInset = 0 // a new window shape: measure afresh
     }
 
     private func applyTheme() {
@@ -396,6 +394,10 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         // Every message is { type, body } (see post() in bridge.js).
         guard let envelope = message.body as? [String: Any], let type = envelope["type"] as? String else { return }
         let body = envelope["body"] as? [String: Any] ?? [:]
+        // What the overlay and contents show is decoded in one place for
+        // both apps (Shared/ReaderState+Messages.swift); the cases below add
+        // the iOS app's own work.
+        state.apply(message: type, body: body)
         switch type {
         case "ready":
             shellReady = true
@@ -411,18 +413,15 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
             #endif
 
         case "opened":
-            if let title = body["title"] as? String, !title.isEmpty {
-                state.title = title
-                titleLabel.text = title
-            }
-            state.author = body["author"] as? String ?? ""
-            state.isFixedLayout = body["fixedLayout"] as? Bool ?? false
-            state.isRightToLeft = (body["dir"] as? String) == "rtl"
-            callPlaten("setBookmarks", state.bookmarks.map { ["cfi": $0.cfi] })
+            sendBookmarksToPage()
+
+        case "addBookmark":
+            addBookmark(from: body)
+
+        case "removeBookmark":
+            if let cfi = body["cfi"] as? String { removeBookmark(cfi: cfi) }
 
         case "relocate":
-            state.fraction = (body["fraction"] as? NSNumber)?.doubleValue ?? state.fraction
-            state.chapter = body["chapter"] as? String ?? ""
             if let cfi = body["cfi"] as? String, var record {
                 record.lastCFI = cfi
                 record.readingMode = state.flow.rawValue
@@ -437,10 +436,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
             handleTap(zone: body["zone"] as? String ?? "centre")
 
         case "selection":
-            let text = body["text"] as? String ?? ""
-            hasSelection = !text.isEmpty
-            state.selection = text.isEmpty ? nil
-                : ReaderState.Selection(text: text, chapter: body["chapter"] as? String ?? "", page: body["page"] as? String)
+            hasSelection = state.selection != nil
 
         case "externalLink":
             // Links to the web open in Safari (or Mail), never in the reader.
@@ -502,14 +498,14 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
 
     /// Runs a fixed script in the reader page, e.g. `js("platen.next()")`.
     /// Never paste values into the script: use `callPlaten` for those.
-    private func js(_ script: String) {
+    func js(_ script: String) {
         guard bookSentToShell else { return }
         webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
     /// Calls `platen.<function>(…)` in the reader page with values passed as
     /// real arguments (never pasted into the script), so any string is safe.
-    private func callPlaten(_ function: String, _ arguments: Any...) {
+    func callPlaten(_ function: String, _ arguments: Any...) {
         guard bookSentToShell else { return }
         var named: [String: Any] = [:]
         for (i, value) in arguments.enumerated() { named["a\(i)"] = value }
