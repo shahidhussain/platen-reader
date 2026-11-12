@@ -228,10 +228,11 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         let payload = webPayload
         lastPayload = payload
         var options: [String: Any] = [
-            "format": book.format.rawValue,
+            // Plain text arrives as a made-up EPUB, so the shell opens it as one.
+            "format": book.format == .text ? BookFormat.epub.rawValue : book.format.rawValue,
             "settings": payload,
         ]
-        if book.format == .epub {
+        if book.format != .mobi {
             options["sizes"] = book.entrySizes.mapValues { Int(clamping: $0) }
         }
         if let cfi = record?.lastCFI { options["lastCFI"] = cfi }

@@ -100,6 +100,19 @@
 				<string>com.amazon.azw3</string>
 			</array>
 		</dict>
+		<!-- Plain text, shown as a book (see PlatenCore's TextBook). -->
+	<dict>
+		<key>CFBundleTypeName</key>
+		<string>Plain Text</string>
+		<key>CFBundleTypeRole</key>
+		<string>Viewer</string>
+		<key>LSHandlerRank</key>
+		<string>Alternate</string>
+		<key>LSItemContentTypes</key>
+		<array>
+			<string>public.plain-text</string>
+		</array>
+	</dict>
 	</array>
 	<!-- Types without a system declaration, as on the Mac. -->
 	<key>UTImportedTypeDeclarations</key>

@@ -16,10 +16,12 @@ final class DocumentBrowserViewController: UIDocumentBrowserViewController, UIDo
     private var pendingBook: URL?
     private var hasAppeared = false
 
-    /// The book types Platen opens, as declared in Info.plist.
+    /// The book types Platen opens, as declared in Info.plist. Plain text
+    /// is shown as a book too (see PlatenCore's TextBook).
     static let contentTypes: [UTType] = [
         UTType("org.idpf.epub-container"), UTType("com.kobo.kepub"),
         UTType("com.amazon.mobi"), UTType("com.amazon.azw"), UTType("com.amazon.azw3"),
+        .plainText,
     ].compactMap { $0 }
 
     init() {
