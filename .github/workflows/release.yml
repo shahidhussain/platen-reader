@@ -70,9 +70,16 @@ jobs:
             -configuration Release -derivedDataPath build/DerivedData \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application" \
             DEVELOPMENT_TEAM="$TEAM_ID" OTHER_CODE_SIGN_FLAGS="--timestamp" \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             build
-          codesign --verify --deep --strict --verbose=2 "build/DerivedData/Build/Products/Release/Platen Reader.app"
+          APP="build/DerivedData/Build/Products/Release/Platen Reader.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          # Xcode adds get-task-allow (debugger access) unless told not to
+          # (the setting above), and Apple refuses to notarise an app with it.
+          if codesign -d --entitlements - "$APP" 2>/dev/null | grep -q get-task-allow; then
+            echo "::error::The app still has the get-task-allow entitlement"; exit 1
+          fi
 
       - name: Notarise and staple
         env:
