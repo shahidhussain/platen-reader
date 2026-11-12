@@ -59,6 +59,12 @@ const attachPointerHandlers = (doc, index) => {
             }
         }
 
+        // Touch screens (iOS): Swift recognises taps itself and asks
+        // tapTarget() below what was under the finger, because WebKit does
+        // not turn every tap into a click (taps close together are merged or
+        // dropped), so the zone must not depend on this event.
+        if (reader.settings?.touch) return
+
         const x = rect.left + e.clientX * scale
         const side = window.innerWidth * sideZoneFraction
         const zone = x < side ? 'left' : x > window.innerWidth - side ? 'right' : 'centre'
@@ -71,6 +77,36 @@ const attachPointerHandlers = (doc, index) => {
         clearTimeout(selectionTimer)
         selectionTimer = setTimeout(() => reportSelection(doc, index), 120)
     })
+}
+
+// What is under a point in the window, for taps recognised natively on iOS
+// (see the `touch` setting above). Swift turns a page or shows the controls
+// only for 'page'; links, media, pictures and the bookmark ribbons handle
+// their own taps through WebKit's click, and a tap on a selection dismisses
+// it. Returns 'page', 'control', 'link', 'image' or 'selection'.
+const tapTarget = (x, y) => {
+    // The ribbons (and anything else of the shell's own) sit above the book.
+    const top = document.elementFromPoint(x, y)
+    if (top && top !== reader.view) return 'control'
+    for (const { doc } of reader.view?.renderer?.getContents?.() ?? []) {
+        const frame = doc?.defaultView?.frameElement
+        if (!frame) continue
+        if (doc.getSelection()?.isCollapsed === false) return 'selection'
+        // From window coordinates to the frame's, which may be scrolled
+        // (paginated mode) or scaled (fixed layout).
+        const rect = frame.getBoundingClientRect()
+        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
+        const scale = frame.offsetWidth ? rect.width / frame.offsetWidth : 1
+        const target = doc.elementFromPoint((x - rect.left) / scale, (y - rect.top) / scale)
+        if (target?.closest?.('a[href], audio, video, button, input, select, textarea, label')) return 'link'
+        const img = !reader.isFixedLayout && target?.closest?.('img')
+        if (img) {
+            const r = img.getBoundingClientRect()
+            if (r.width * scale >= minZoomableSize && r.height * scale >= minZoomableSize) return 'image'
+        }
+        return 'page'
+    }
+    return 'page'
 }
 
 // Sends a picture's bytes and on-screen position to Swift, which shows it
@@ -142,4 +178,4 @@ const swipe = {
     },
 }
 
-export { attachPointerHandlers, swipe }
+export { attachPointerHandlers, swipe, tapTarget }

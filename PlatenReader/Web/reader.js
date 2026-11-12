@@ -31,7 +31,7 @@ import { ensureReadableColours, fitWideTables, rescalePublisherFontSizes } from 
 import { pagesOnScreen, scheduleRibbons, setBookmarkList, toggleBookmark } from './modules/bookmarks.js'
 import { post } from './modules/bridge.js'
 import { sendContents } from './modules/contents.js'
-import { attachPointerHandlers, swipe } from './modules/input.js'
+import { attachPointerHandlers, swipe, tapTarget } from './modules/input.js'
 import { goBack, jump, noteMovement, rememberJumpOrigin } from './modules/jumps.js'
 import { applyLayout } from './modules/layout.js'
 import { nameBook, nameSection, pageChanged, readPage, setVoiceOver } from './modules/accessibility.js'
@@ -237,6 +237,8 @@ window.platen = {
     readPage,
     swipeMove: dx => swipe.move(dx),
     swipeEnd: direction => swipe.end(direction),
+    // iOS: what is under a tap (see tapTarget in input.js).
+    tapTarget,
     // For debugging and automated checks (scripts/run-debug.sh steps).
     get view() { return reader.view },
     clearSearch,

@@ -19,7 +19,8 @@ import WebKit
 /// 1. the web view loads the reader shell, and
 /// 2. the book file is read and checked on a background queue.
 /// When both are ready, the book is handed to the shell.
-final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNavigationDelegate {
+final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNavigationDelegate,
+                                  UIGestureRecognizerDelegate {
     let url: URL
     let schemeHandler = ReaderSchemeHandler()
     let settings = ReaderSettings.shared
@@ -41,6 +42,9 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     private var hasRendered = false
     private var openStarted = CFAbsoluteTimeGetCurrent()
     private var overlayVisible = false
+    /// Whether text was selected just before the latest tap (reported by
+    /// reader.js). A tap then only dismisses the selection.
+    private var hasSelection = false
     private var cancellables: Set<AnyCancellable> = []
 
     /// True while we hold access to a file outside our sandbox (a book in
@@ -91,6 +95,19 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         webView.isInspectable = true // Safari > Develop can inspect the shell
         #endif
         root.addSubview(webView)
+
+        // Taps on the page are recognised here, natively, rather than from
+        // the page's click events: WebKit does not turn every tap into a
+        // click (taps in quick succession are merged or dropped), and the
+        // zone is worked out from the finger's place on screen, not from
+        // coordinates inside foliate's very wide chapter frame. The recogniser
+        // watches alongside WebKit's own gestures, so links, selection and
+        // long presses still work as usual.
+        let tap = UITapGestureRecognizer(target: self, action: #selector(pageTapped(_:)))
+        tap.cancelsTouchesInView = false
+        tap.delaysTouchesEnded = false
+        tap.delegate = self
+        webView.addGestureRecognizer(tap)
 
         // Temporary top bar (phase 1): the book's title and a Close button.
         // The shared overlay replaces it in phase 3.
@@ -234,7 +251,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         bookSentToShell = true
         var options: [String: Any] = [
             "format": book.format.rawValue,
-            "settings": settings.webPayload(theme: currentTheme, flow: state.flow),
+            "settings": webPayload,
         ]
         if book.format == .epub {
             options["sizes"] = book.entrySizes.mapValues { Int(clamping: $0) }
@@ -291,10 +308,39 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         setNeedsUpdateOfHomeIndicatorAutoHidden()
     }
 
+    /// The fraction of the width on each side that turns pages, as on the
+    /// Mac (input.js): the side zones are wider than the centre, because most
+    /// taps are page turns.
+    private static let sideZoneFraction: CGFloat = 0.38
+
+    @objc private func pageTapped(_ recogniser: UITapGestureRecognizer) {
+        guard recogniser.state == .ended, hasRendered, failureHost == nil else { return }
+        // A tap on selected text only dismisses the selection (WebKit does
+        // that itself).
+        if hasSelection { return }
+        let point = recogniser.location(in: webView)
+        // Ask the page what is under the finger: links, pictures and the
+        // bookmark ribbons handle their own taps.
+        webView.callAsyncJavaScript("return platen.tapTarget(x, y)", arguments: ["x": point.x, "y": point.y],
+                                    in: nil, in: .page) { [weak self] result in
+            guard let self else { return }
+            let target = (try? result.get()) as? String ?? "page"
+            log.info("tap at \(Int(point.x)),\(Int(point.y)): \(target, privacy: .public)")
+            guard target == "page" else { return }
+            let side = self.webView.bounds.width * Self.sideZoneFraction
+            let zone = point.x < side ? "left" : point.x > self.webView.bounds.width - side ? "right" : "centre"
+            self.handleTap(zone: zone)
+        }
+    }
+
+    // Recognise taps alongside WebKit's own gesture recognisers.
+    func gestureRecognizer(_ recogniser: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
     /// What a tap in each zone does (spec, "Touch"): in paginated mode the
     /// sides turn the page and the centre shows the controls; in scroll mode
-    /// any tap shows them. The zone comes from input.js, which already
-    /// mirrors it for right-to-left books.
+    /// any tap shows them. "Left" and "right" are sides of the screen;
+    /// goLeft and goRight turn the right way for right-to-left books.
     private func handleTap(zone: String) {
         if state.flow == .scrolled || zone == "centre" {
             setOverlay(visible: !overlayVisible)
@@ -317,7 +363,15 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     private func pushSettings() {
         applyTheme()
         guard bookSentToShell else { return }
-        callPlaten("setSettings", settings.webPayload(theme: currentTheme, flow: state.flow))
+        callPlaten("setSettings", webPayload)
+    }
+
+    /// The settings for reader.js, plus `touch`: taps are recognised here
+    /// (see `pageTapped`), so the page reports no click zones of its own.
+    private var webPayload: [String: Any] {
+        var payload = settings.webPayload(theme: currentTheme, flow: state.flow)
+        payload["touch"] = true
+        return payload
     }
 
     private func applyTheme() {
@@ -378,7 +432,15 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
             }
 
         case "click":
+            // Not sent on iOS (taps are recognised natively); kept so a
+            // click from the page is never silently lost.
             handleTap(zone: body["zone"] as? String ?? "centre")
+
+        case "selection":
+            let text = body["text"] as? String ?? ""
+            hasSelection = !text.isEmpty
+            state.selection = text.isEmpty ? nil
+                : ReaderState.Selection(text: text, chapter: body["chapter"] as? String ?? "", page: body["page"] as? String)
 
         case "externalLink":
             // Links to the web open in Safari (or Mail), never in the reader.
