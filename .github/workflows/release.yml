@@ -33,6 +33,9 @@ permissions:
 jobs:
   release:
     runs-on: macos-15
+    # Apple usually notarises in minutes, but a new developer account's first
+    # submissions can take hours.
+    timeout-minutes: 240
     env:
       # The tag being released: the one pushed, or the one asked for.
       TAG: ${{ inputs.tag || github.ref_name }}
@@ -94,7 +97,7 @@ jobs:
           ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/upload.zip"
           AUTH=(--key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
           xcrun notarytool submit "$RUNNER_TEMP/upload.zip" "${AUTH[@]}" \
-            --wait --timeout 30m --output-format json | tee "$RUNNER_TEMP/notary.json"
+            --wait --timeout 3h --output-format json | tee "$RUNNER_TEMP/notary.json"
           ID=$(plutil -extract id raw "$RUNNER_TEMP/notary.json")
           STATUS=$(plutil -extract status raw "$RUNNER_TEMP/notary.json")
           if [ "$STATUS" != "Accepted" ]; then
