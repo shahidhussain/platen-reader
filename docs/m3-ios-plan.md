@@ -62,6 +62,11 @@ At the user's request, parts of phases 2 to 4 came forward:
 - **Shared decoding:** messages that only update what the overlay shows are decoded once, in `Shared/ReaderState+Messages.swift`, for both apps; bookmarks are added through `BookRecord.addBookmark(from:)`. The rest of phase 2 (a whole `ReaderSession`) is still to do.
 - **The overlay on iOS:** the Mac's bar, contents, Aa and Layout popovers moved to `Shared/` and are hosted on iOS. On compact widths the bar stacks (location; slider between the page buttons; a row of buttons). A floating round Close button with the title and chapter sits at the top left (no navigation bar). A gear button in the bar opens the settings sheet (`ReaderSettingsView`). The bookmark corner's faint outline shows while the controls are up.
 - **Page turns:** taps and the bar's buttons slide; swipes follow the finger (foliate's own touch handling). Page Curl is not drawn on iOS yet, so it is not offered there and the default slides; porting the curl is next.
+- **Liquid Glass on iOS 26 and later** for the bar and the top controls (one glass container), with the material on older systems (`Shared/GlassSurface.swift`). The Mac still uses the material: its glass waits for a check on screen, since the debug snapshots draw offscreen, where glass does not appear.
+- **Settings sheet** holds only what the popovers do not (the layout new books open in, line width, page turn, pages left, hyphenation, clearing data); text size, font, line spacing and appearance stay in Aa.
+- **Line width on phones** sets the side margins (Narrow 44, Medium 24, Wide 12 points), because the character caps (about 55, 66, 80) are all wider than an iPhone screen.
+- **Plain text (.txt)** opens on iOS as on the Mac (PlatenCore's TextBook).
+- Still to do from phase 4: on iPhone the Layout popover offers Two Pages and explains "the window is too narrow"; iPhone should simply show one page.
 - **Text and margins:** the default size follows Dynamic Type (20 pt at the standard size) until the reader picks one; 24-point side margins on iPhone; top and bottom margins clear of the Dynamic Island and home indicator, steady when the status bar comes and goes.
 
 ### Phase 2: shared reader session

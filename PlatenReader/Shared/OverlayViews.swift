@@ -111,13 +111,11 @@ struct OverlayBar: View {
         .imageScale(.large)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
-        // Slightly see-through (about 18%), so the bar reads as something
-        // laid over the page; solid while the pointer is over it.
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.regularMaterial)
-                .opacity(hovering || isTouch ? 1 : 0.82)
-        }
+        // Liquid Glass on macOS 26 / iOS 26 and later. Before that, the
+        // material is slightly see-through (about 18%), so the bar reads as
+        // something laid over the page; solid while the pointer is over it.
+        .overlaySurface(RoundedRectangle(cornerRadius: 16, style: .continuous),
+                        seeThrough: !(hovering || isTouch))
         #if os(iOS)
         // Icons in the text colour, as on the Mac (not the system blue).
         .tint(.primary)
@@ -125,7 +123,6 @@ struct OverlayBar: View {
         .onHover { inside in
             withAnimation(.easeOut(duration: 0.15)) { hovering = inside }
         }
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
         .frame(maxWidth: 760)
         // The overlay must stay while its popover is open.
         .onChange(of: showTypography || showLayout) { _, open in

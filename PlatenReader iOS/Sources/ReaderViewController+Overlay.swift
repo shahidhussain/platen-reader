@@ -188,14 +188,23 @@ struct ReaderTopControls: View {
     let close: () -> Void
 
     var body: some View {
+        // One glass container, so the two pieces blend as the system's own
+        // controls do (on iOS 26 and later).
+        if #available(iOS 26, *) {
+            GlassEffectContainer(spacing: 10) { controls }
+        } else {
+            controls
+        }
+    }
+
+    private var controls: some View {
         HStack(spacing: 10) {
             Button(action: close) {
                 Image(systemName: "xmark")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
                     .frame(width: 44, height: 44)
-                    .background(.regularMaterial, in: Circle())
-                    .overlay(Circle().strokeBorder(.separator, lineWidth: 0.5))
+                    .overlaySurface(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Close Book"))
@@ -214,8 +223,7 @@ struct ReaderTopControls: View {
                 }
                 .padding(.horizontal, 14)
                 .frame(minHeight: 44)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
+                .overlaySurface(Capsule())
                 .accessibilityElement(children: .combine)
             }
         }

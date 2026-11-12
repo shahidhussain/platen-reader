@@ -345,7 +345,8 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     ///   reports no click zones of its own;
     /// - `animated`: page turns slide unless the setting is None (Page Curl
     ///   is not drawn on iOS yet, so it slides too) or Reduce Motion is on;
-    /// - `sideMargin` and `verticalMargin`, in points: room at the sides, and
+    /// - `sideMargin` and `verticalMargin`, in points: room at the sides (see
+    ///   `sideMargin(compact:)`), and
     ///   above and below the text so it stays clear of the Dynamic Island,
     ///   the status bar and the home indicator.
     var webPayload: [String: Any] {
@@ -354,13 +355,26 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         payload["animated"] = settings.pageTurnStyle != .none && !UIAccessibility.isReduceMotionEnabled
         let insets = view.safeAreaInsets
         let compact = traitCollection.horizontalSizeClass == .compact
-        payload["sideMargin"] = max(insets.left, insets.right) + (compact ? 24 : 44)
+        payload["sideMargin"] = max(insets.left, insets.right) + sideMargin(compact: compact)
         // The status bar comes and goes with the controls, which changes the
         // top inset on some iPhones; the text must not move when it does, so
         // the largest inset seen in this window shape is kept.
         largestVerticalInset = max(largestVerticalInset, insets.top, insets.bottom)
         payload["verticalMargin"] = largestVerticalInset + (compact ? 12 : 24)
         return payload
+    }
+
+    /// Room at each side of the text. Line width (Narrow, Medium, Wide)
+    /// caps a line at about 55, 66 or 80 characters, which on a phone are all
+    /// wider than the screen; there it sets the margins instead, so the
+    /// setting still visibly changes the line. Medium is the Books-like 24.
+    private func sideMargin(compact: Bool) -> CGFloat {
+        guard compact else { return 44 }
+        switch settings.lineWidth {
+        case .narrow: return 44
+        case .medium: return 24
+        case .wide: return 12
+        }
     }
 
     override func viewSafeAreaInsetsDidChange() {
