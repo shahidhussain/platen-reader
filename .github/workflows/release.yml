@@ -85,8 +85,17 @@ jobs:
           KEY="$RUNNER_TEMP/AuthKey.p8"
           echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$KEY"
           ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/upload.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/upload.zip" \
-            --key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m
+          AUTH=(--key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
+          xcrun notarytool submit "$RUNNER_TEMP/upload.zip" "${AUTH[@]}" \
+            --wait --timeout 30m --output-format json | tee "$RUNNER_TEMP/notary.json"
+          ID=$(plutil -extract id raw "$RUNNER_TEMP/notary.json")
+          STATUS=$(plutil -extract status raw "$RUNNER_TEMP/notary.json")
+          if [ "$STATUS" != "Accepted" ]; then
+            # Apple's log says exactly what it objected to.
+            xcrun notarytool log "$ID" "${AUTH[@]}"
+            rm "$KEY"
+            exit 1
+          fi
           rm "$KEY"
           xcrun stapler staple "$APP"
           spctl --assess --type execute --verbose "$APP"
