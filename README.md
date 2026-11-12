@@ -55,9 +55,13 @@ Measured here (Debug build, cold launch plus open): about 290 ms to the first vi
 
 - **VoiceOver:** each page is read aloud as it turns (R repeats it), controls are named, and VoiceOver's own scrolling settles on whole pages. Needs another pass by hand; VoiceOver's Read All still runs on past the page without turning it.
 - **Formats and sources:** MOBI and AZW3 with real DRM-free samples; SMB and iCloud-offloaded opens; the real-world corpus (Standard Ebooks, Gutenberg, the W3C EPUB 3 tests).
-- **UI:** top-edge reveal in full screen; a font picker listing all installed fonts.
+- **UI:** top-edge reveal in full screen; a font picker listing all installed fonts; Liquid Glass for the overlay on macOS 26 and later (materials stay on older systems).
 - **Testing:** XCUITests for open, page turn, mode switch and bookmarks, and running the corpus check in CI.
 - **Releasing:** a Homebrew cask (after the first notarised release).
+
+## Next: iOS, iPadOS and the App Store (M3)
+
+Planned, not started. The iOS app and a Mac App Store build will ship together as one universal app. The decisions (opening books in place, touch controls, layout, settings, test devices, what is still needed for submission) are in the spec, under "iOS and iPadOS (M3)".
 
 ## Releasing
 

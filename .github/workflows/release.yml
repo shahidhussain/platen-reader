@@ -2,7 +2,8 @@
 # it on GitHub releases.
 #
 # Start it by pushing a tag such as v0.1.0 (the version shown in the app is
-# taken from the tag). It needs these repository secrets (README, "Releasing"):
+# taken from the tag). To build an existing tag again, for example after a
+# run was lost, run it by hand: gh workflow run release.yml -f tag=v0.1.0 It needs these repository secrets (README, "Releasing"):
 #
 #   DEVELOPER_ID_P12_BASE64    the Developer ID Application certificate and
 #                              its private key, exported as .p12, base64
@@ -20,6 +21,11 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The existing tag to build and release, e.g. v0.1.0'
+        required: true
 
 permissions:
   contents: write # to create the release
@@ -27,8 +33,13 @@ permissions:
 jobs:
   release:
     runs-on: macos-15
+    env:
+      # The tag being released: the one pushed, or the one asked for.
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - name: Core unit tests
         run: swift test --package-path PlatenCore
@@ -54,7 +65,7 @@ jobs:
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           xcodebuild -project PlatenReader.xcodeproj -scheme PlatenReader \
             -configuration Release -derivedDataPath build/DerivedData \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application" \
@@ -69,7 +80,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           APP="build/DerivedData/Build/Products/Release/Platen Reader.app"
           KEY="$RUNNER_TEMP/AuthKey.p8"
           echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$KEY"
@@ -87,8 +98,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          gh release create "$GITHUB_REF_NAME" \
+          VERSION="${TAG#v}"
+          gh release create "$TAG" --verify-tag \
             "Platen-Reader-$VERSION.zip" "Platen-Reader-$VERSION.zip.sha256" \
             --title "Platen Reader $VERSION" --generate-notes
 

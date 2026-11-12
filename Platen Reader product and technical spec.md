@@ -23,12 +23,16 @@ These are settled and should not be revisited without a reason.
 
 | Topic | Decision | Why |
 | --- | --- | --- |
-| Name | Platen Reader | A platen presses the page against the type. Note an unrelated iOS writing app called "Platen: Paper & Ink" exists; check availability on GitHub and App Store Connect before registering. |
+| Name | Platen Reader | A platen presses the page against the type. The name is free on App Store Connect; the unrelated iOS app "Platen: Paper & Ink" is not a concern. |
 | Licence | Mozilla Public License 2.0 | Changes to Platen's own files stay open; compatible with the App Store, unlike the GPL. |
-| Platforms | macOS first, iOS second | Shared core from day one so iOS is an addition, not a port. |
-| Distribution | Direct download first (notarised, GitHub releases plus Homebrew cask); Mac App Store later, alongside iOS | Avoids sandbox constraints on file associations and network access in the first release. |
+| Platforms | macOS first, then iOS and iPadOS | Shared core from day one so iOS is an addition, not a port. |
+| Distribution | Direct download first (notarised, GitHub releases plus Homebrew cask). The iOS app and a Mac App Store build then ship together, as one App Store app | Avoids sandbox constraints on file associations and network access in the first release. |
+| App Store identity | One bundle ID shared by Mac and iOS (universal purchase) | One listing, one purchase (free), one set of reviews. The direct-download Mac build keeps the same bundle ID. |
+| Age rating | 4+ (the lowest rating) | Platen ships no content and has no web browsing; it only shows files the user already has, and book remote loads are blocked. |
+| App Store privacy label | Data Not Collected | No telemetry, no network, no accounts. |
 | Minimum OS | macOS 14 Sonoma, iOS 17 | Keeps SwiftUI and WebKit APIs modern and the code simple. |
-| Formats | EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI, AZW3. DRM-free only. | PDF deferred to milestone 4; KFX and DRM-protected files unsupported. |
+| Overlay material | Liquid Glass on macOS 26 and iOS 26 and later, on both platforms; the current translucent materials on older systems | Matches the system's own controls on current OSes without raising the minimum OS. |
+| Formats | EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI, AZW3, DRM-free only, on Mac and iOS alike | PDF deferred to milestone 4; KFX and DRM-protected files unsupported. |
 | Rendering engine | foliate-js (MIT) inside WKWebView | Proven pagination, fixed layout and format support; licence-compatible. |
 | Price | Free |  |
 | Telemetry | None of any kind |  |
@@ -130,7 +134,11 @@ Every command in the overlay and context menu also exists in the menu bar with i
 
 **Overlay**
 
-The overlay fades in over the page (about 150 ms) and hides on the next centre click, on Esc, or after 4 seconds without pointer movement while it is not being used. It contains only:
+The overlay fades in over the page (about 150 ms) and hides on the next centre click, on Esc, or after 4 seconds without pointer movement while it is not being used.
+
+On macOS 26 and iOS 26 and later, every overlay surface uses Liquid Glass (SwiftUI `glassEffect`, AppKit `NSGlassEffectView`, UIKit `UIGlassEffect`): the bars, buttons, slider backing, popovers, the click-zone explainer and the title-bar strip. Related controls share one glass container so they blend as the system's do. On older systems the current translucent materials stay. Reduce Transparency and Increase Contrast are honoured through the system's own glass handling.
+
+It contains only:
 
 - **Title bar strip** with the standard window buttons, the book title and the current chapter.
 - **Location line**, for example "Chapter 4 · 37%", with the printed page number when the book provides one ("p. 214").
@@ -229,13 +237,66 @@ All settings are global and live in Platen Reader > Settings… (⌘,), a standa
 
 - Declare document types in the app's Info.plist: `.epub`, `.kepub.epub` (and `.kepub`), `.mobi`, `.azw`, `.azw3`. Use system UTIs where they exist (`org.idpf.epub-container`) and declare imported types for the rest.
 - Set the default handler with `NSWorkspace.setDefaultApplication(at:toOpen:)` per content type. Read the current default with `NSWorkspace.urlForApplication(toOpen:)` to display it.
-- iOS has no default-app mechanism for file types. There, Platen declares the same types so it appears in "Open in" and the share sheet, and its home screen is the system document browser.
+- iOS has no default-app mechanism for file types. There, Platen declares the same types so it appears in "Open in" and the share sheet, and its home screen is the system document browser (see "iOS and iPadOS").
 
 **Per-book data**
 
 - Stored in one JSON file per book in `~/Library/Application Support/Platen Reader/books/<book-key>.json`, where the key is derived from the OPF identifier and file fingerprint.
 - Contents: schema version, book identifiers, last known file path (informational only), last CFI, reading mode at close, bookmarks (CFI, created date, text snippet), and last-opened date.
 - The format is human-readable and documented in the repository, but portability between apps is not a goal.
+
+## iOS and iPadOS (M3)
+
+The iOS app is the Mac reader on a touch screen: the same core, the same web shell, the same overlay and zones, with touch replacing the pointer. These decisions were settled on 11 Nov 2026.
+
+**Opening books**
+
+- The home screen is the system document browser. Books are opened in place (`LSSupportsOpeningDocumentsInPlace`), from Files, iCloud Drive, SMB shares or any file provider, through security-scoped URLs. They are never copied into the app; "Open in Platen" from another app also opens in place where the provider allows it.
+- Book identity does not depend on the path, so positions and bookmarks work as on the Mac.
+- All Mac formats are supported from 1.0: EPUB 2 and 3, KEPUB, MOBI, AZW, AZW3.
+
+**Touch**
+
+| Input | Paginated | Scroll |
+| --- | --- | --- |
+| Tap, left third | Previous page | Toggle overlay |
+| Tap, centre third | Toggle overlay | Toggle overlay |
+| Tap, right third | Next page | Toggle overlay |
+| Tap in the top-right corner of a page | Add or remove bookmark | Add or remove bookmark |
+| Tap on a link | Follow link | Follow link |
+| Horizontal swipe | Turn page, tracking the finger | (none) |
+| Long press, drag handles | Select text | Select text |
+| Tap a picture | Zoom it | Zoom it |
+
+- **Page turns:** a swipe uses the page-turn animation chosen in Settings (Page Curl, Slide or None), tracking the finger in every case. On touch the swipe is the primary way to turn pages, so unlike the Mac trackpad (which always slides) there is no override.
+- **Bookmarks:** there is no hover on touch, so the faint ribbon outline in the top-right corner shows while the overlay is up.
+- **Selection menu:** the system edit menu gains Copy with Citation, Search Book for "…" and Share, alongside Copy, Look Up and Translate.
+- **Hardware keyboard (iPad and iPhone):** the Mac shortcuts apply, listed in the iPad ⌘ shortcut overlay.
+
+**Layout**
+
+- Two pages side by side on iPad in landscape only. iPhone (either orientation) and iPad in portrait show one page. Split View and Slide Over use the window width as on the Mac.
+- The status bar and home indicator hide with the overlay.
+- Default text size follows Dynamic Type.
+
+**Settings**
+
+- In the app, not in the system Settings app: the Aa and Layout popovers as on the Mac, plus a settings sheet with the General and Appearance options and Clear reading positions and bookmarks. The File Types tab has no iOS counterpart.
+
+**Mac App Store build** (ships with iOS)
+
+- Same bundle ID as iOS and the direct-download build. It is sandboxed, so check before release: whether `NSWorkspace.setDefaultApplication` works from the sandbox (if not, the File Types tab shows the current default and explains how to change it in Finder's Get Info); that per-book data moves into the container, with a container migration so existing direct-download users keep their positions; and that SMB and iCloud opens, Open Recent and window restoration work under the sandbox.
+
+**Testing and performance**
+
+- Main test device: iPhone 15 Pro Max. Also an iPad Pro, for two-page layout, Split View and the hardware keyboard. The Simulator is for everything else.
+- The performance targets above apply, measured on the iPhone 15 Pro Max ("window resize" means rotation or a Split View change).
+
+**Still needed before submission**
+
+- Support URL (required by App Store Connect) and a privacy policy URL (it only needs to say that nothing is collected).
+- Screenshots for iPhone, iPad and Mac.
+- App Store signing: an Apple Distribution certificate and provisioning profiles for Mac and iOS, or automatic signing, and whether CI uploads builds to TestFlight. This is being set up separately.
 
 ## Format support and robustness
 
@@ -341,7 +402,7 @@ Five milestones, each with a clear exit test; the first is a short technical spi
    - Includes: paginated and scroll modes, automatic one or two pages, overlay, click zones, keyboard, first-run explainer, bookmarks, contents and search, Copy with Citation, typography, three themes with system-appearance switching, Settings with file associations, MOBI/AZW3/KEPUB, robustness corpus green, VoiceOver.
    - Exit: all performance targets met; full corpus passes; notarised build on GitHub releases with a Homebrew cask.
 3. **M2: Mac refinements.** A visual typography control (live preview instead of numeric steps), custom themes with a contrast warning, a Quick Look extension so the space bar previews EPUBs in Finder, and Mac App Store submission if sandboxing permits the file associations panel.
-4. **M3: Platen Reader for iOS and iPadOS.** Same core package; touch interaction (tap zones identical to Mac, swipe page turns), Dynamic Type default size, system document browser as the home screen, iPad split view and hardware keyboard support. Ships on the App Store.
+4. **M3: Platen Reader for iOS and iPadOS.** Same core package; touch interaction (tap zones identical to Mac, swipe page turns), Dynamic Type default size, system document browser as the home screen, iPad split view and hardware keyboard support, all formats. Ships on the App Store as one universal app with the Mac App Store build. Details in "iOS and iPadOS (M3)".
 5. **M4: PDF.** PDFKit-backed view inside the same window and overlay on both platforms, with PDF outline in the contents panel, page-based positions, zoom and two-page spreads, and an optional inverted-colour night mode.
 
 ## Out of scope and parked ideas

@@ -48,4 +48,4 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 
 ## Status
 
-M0 (spike) is done. M1 is in progress: work happens on branch `m1` and is merged into `main` through pull requests (CI runs on them); see "Not yet done" in README.md.
+M0 (spike) is done. M3 (iOS, iPadOS and the Mac App Store build) is planned in the spec's "iOS and iPadOS (M3)" section; do not start it until the user says so. On macOS 26 / iOS 26 and later the overlay uses Liquid Glass, with the existing materials as the fallback. M1 is in progress: work happens on branch `m1` and is merged into `main` through pull requests (CI runs on them); see "Not yet done" in README.md.
