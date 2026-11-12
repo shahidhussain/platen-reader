@@ -96,6 +96,9 @@ private struct FileTypesSettingsView: View {
         let id: String
         let label: String
         let type: UTType?
+        /// Whether "Make Platen the Default for All" includes it. Plain text
+        /// does not: most text files on a Mac are not books.
+        var inAll = true
     }
 
     static let rows: [Row] = [
@@ -104,6 +107,7 @@ private struct FileTypesSettingsView: View {
         Row(id: "com.amazon.mobi", label: "MOBI (.mobi)", type: UTType("com.amazon.mobi")),
         Row(id: "com.amazon.azw", label: "AZW (.azw)", type: UTType("com.amazon.azw")),
         Row(id: "com.amazon.azw3", label: "AZW3 (.azw3)", type: UTType("com.amazon.azw3")),
+        Row(id: "public.plain-text", label: "Plain Text (.txt)", type: .plainText, inAll: false),
     ]
 
     @State private var defaults: [String: String] = [:]
@@ -123,7 +127,10 @@ private struct FileTypesSettingsView: View {
                 }
             }
             Section {
-                Button("Make Platen the Default for All") { makeDefault(Self.rows) }
+                Button("Make Platen the Default for All Ebooks") { makeDefault(Self.rows.filter(\.inAll)) }
+                Text("Plain text is left out, since most text files are not books. Use its own button to open all text files in Platen.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                 if let error { Text(error).foregroundStyle(.red) }
             }
         }

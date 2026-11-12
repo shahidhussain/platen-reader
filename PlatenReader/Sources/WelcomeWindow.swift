@@ -63,10 +63,10 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// The types listed in Info.plist (EPUB, KEPUB, MOBI, AZW, AZW3).
+    /// The types listed in Info.plist (EPUB, KEPUB, MOBI, AZW, AZW3, plain text).
     static var bookTypes: [UTType] {
         ["org.idpf.epub-container", "com.kobo.kepub", "com.amazon.mobi", "com.amazon.azw", "com.amazon.azw3"]
-            .compactMap { UTType($0) } + [UTType(filenameExtension: "epub")].compactMap { $0 }
+            .compactMap { UTType($0) } + [UTType(filenameExtension: "epub")].compactMap { $0 } + [.plainText]
     }
 }
 
@@ -93,7 +93,7 @@ private struct WelcomeView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .keyboardShortcut(.defaultAction)
-            Text("EPUB, KEPUB, MOBI or AZW3. You can also drop a book here.")
+            Text("EPUB, KEPUB, MOBI, AZW3 or plain text. You can also drop a book here.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

@@ -8,6 +8,8 @@ public enum BookFormat: String, Sendable, Codable {
     case epub
     /// MOBI, AZW and AZW3 (KF8); foliate-js reads all three.
     case mobi
+    /// Plain text, shown as a made-up EPUB (see `TextBook`).
+    case text
 }
 
 /// Why a book could not be opened, phrased for the person reading it.
@@ -37,7 +39,7 @@ public enum BookOpenError: Error, LocalizedError, Equatable {
         case .kfx:
             return String(localized: "KFX is a proprietary Amazon format. If you have the book in EPUB, AZW3 or MOBI, open that instead.", bundle: .module)
         case .unsupportedFormat:
-            return String(localized: "Platen reads EPUB, KEPUB, MOBI, AZW and AZW3 files.", bundle: .module)
+            return String(localized: "Platen reads EPUB, KEPUB, MOBI, AZW, AZW3 and plain text files.", bundle: .module)
         case let .unreadable(detail):
             return detail
         }
@@ -82,11 +84,11 @@ public final class Book: @unchecked Sendable {
     /// Entry paths and their uncompressed sizes, which foliate-js uses to
     /// estimate how long each section is.
     public var entrySizes: [String: UInt64] {
-        guard let archive else { return [:] }
         var sizes: [String: UInt64] = [:]
-        for entry in archive.entries where !entry.isDirectory {
+        for entry in archive?.entries ?? [] where !entry.isDirectory {
             sizes[entry.path] = entry.uncompressedSize
         }
+        for (path, data) in syntheticFiles { sizes[path] = UInt64(data.count) }
         return sizes
     }
 
@@ -126,17 +128,25 @@ public final class Book: @unchecked Sendable {
         } else {
             source = try FileByteSource(url: url)
         }
-        return try open(source: source)
+        return try open(source: source, fileName: url.lastPathComponent)
     }
+
+    /// Plain-text files are converted whole, so they have their own limit.
+    public static let textLimit: UInt64 = 64 * 1024 * 1024
 
     /// Opens a book from bytes already available. Used by tests and by
     /// `open(url:)`.
-    public static func open(source: ByteSource) throws -> Book {
+    /// - Parameter fileName: used as the title of a plain-text file that
+    ///   names none itself.
+    public static func open(source: ByteSource, fileName: String? = nil) throws -> Book {
         let head = try source.read(offset: 0, length: 4096)
         let fingerprint = try BookIdentity.fingerprint(of: source)
 
-        // KFX: either a bare container or the "DRMION" wrapper.
-        if head.starts(with: Array("CONT".utf8)) || head.starts(with: [0xEA] + Array("DRMION".utf8)) {
+        // KFX: either a bare container or the "DRMION" wrapper. A container
+        // starts "CONT" then a two-byte version (1 or 2, so a zero byte); the
+        // version check stops a text file starting "CONTENTS" matching.
+        let kfxContainer = head.starts(with: Array("CONT".utf8)) && head.count > 5 && head[head.startIndex + 5] == 0
+        if kfxContainer || head.starts(with: [0xEA] + Array("DRMION".utf8)) {
             throw BookOpenError.kfx
         }
 
@@ -152,11 +162,24 @@ public final class Book: @unchecked Sendable {
         do {
             archive = try ZipArchive(source: source)
         } catch ZipError.notAZip {
-            throw BookOpenError.unsupportedFormat
+            // Not a zip: plain text, if it looks like text.
+            guard TextBook.looksLikeText(head), source.size <= textLimit else {
+                throw BookOpenError.unsupportedFormat
+            }
+            return try openText(source: source, fingerprint: fingerprint, fileName: fileName)
         } catch {
             throw BookOpenError.unreadable(error.localizedDescription)
         }
         return try openEPUB(archive: archive, fingerprint: fingerprint)
+    }
+
+    private static func openText(source: ByteSource, fingerprint: String, fileName: String?) throws -> Book {
+        let data = try source.read(offset: 0, length: Int(source.size))
+        let text = TextBook.make(data: data, fileName: fileName)
+        let package = EPUBPackageParser.parsePackage(text.files[TextBook.opfPath] ?? Data(), path: TextBook.opfPath)
+        return Book(format: .text, source: source, archive: nil, package: package,
+                    fingerprint: fingerprint, key: BookIdentity.key(uniqueIdentifier: nil, fingerprint: fingerprint),
+                    warnings: package.warnings, resolver: nil, obfuscatedFonts: [:], syntheticFiles: text.files)
     }
 
     private static func openEPUB(archive: ZipArchive, fingerprint: String) throws -> Book {

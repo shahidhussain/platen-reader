@@ -32,7 +32,7 @@ These are settled and should not be revisited without a reason.
 | App Store privacy label | Data Not Collected | No telemetry, no network, no accounts. |
 | Minimum OS | macOS 14 Sonoma, iOS 17 | Keeps SwiftUI and WebKit APIs modern and the code simple. |
 | Overlay material | Liquid Glass on macOS 26 and iOS 26 and later, on both platforms; the current translucent materials on older systems | Matches the system's own controls on current OSes without raising the minimum OS. |
-| Formats | EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI, AZW3, DRM-free only, on Mac and iOS alike | PDF deferred to milestone 4; KFX and DRM-protected files unsupported. |
+| Formats | EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI, AZW3, DRM-free only, and plain text (.txt), on Mac and iOS alike | PDF deferred to milestone 4; KFX and DRM-protected files unsupported. |
 | Rendering engine | foliate-js (MIT) inside WKWebView | Proven pagination, fixed layout and format support; licence-compatible. |
 | Price | Free |  |
 | Telemetry | None of any kind |  |
@@ -322,6 +322,7 @@ Opening odd and broken files gracefully is the product's main quality bar; every
 | Calibre output quirks (`calibre:` metadata, split files) | Opens normally |
 | KEPUB (Kobo spans and `koboSpan` markup) | Opens as EPUB; Kobo-specific styling neutralised where it breaks layout |
 | MOBI and AZW3, DRM-free | Opened via foliate-js's MOBI/KF8 support |
+| Plain text (.txt) | Shown as a book: UTF-8 or UTF-16, else Windows-1252; hard-wrapped paragraphs joined, other line breaks (poetry, lists) kept; headings such as "Chapter 1" become Contents and sections; title and author from a Gutenberg-style header, else the file name. With no publisher design, "Publisher Default" means a book serif (Iowan Old Style) and 1.5 line spacing. Listed in File Types but never made the default unless chosen |
 | KFX | Unsupported; clear message |
 | DRM: Adobe ADEPT, Apple FairPlay, Readium LCP, Kindle | Detected; plain message naming the DRM type |
 | Zip problems (wrong `mimetype` position, extra data, Zip64) | Tolerated where the content is still readable |

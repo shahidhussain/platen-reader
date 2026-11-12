@@ -75,6 +75,23 @@
 			<key>NSDocumentClass</key>
 			<string>$(PRODUCT_MODULE_NAME).BookDocument</string>
 		</dict>
+		<!-- Plain text, shown as a book (see PlatenCore's TextBook). Platen
+		     appears in Open With for text files, but is never made their
+		     default unless chosen in Settings > File Types. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Plain Text</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>NSDocumentClass</key>
+			<string>$(PRODUCT_MODULE_NAME).BookDocument</string>
+		</dict>
 	</array>
 
 	<!-- Types without a system declaration. EPUB uses the system's
