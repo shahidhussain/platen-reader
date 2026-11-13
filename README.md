@@ -52,6 +52,8 @@ To run the core tests: `swift test --package-path PlatenCore`. To check the robu
 
 Measured here (Debug build, cold launch plus open): about 290 ms to the first visible page for a 2 MB novel.
 
+**PDF (brought into the launch scope):** PDFs open in the same window and overlay, drawn by PDFKit, on the Mac and iOS. The outline is the Contents; bookmarks, search and Back work by page; the last page and zoom are remembered; text controls are hidden. On the Mac the Layout setting picks single page, two-up or continuous, and the overlay has Open in Preview. On iPhone and iPad, portrait shows one page and landscape two touching pages, paired from the page you rotate on.
+
 ## Not yet done
 
 - **VoiceOver:** each page is read aloud as it turns (R repeats it), controls are named, and VoiceOver's own scrolling settles on whole pages. Needs another pass by hand; VoiceOver's Read All still runs on past the page without turning it.

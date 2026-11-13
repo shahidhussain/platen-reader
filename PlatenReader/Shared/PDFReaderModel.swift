@@ -200,7 +200,7 @@ final class PDFReaderModel: NSObject, PDFDocumentDelegate {
 
         record.lastPage = index
         record.lastZoom = zoom
-        record.readingMode = ReadingFlow.paginated.rawValue
+        record.readingMode = state.flow.rawValue // Scroll is remembered per PDF, as per book
         PositionStore.shared.scheduleSave(record)
     }
 

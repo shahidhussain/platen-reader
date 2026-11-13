@@ -66,7 +66,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     /// The types listed in Info.plist (EPUB, KEPUB, MOBI, AZW, AZW3, plain text).
     static var bookTypes: [UTType] {
         ["org.idpf.epub-container", "com.kobo.kepub", "com.amazon.mobi", "com.amazon.azw", "com.amazon.azw3"]
-            .compactMap { UTType($0) } + [UTType(filenameExtension: "epub")].compactMap { $0 } + [.plainText]
+            .compactMap { UTType($0) } + [UTType(filenameExtension: "epub")].compactMap { $0 } + [.plainText, .pdf]
     }
 }
 

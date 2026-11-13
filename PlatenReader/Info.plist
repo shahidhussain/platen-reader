@@ -75,6 +75,22 @@
 			<key>NSDocumentClass</key>
 			<string>$(PRODUCT_MODULE_NAME).BookDocument</string>
 		</dict>
+		<!-- PDFs, shown by PDFKit (spec, "PDF"). Platen is never made their
+		     default unless chosen in Settings > File Types. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PDF Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.adobe.pdf</string>
+			</array>
+			<key>NSDocumentClass</key>
+			<string>$(PRODUCT_MODULE_NAME).BookDocument</string>
+		</dict>
 		<!-- Plain text, shown as a book (see PlatenCore's TextBook). Platen
 		     appears in Open With for text files, but is never made their
 		     default unless chosen in Settings > File Types. -->
