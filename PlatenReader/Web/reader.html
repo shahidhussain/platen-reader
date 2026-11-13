@@ -11,6 +11,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
+<!-- iOS: lay the page out at the screen's own width (otherwise WebKit
+     assumes a 980-pixel desktop page and shrinks it), never zoom (pictures
+     zoom natively instead), and reach under the notch and home indicator.
+     The Mac ignores this. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="stylesheet" href="reader.css">
 <script type="module" src="reader.js"></script>
 </head>

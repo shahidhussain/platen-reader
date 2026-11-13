@@ -10,7 +10,8 @@ public struct BookRecord: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 1
 
     public struct Bookmark: Codable, Equatable, Sendable {
-        /// EPUB CFI of the first word on the bookmarked page.
+        /// EPUB CFI of the first word on the bookmarked page. For a PDF,
+        /// `page:<index>` (the page's index, counting from 0).
         public var cfi: String
         public var created: Date
         /// The first line of text, for the bookmarks list.
@@ -45,6 +46,11 @@ public struct BookRecord: Codable, Equatable, Sendable {
     public var readingMode: String?
     public var bookmarks: [Bookmark] = []
     public var lastOpened: Date?
+    /// PDFs only: the page shown when last read (index from 0), and the zoom
+    /// if the reader zoomed in or out (nil when the page was fitted to the
+    /// window). Optional, so files written before PDFs existed still load.
+    public var lastPage: Int?
+    public var lastZoom: Double?
 
     public init(key: String, uniqueIdentifier: String?, fingerprint: String) {
         self.key = key

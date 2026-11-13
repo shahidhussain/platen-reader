@@ -50,17 +50,7 @@ extension ReaderViewController {
     }
 
     func addBookmark(from body: [String: Any]) {
-        guard var record, let cfi = body["cfi"] as? String,
-              !record.bookmarks.contains(where: { $0.cfi == cfi }) else { return }
-        let bookmark = BookRecord.Bookmark(
-            cfi: cfi,
-            snippet: body["snippet"] as? String ?? "",
-            chapter: (body["chapter"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-            page: body["page"] as? String,
-            fraction: (body["fraction"] as? NSNumber)?.doubleValue)
-        record.bookmarks.append(bookmark)
-        // Keep the list in reading order.
-        record.bookmarks.sort { ($0.fraction ?? 0) < ($1.fraction ?? 0) }
+        guard var record, record.addBookmark(from: body) else { return }
         saveBookmarks(record)
         NSAccessibility.post(element: webView as Any, notification: .announcementRequested,
                              userInfo: [.announcement: String(localized: "Bookmark added"), .priority: NSAccessibilityPriorityLevel.medium.rawValue])
@@ -82,16 +72,9 @@ extension ReaderViewController {
     // MARK: - Find in book
 
     func startSearch(_ query: String) {
-        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        activeSearchQuery = query
-        state.searchQuery = query
-        state.searchGroups = []
-        state.currentHitID = nil
-        state.searchDoneQuery = nil
-        state.searchProgress = 0
-        state.searchRunning = !query.isEmpty
+        state.beginSearch(query)
         guard bookSentToShell else { return }
-        callPlaten("search", query)
+        callPlaten("search", state.activeSearchQuery)
     }
 
     func goToHit(_ hit: ReaderState.SearchHit) {

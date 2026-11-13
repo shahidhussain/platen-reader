@@ -49,6 +49,12 @@ final class ReaderState: ObservableObject {
     @Published var title = ""
     @Published var author = ""
     @Published var isFixedLayout = false
+    /// A PDF (shown by PDFKit) rather than a book: the text controls (font,
+    /// size, spacing, line width) do not apply.
+    @Published var isPDF = false
+    /// PDFs: "p. 12 of 300", shown in the location line instead of a
+    /// percentage (a PDF's pages are fixed, so its page numbers are stable).
+    @Published var locationDetail: String?
     @Published var isRightToLeft = false
     @Published var flow: ReadingFlow = .paginated
 
@@ -74,6 +80,9 @@ final class ReaderState: ObservableObject {
     @Published var sidebarVisible = false
     @Published var sidebarTab: SidebarTab = .contents
     @Published var searchQuery = ""
+    /// The search whose results are being shown (results of older searches
+    /// are dropped). Not published: nothing displays it.
+    var activeSearchQuery = ""
     @Published var searchGroups: [SearchGroup] = []
     @Published var searchRunning = false
     @Published var searchProgress: Double = 0
@@ -84,6 +93,9 @@ final class ReaderState: ObservableObject {
 
     @Published var selection: Selection?
 
+    /// A footnote pop-up is open in the page (Esc closes it first).
+    @Published var noteOpen = false
+
     /// True while a popover from the overlay (Aa) is open, so the overlay
     /// does not hide underneath it.
     @Published var overlayPopoverOpen = false
@@ -91,9 +103,24 @@ final class ReaderState: ObservableObject {
     /// How many pages are side by side on screen right now.
     @Published var columnsOnScreen = 1
 
+    /// False on iPhone, where books always show one page (spec, "Layout");
+    /// Two Pages is then not offered at all.
+    var allowsTwoPages = true
+
+    /// The layouts the reader can choose here.
+    var availableLayouts: [ReadingLayout] {
+        ReadingLayout.allCases.filter { $0 != .twoPages || allowsTwoPages }
+    }
+
+    /// The layout in use, as the Layout picker shows it.
+    var currentLayout: ReadingLayout {
+        ReadingLayout(flow: flow, pages: allowsTwoPages ? ReaderSettings.shared.pageLayout : .one)
+    }
+
     /// Two Pages is chosen but the window is too narrow, so one page shows.
     var twoPagesTooNarrow: Bool {
-        flow == .paginated && !isFixedLayout && ReaderSettings.shared.pageLayout == .two && columnsOnScreen < 2
+        allowsTwoPages && flow == .paginated && !isFixedLayout
+            && ReaderSettings.shared.pageLayout == .two && columnsOnScreen < 2
     }
 
     var allHits: [SearchHit] { searchGroups.flatMap(\.hits) }
@@ -102,7 +129,7 @@ final class ReaderState: ObservableObject {
     func locationLine(showPagesLeft: Bool) -> String {
         var parts: [String] = []
         if !chapter.isEmpty { parts.append(chapter) }
-        parts.append(fraction.formatted(.percent.precision(.fractionLength(0))))
+        parts.append(locationDetail ?? fraction.formatted(.percent.precision(.fractionLength(0))))
         if showPagesLeft, let left = pagesLeftInChapter, flow == .paginated {
             parts.append(left == 0
                 ? String(localized: "last page in chapter")

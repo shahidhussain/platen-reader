@@ -168,7 +168,9 @@ function refreshRibbons() {
             })
             ribbons.append(el)
         }
-        const topEdge = 28 // just below the title bar
+        // Just below the title bar; on iOS, just above the text, below the
+        // Dynamic Island (the corner is 34 pixels high).
+        const topEdge = reader.settings?.verticalMargin ? Math.max(28, reader.settings.verticalMargin - 38) : 28
         if (marks.length) {
             anyMarked ||= page === leadingPage(pages)
             for (const { b, rect } of marks)
