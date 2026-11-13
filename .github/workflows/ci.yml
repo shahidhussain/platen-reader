@@ -40,12 +40,22 @@ jobs:
           PLATEN_WAIT: "10"
         run: scripts/check-corpus.sh
 
-      - name: Keep the snapshots and log if the corpus check failed
+      # Drives the real app through opening, page turns, layout and
+      # bookmarks (PlatenReaderUITests). Its settings and positions go to a
+      # throwaway folder.
+      - name: UI tests
+        run: |
+          xcodebuild test -project PlatenReader.xcodeproj -scheme PlatenReader \
+            -destination "platform=macOS" -derivedDataPath build/DerivedData \
+            -only-testing:PlatenReaderUITests -resultBundlePath build/UITests.xcresult
+
+      - name: Keep the snapshots, log and UI test results if a check failed
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: corpus-snapshots
+          name: test-results
           path: |
             build/snaps
             build/app.log
+            build/UITests.xcresult
           if-no-files-found: ignore
