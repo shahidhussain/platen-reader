@@ -3,6 +3,7 @@
 import { reader } from './state.js'
 import { ribbons } from './bookmarks.js'
 import { post } from './bridge.js'
+import { closeNote, isNoteOpen, noteJustOpened } from './footnotes.js'
 
 // ---------------------------------------------------------------------------
 // Pointer input inside book documents
@@ -37,6 +38,8 @@ const attachPointerHandlers = (doc, index) => {
         if (down.forced || e.timeStamp - down.t > longPressMs) return
         if (Math.hypot(e.screenX - down.x, e.screenY - down.y) > 4) return // a drag
         if (e.target.closest?.('a[href], audio, video, button, input, select, textarea, label')) return
+        // A click while a note is open only closes it.
+        if (closeNote()) return
         if (e.defaultPrevented) return
 
         // Convert from the iframe's coordinates to the window's. The iframe
@@ -85,6 +88,12 @@ const attachPointerHandlers = (doc, index) => {
 // their own taps through WebKit's click, and a tap on a selection dismisses
 // it. Returns 'page', 'control', 'link', 'image' or 'selection'.
 const tapTarget = (x, y) => {
+    // A tap while a note is open only closes it (unless it is on the note).
+    if (isNoteOpen()) {
+        if (noteJustOpened() || document.getElementById('platen-note')?.contains(document.elementFromPoint(x, y))) return 'control'
+        closeNote()
+        return 'control'
+    }
     // The ribbons (and anything else of the shell's own) sit above the book.
     const top = document.elementFromPoint(x, y)
     if (top && top !== reader.view) return 'control'

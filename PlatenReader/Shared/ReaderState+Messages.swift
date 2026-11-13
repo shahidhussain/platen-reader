@@ -29,6 +29,9 @@ extension ReaderState {
         case "back":
             backLabel = body["label"] as? String
 
+        case "note":
+            noteOpen = body["open"] as? Bool ?? false
+
         case "pageBookmarked":
             isPageBookmarked = body["bookmarked"] as? Bool ?? false
 

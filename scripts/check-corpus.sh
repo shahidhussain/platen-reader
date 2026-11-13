@@ -52,6 +52,12 @@ check gutenberg.txt           "(d=>'title:'+platen.view.book.metadata.title+' to
 check windows-1252.txt        "$TEXT"                                  "Café notes"
 # PDF (PDFKit): its pages and its outline as Contents.
 check outline.pdf             "-"                                      "PDF: 6 pages, 3 contents entries"
+# A note reference opens its note in a pop-up (and the page does not move);
+# a superscript link into a notes file counts as one too.
+NOTE='(d=>(d.querySelector(SEL).click(),"clicked"))(platen.view.renderer.getContents()[0].doc)'
+POPUP="'note: '+(document.getElementById('platen-note')||{}).innerText"
+check footnotes.epub          "$(echo "$NOTE" | sed 's/SEL/"#r1"/');$POPUP" "note: The footnote text."
+check footnotes.epub          "$(echo "$NOTE" | sed 's/SEL/"#r2"/');$POPUP" "note: The endnote text."
 check drm-adept.epub          "-"                                      "drm(PlatenCore.DRMScheme.adobeADEPT)"
 
 exit $FAILED

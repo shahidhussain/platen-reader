@@ -436,9 +436,8 @@ struct LayoutPopover: View {
 
     var body: some View {
         Form {
-            Picker("Layout", selection: Binding(get: { ReadingLayout(flow: state.flow, pages: settings.pageLayout) },
-                                                set: actions.setLayout)) {
-                ForEach(ReadingLayout.allCases) { Text($0.label).tag($0) }
+            Picker("Layout", selection: Binding(get: { state.currentLayout }, set: actions.setLayout)) {
+                ForEach(state.availableLayouts) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
