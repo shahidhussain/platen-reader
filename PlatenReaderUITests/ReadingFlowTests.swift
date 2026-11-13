@@ -111,14 +111,19 @@ final class ReadingFlowTests: XCTestCase {
     func testTwoPagesShowMoreTextThanOne() {
         launch()
         _ = pageText()
-        // Make the window as large as the screen, so two pages fit side by side.
+        // Two pages need room for a readable line in each half of the
+        // window. Make the window as large as the screen and the text small
+        // (these settings are the test's own), so they fit even on the small
+        // screens of CI machines.
         app.menuBars.menuBarItems["Window"].click()
         app.menuItems["Zoom"].click()
+        for _ in 0..<6 { app.typeKey("-", modifierFlags: .command) }
         app.typeKey("1", modifierFlags: .command)
-        Thread.sleep(forTimeInterval: 1)
+        Thread.sleep(forTimeInterval: 1.5)
         let one = waitForPage("one page") { _ in true }
         app.typeKey("2", modifierFlags: .command)
-        let two = waitForPage("two pages") { $0.count > one.count * 3 / 2 }
+        let width = app.windows.firstMatch.frame.width
+        let two = waitForPage("two pages (window \(Int(width)) points wide)") { $0.count > one.count * 3 / 2 }
         XCTAssertTrue(two.hasPrefix(String(one.prefix(40))), "Two pages should start where one page did")
     }
 
