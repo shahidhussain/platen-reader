@@ -856,6 +856,8 @@ export class Paginator extends HTMLElement {
         if (state.pinched) return
         state.pinched = globalThis.visualViewport.scale > 1
         if (this.scrolled || state.pinched) return
+        // Platen: the iOS app moves the page with the finger itself.
+        if (this.hasAttribute('native-swipe')) return
         if (e.touches.length > 1) {
             if (this.#touchScrolled) e.preventDefault()
             return

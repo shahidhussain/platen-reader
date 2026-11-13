@@ -39,6 +39,29 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
     /// True while opening, until the saved page is on screen: PDFKit reports
     /// the first page meanwhile, which must not overwrite the saved place.
     private var restoring = true
+    /// Draws tap turns as a slide or a page curl (Settings > Page Turn),
+    /// the same as in the book reader.
+    private lazy var pageTurner = PageTurnAnimator(
+        host: self, pageView: pdfView,
+        snapshot: { [weak self] done in
+            guard let self else { return done(nil) }
+            let view: UIView = self.pdfView
+            let format = UIGraphicsImageRendererFormat.preferred()
+            format.opaque = true
+            done(UIGraphicsImageRenderer(bounds: view.bounds, format: format).image { _ in
+                view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+            })
+        },
+        turnUnderneath: { [weak self] request, done in
+            guard let self else { return done(false) }
+            let before = self.currentIndex
+            let forward = request == .next || request == .right
+            if forward { self.pdfView.goToNextPage(nil) } else { self.pdfView.goToPreviousPage(nil) }
+            self.pdfView.layoutIfNeeded()
+            // PDFKit draws the new page a moment later; wait for it, so the
+            // picture of the new page (for a curl) is not blank.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { done(self.currentIndex != before) }
+        })
 
     init(url: URL) {
         self.url = url
@@ -295,9 +318,17 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         turn(forward: recogniser.direction == .left)
     }
 
+    /// Turns a page (PDFs are always left to right), drawn in the Page Turn
+    /// style: none in Scroll layout or under Reduce Motion.
     private func turn(forward: Bool) {
-        // Not while zoomed in: then the reader is panning around the page.
-        if forward { pdfView.goToNextPage(nil) } else { pdfView.goToPreviousPage(nil) }
+        var style: PageTurnAnimator.Style
+        switch settings.pageTurnStyle {
+        case .none: style = .none
+        case .slide: style = .slide
+        case .curl: style = .curl
+        }
+        if UIAccessibility.isReduceMotionEnabled { style = .none }
+        pageTurner.turn(forward ? .next : .prev, leafMovesLeft: forward, style: style)
     }
 
     func gestureRecognizer(_ recogniser: UIGestureRecognizer,
