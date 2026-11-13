@@ -60,6 +60,12 @@ extension ReaderViewController {
             log.debug("selection: \(self.state.selection?.text.count ?? 0) characters")
 
         case "relocate":
+            #if DEBUG
+            if let started = DebugHooks.resizeStarted {
+                DebugHooks.resizeStarted = nil
+                log.info("Re-laid out after resize in \((CFAbsoluteTimeGetCurrent() - started) * 1000, format: .fixed(precision: 0)) ms")
+            }
+            #endif
             reportLayoutToSettings()
             view.window?.subtitle = state.chapter
             if let cfi = body["cfi"] as? String, var record {

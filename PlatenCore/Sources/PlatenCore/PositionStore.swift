@@ -70,6 +70,13 @@ public final class PositionStore: @unchecked Sendable {
 
     /// The default location in Application Support.
     public static var defaultDirectory: URL {
+        #if DEBUG
+        // Automated UI tests keep their positions and bookmarks in a
+        // throwaway folder, away from the reader's own (see AppDefaults).
+        if let home = ProcessInfo.processInfo.environment["PLATEN_TEST_HOME"] {
+            return URL(fileURLWithPath: home, isDirectory: true).appendingPathComponent("books", isDirectory: true)
+        }
+        #endif
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("Platen Reader", isDirectory: true)
             .appendingPathComponent("books", isDirectory: true)

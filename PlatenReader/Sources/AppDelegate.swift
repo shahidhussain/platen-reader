@@ -84,8 +84,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private static func otherRunningInstance() -> NSRunningApplication? {
         #if DEBUG
-        // The automated checks (scripts/run-debug.sh) launch their own copy.
-        if ProcessInfo.processInfo.environment["PLATEN_SNAPSHOT_DIR"] != nil { return nil }
+        // The automated checks (scripts/run-debug.sh and the UI tests) launch
+        // their own copy, even if the reader's own Platen is running.
+        let env = ProcessInfo.processInfo.environment
+        if env["PLATEN_SNAPSHOT_DIR"] != nil || env["PLATEN_TEST_HOME"] != nil { return nil }
         #endif
         guard let id = Bundle.main.bundleIdentifier else { return nil }
         return NSRunningApplication.runningApplications(withBundleIdentifier: id)

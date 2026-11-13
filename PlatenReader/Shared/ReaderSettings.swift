@@ -170,7 +170,7 @@ final class ReaderSettings: ObservableObject {
     static let curatedFonts = ["", "Iowan Old Style", "Georgia", "Palatino", "Charter", "New York",
                                "Baskerville", "Avenir Next", "Helvetica Neue"]
 
-    private let defaults = UserDefaults.standard
+    private let defaults = AppDefaults.store
 
     @Published var defaultFlow: ReadingFlow { didSet { save("defaultFlow", defaultFlow.rawValue) } }
     @Published var pageLayout: PageLayout { didSet { save("pageLayout", pageLayout.rawValue) } }
@@ -188,9 +188,9 @@ final class ReaderSettings: ObservableObject {
     @Published var frontWindowTooNarrowForTwoPages = false
 
     private init() {
-        func string(_ key: String) -> String? { UserDefaults.standard.string(forKey: key) }
+        func string(_ key: String) -> String? { AppDefaults.store.string(forKey: key) }
         func bool(_ key: String, _ fallback: Bool) -> Bool {
-            UserDefaults.standard.object(forKey: key) == nil ? fallback : UserDefaults.standard.bool(forKey: key)
+            AppDefaults.store.object(forKey: key) == nil ? fallback : AppDefaults.store.bool(forKey: key)
         }
         defaultFlow = string("defaultFlow").flatMap(ReadingFlow.init) ?? .paginated
         pageLayout = string("pageLayout").flatMap(PageLayout.init) ?? .two
@@ -198,9 +198,9 @@ final class ReaderSettings: ObservableObject {
         pageTurnStyle = string("pageTurnStyle").flatMap(PageTurnStyle.init)
             ?? (bool("animatePageTurns", true) ? .curl : .none)
         appearance = string("appearance").flatMap(AppearanceChoice.init) ?? .automatic
-        let index = UserDefaults.standard.object(forKey: "fontSizeIndex") as? Int ?? Self.defaultFontSizeIndex
+        let index = AppDefaults.store.object(forKey: "fontSizeIndex") as? Int ?? Self.defaultFontSizeIndex
         fontSizeIndex = min(max(index, 0), Self.fontSizes.count - 1)
-        lineHeight = UserDefaults.standard.double(forKey: "lineHeight")
+        lineHeight = AppDefaults.store.double(forKey: "lineHeight")
         lineWidth = string("lineWidth").flatMap(LineWidth.init) ?? .medium
         fontFamily = string("fontFamily") ?? ""
         hyphenate = bool("hyphenate", true)

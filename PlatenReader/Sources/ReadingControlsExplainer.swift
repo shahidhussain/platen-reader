@@ -12,9 +12,9 @@ struct ReadingControlsExplainer: View {
     static let switchCountKey = "readingModeSwitchExplainerCount"
 
     static func resetTips() {
-        UserDefaults.standard.removeObject(forKey: shownCountKey)
-        UserDefaults.standard.removeObject(forKey: "hasSeenReadingControls") // older key
-        UserDefaults.standard.removeObject(forKey: switchCountKey)
+        AppDefaults.store.removeObject(forKey: shownCountKey)
+        AppDefaults.store.removeObject(forKey: "hasSeenReadingControls") // older key
+        AppDefaults.store.removeObject(forKey: switchCountKey)
     }
 
     let flow: ReadingFlow

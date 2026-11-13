@@ -12,6 +12,8 @@ sleep 0.5
 PLATEN_SNAPSHOT_DIR="$ROOT/build/snaps" PLATEN_STEPS="${2:-}" "$APP" "$1" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
 APPPID=$!
 STEPS=$(echo "${2:-}" | awk -F';' '{print NF}')
-sleep $((5 + STEPS))
+# Seconds to wait for the book to open before the steps run (one second
+# each). PLATEN_WAIT raises it on slow machines, such as CI runners.
+sleep $((${PLATEN_WAIT:-5} + STEPS))
 kill $APPPID $LOGPID 2>/dev/null
 grep -av '^Filtering' "$ROOT/build/app.log" | sed 's/^[0-9-]* [0-9:.]* //' 

@@ -445,9 +445,9 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         pushSettings()
         // Briefly show the click zones for the new mode, for the first three
         // switches only.
-        let count = UserDefaults.standard.integer(forKey: ReadingControlsExplainer.switchCountKey)
+        let count = AppDefaults.store.integer(forKey: ReadingControlsExplainer.switchCountKey)
         if count < 3 {
-            UserDefaults.standard.set(count + 1, forKey: ReadingControlsExplainer.switchCountKey)
+            AppDefaults.store.set(count + 1, forKey: ReadingControlsExplainer.switchCountKey)
             showExplainer(flash: true)
         }
     }
@@ -459,9 +459,9 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     /// dismisses them.
     func showFirstRunExplainerIfNeeded() {
         let key = ReadingControlsExplainer.shownCountKey
-        let count = UserDefaults.standard.integer(forKey: key)
+        let count = AppDefaults.store.integer(forKey: key)
         guard count < ReadingControlsExplainer.opensToShow else { return }
-        UserDefaults.standard.set(count + 1, forKey: key)
+        AppDefaults.store.set(count + 1, forKey: key)
         showExplainer(flash: false)
     }
 
