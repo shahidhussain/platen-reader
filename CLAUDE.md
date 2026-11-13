@@ -57,4 +57,4 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 
 ## Status
 
-M0 (spike) is done. M3 (iOS and iPadOS) has started, with the user's go-ahead: the plan and its phases are in `docs/m3-ios-plan.md`; phase 1 (the iOS target, the shared folder and a minimal reader) is done. On macOS 26 / iOS 26 and later the overlay uses Liquid Glass, with the existing materials as the fallback. M1 is in progress: work happens on branch `m1` and is merged into `main` through pull requests (CI runs on them); see "Not yet done" in README.md.
+M0 (spike) is done. Launch (1.0) is the Mac app as a DMG (with Sparkle) plus the iOS app on the App Store, both with PDF; the Mac App Store build comes later. M3 (iOS and iPadOS) has started, with the user's go-ahead: the plan and its phases are in `docs/m3-ios-plan.md`; phase 1 (the iOS target, the shared folder and a minimal reader) is done. On macOS 26 / iOS 26 and later the overlay uses Liquid Glass, with the existing materials as the fallback. M1 is in progress: work happens on branch `m1` and is merged into `main` through pull requests (CI runs on them); see "Not yet done" in README.md.

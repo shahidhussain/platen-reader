@@ -26,13 +26,14 @@ These are settled and should not be revisited without a reason.
 | Name | Platen Reader | A platen presses the page against the type. The name is free on App Store Connect; the unrelated iOS app "Platen: Paper & Ink" is not a concern. |
 | Licence | Mozilla Public License 2.0 | Changes to Platen's own files stay open; compatible with the App Store, unlike the GPL. |
 | Platforms | macOS first, then iOS and iPadOS | Shared core from day one so iOS is an addition, not a port. |
-| Distribution | Direct download first (notarised, GitHub releases plus Homebrew cask). The iOS app and a Mac App Store build then ship together, as one App Store app | Avoids sandbox constraints on file associations and network access in the first release. |
+| Distribution | Launch (1.0): the Mac app as a direct download (notarised DMG on GitHub releases, plus a Homebrew cask) and the iOS and iPadOS app on the App Store. The Mac App Store build comes later | Avoids sandbox constraints on file associations and network access in the Mac release. Decided 12 Nov 2026. |
+| Updates (direct download) | Sparkle, in the direct-download Mac build only. It checks for updates automatically by default (the user can turn this off), using an appcast on a permanent GitHub Pages site. App Store builds update through the store and contain no Sparkle code | Keeps direct-download users current without a Homebrew dependency. The check is the only network request Platen makes, and it sends no system profile. Decided 12 Nov 2026. |
 | App Store identity | One bundle ID shared by Mac and iOS (universal purchase) | One listing, one purchase (free), one set of reviews. The direct-download Mac build keeps the same bundle ID. |
 | Age rating | 4+ (the lowest rating) | Platen ships no content and has no web browsing; it only shows files the user already has, and book remote loads are blocked. |
-| App Store privacy label | Data Not Collected | No telemetry, no network, no accounts. |
+| App Store privacy label | Data Not Collected | No telemetry, no network, no accounts. (App Store builds have no update check.) |
 | Minimum OS | macOS 14 Sonoma, iOS 17 | Keeps SwiftUI and WebKit APIs modern and the code simple. |
 | Overlay material | Liquid Glass on macOS 26 and iOS 26 and later, on both platforms; the current translucent materials on older systems | Matches the system's own controls on current OSes without raising the minimum OS. |
-| Formats | EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI, AZW3, DRM-free only, and plain text (.txt), on Mac and iOS alike | PDF deferred to milestone 4; KFX and DRM-protected files unsupported. |
+| Formats | EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI, AZW3, DRM-free only, plain text (.txt) and PDF, on Mac and iOS alike | PDF is in the launch scope (brought forward from M4 on 12 Nov 2026) and uses PDFKit; KFX and DRM-protected files unsupported. |
 | Rendering engine | foliate-js (MIT) inside WKWebView | Proven pagination, fixed layout and format support; licence-compatible. |
 | Price | Free |  |
 | Telemetry | None of any kind |  |
@@ -62,6 +63,9 @@ The user double-clicks a book anywhere (local disk, iCloud Drive, SMB share) and
 
 - DRM-protected books are detected (encryption entries that are not font obfuscation) and show a plain message naming the likely DRM type, not a blank page.
 - Corrupt files show what failed and, where possible, still open whatever sections can be read.
+- The DRM message links to a short guide on the Platen site explaining DRM and where to get DRM-free books.
+- Any book that fails to open shows an error screen with a **Report this book** button. It opens a pre-filled email to the support address, with a subject tag such as `[Platen 1.0.2 · macOS · E-1042]` and an attached diagnostics file: app version, OS and device, the parse error, EPUB version and the generator named in the book. The user sees the email before sending it. Attaching the book itself is an option, off by default. On the Mac this uses the sharing service (`NSSharingService` compose email); on iOS the system mail composer.
+- Help > Send Feedback… opens a blank email to the same address with the app version and OS in the subject tag. Nothing is sent without the user pressing Send.
 
 ## Reading modes and layout
 
@@ -105,7 +109,8 @@ A plain click is the main control: in paginated mode the left third goes back, t
 | Click, left third | Previous page | Toggle overlay |
 | Click, centre third | Toggle overlay | Toggle overlay |
 | Click, right third | Next page | Toggle overlay |
-| Click on a link (footnote, cross-reference) | Follow link | Follow link |
+| Click on a footnote or endnote reference | Show the note in a pop-up (click elsewhere or Esc closes it) | Same |
+| Click on any other link (cross-reference) | Follow link | Follow link |
 | Click in the top-right corner of a page | Add or remove bookmark | Add or remove bookmark |
 | Click-drag, double-click, triple-click | Select text, word, paragraph | Select text, word, paragraph |
 | Right-click | Context menu | Context menu |
@@ -283,7 +288,7 @@ The iOS app is the Mac reader on a touch screen: the same core, the same web she
 
 - In the app, not in the system Settings app: the Aa and Layout popovers as on the Mac, plus a settings sheet with the General and Appearance options and Clear reading positions and bookmarks. The File Types tab has no iOS counterpart.
 
-**Mac App Store build** (ships with iOS)
+**Mac App Store build** (after launch; not part of 1.0)
 
 - Same bundle ID as iOS and the direct-download build. It is sandboxed, so check before release: whether `NSWorkspace.setDefaultApplication` works from the sandbox (if not, the File Types tab shows the current default and explains how to change it in Finder's Get Info); that per-book data moves into the container, with a container migration so existing direct-download users keep their positions; and that SMB and iCloud opens, Open Recent and window restoration work under the sandbox.
 
@@ -297,6 +302,19 @@ The iOS app is the Mac reader on a touch screen: the same core, the same web she
 - Support URL (required by App Store Connect) and a privacy policy URL (it only needs to say that nothing is collected).
 - Screenshots for iPhone, iPad and Mac.
 - App Store signing: an Apple Distribution certificate and provisioning profiles for Mac and iOS, or automatic signing, and whether CI uploads builds to TestFlight. This is being set up separately.
+
+## PDF
+
+PDFs open in the same window and overlay as books, rendered by PDFKit (`PDFView`) on both platforms. Platen adds its interaction model and stays out of the way; it does not edit or annotate PDFs.
+
+- **Interaction:** the same click (or tap) zones, centre overlay and click-drag selection. Look Up, Copy and Share work on selected text.
+- **Position:** reopens at the last page and zoom, stored in the per-book data. A PDF is identified by the same fingerprint as a book (file size plus a hash of the first and last 64 KB), with the PDF's document ID in place of the OPF identifier.
+- **Contents:** the PDF outline in the Contents tab; bookmarks and search work as for books, anchored to page numbers instead of CFIs.
+- **Layout on the Mac:** the Layout setting maps to PDFKit's display modes. One Page is single page, Two Pages is two-up, Scroll is continuous.
+- **Layout on iPhone and iPad:** follows orientation. Portrait shows one page at a time. Landscape shows the current page and the next one side by side, touching, so a scanned two-page spread reads as one. This applies to iPhone as well as iPad, unlike EPUB, where iPhone always shows one page.
+- **Spread pairing is the reader's choice, by rotating.** PDFs of books pair their pages inconsistently: some have the cover alone and then left-right spreads, and some have a second cover page first, which shifts every pair by one. Platen does not guess. Rotating to landscape shows the page the reader was on plus the next one, and that pairing holds: each turn in landscape moves two pages. If the pairs look wrong, the reader rotates back to portrait, turns one page and rotates again. Rotating back to portrait shows the left page of the pair.
+- **Controls:** EPUB-only controls (font, text size, line spacing, line width) are hidden for PDFs. Themes colour only the background around the page; an optional inverted-colour night mode may follow.
+- **File association:** `com.adobe.pdf` is listed in File Types, but Platen is never made the default for PDFs unless the user chooses it.
 
 ## Format support and robustness
 
@@ -331,7 +349,7 @@ Opening odd and broken files gracefully is the product's main quality bar; every
 
 **Test corpus**
 
-Build it at the start of milestone 1 and grow it with every bug report: Standard Ebooks and Project Gutenberg files (EPUB 2 and 3), Calibre conversions, Kobo store-style KEPUBs, fixed-layout picture books and comics, RTL and vertical samples, the EPUB 3 test suite from the W3C, and deliberately broken files generated by a script. Only include files that may legally be redistributed; keep others in a local, git-ignored folder.
+Build it at the start of milestone 1 and grow it with every bug report: Standard Ebooks and Project Gutenberg files (EPUB 2 and 3), Calibre conversions, Kobo store-style KEPUBs, fixed-layout picture books and comics, RTL and vertical samples, the EPUB 3 test suite from the W3C, and deliberately broken files generated by a script. Standard Ebooks files double as a regression test for "show the book as published": watch justification and `text-wrap: pretty`, which their CSS uses. Only include files that may legally be redistributed; keep others in a local, git-ignored folder.
 
 ## Architecture
 
@@ -386,7 +404,7 @@ Warm the WebKit content process at launch so the first open does not pay for it.
 **Privacy**
 
 - No analytics, telemetry or crash reporting that phones home. Crash logs stay with the system's own reporter.
-- No network access at all except what the user's own book content requires, and remote resources in books are blocked by default.
+- No network access at all, with one exception: the direct-download Mac build checks for updates through Sparkle (see Decisions made). Remote resources in books are blocked.
 - No location, contacts or other permission prompts.
 
 **Localisation**
@@ -397,14 +415,16 @@ English at launch. All user-facing strings in String Catalogs from day one, with
 
 Five milestones, each with a clear exit test; the first is a short technical spike to retire the biggest risks before any UI polish.
 
+**Launch (1.0)** is M1, M3 and M4 together: the Mac app (EPUB and PDF) as a notarised DMG with Sparkle updates, and the iOS and iPadOS app (EPUB and PDF) on the App Store. M2 and the Mac App Store build follow after launch.
+
 1. **M0: Spike (risk retirement).** A bare document-based Mac app that opens an EPUB from disk and from an SMB share, renders it through foliate-js in WKWebView via a custom scheme handler, and turns pages.
    - Exit: warm open under 400 ms for a typical novel; malformed XHTML falls back to HTML parsing; two-finger swipe tracks the finger in a prototype; obfuscated fonts render.
-2. **M1: Platen Reader for Mac 1.0 (EPUB).** Everything in this spec for macOS except the items listed under later milestones.
+2. **M1: Platen Reader for Mac 1.0.** Everything in this spec for macOS except the items listed under later milestones. PDF is M4, which also ships in 1.0.
    - Includes: paginated and scroll modes, automatic one or two pages, overlay, click zones, keyboard, first-run explainer, bookmarks, contents and search, Copy with Citation, typography, three themes with system-appearance switching, Settings with file associations, MOBI/AZW3/KEPUB, robustness corpus green, VoiceOver.
-   - Exit: all performance targets met; full corpus passes; notarised build on GitHub releases with a Homebrew cask.
-3. **M2: Mac refinements.** A visual typography control (live preview instead of numeric steps), custom themes with a contrast warning, a Quick Look extension so the space bar previews EPUBs in Finder, and Mac App Store submission if sandboxing permits the file associations panel.
-4. **M3: Platen Reader for iOS and iPadOS.** Same core package; touch interaction (tap zones identical to Mac, swipe page turns), Dynamic Type default size, system document browser as the home screen, iPad split view and hardware keyboard support, all formats. Ships on the App Store as one universal app with the Mac App Store build. Details in "iOS and iPadOS (M3)".
-5. **M4: PDF.** PDFKit-backed view inside the same window and overlay on both platforms, with PDF outline in the contents panel, page-based positions, zoom and two-page spreads, and an optional inverted-colour night mode.
+   - Exit: all performance targets met; full corpus passes; notarised DMG on GitHub releases, updating through Sparkle, with a Homebrew cask.
+3. **M2: Mac refinements.** A visual typography control (live preview instead of numeric steps), custom themes with a contrast warning, a Quick Look extension so the space bar previews EPUBs in Finder. After launch.
+4. **M3: Platen Reader for iOS and iPadOS.** Same core package; touch interaction (tap zones identical to Mac, swipe page turns), Dynamic Type default size, system document browser as the home screen, iPad split view and hardware keyboard support, all formats including PDF. Ships on the App Store at launch; the Mac App Store build joins the same listing later. Details in "iOS and iPadOS (M3)".
+5. **M4: PDF (in the launch scope).** PDFKit-backed view inside the same window and overlay on both platforms. Details in "PDF".
 
 ## Out of scope and parked ideas
 
@@ -413,14 +433,22 @@ These are deliberately excluded to keep Platen a viewer rather than a reading pl
 | Item | Status | Reason |
 | --- | --- | --- |
 | Library, bookshelf, collections, import | Out of scope | Folders are the library |
-| Highlights and notes | Out of scope | No cross-app standard for EPUB annotations, so they would create lock-in; Copy with Citation covers the need |
-| Sync of positions or bookmarks between devices | Out of scope for now | Would need an account or iCloud container; reconsider after iOS ships |
+| Highlights and notes | Later | No cross-app standard for EPUB annotations, so they would create lock-in. If added: stored outside the book, keyed by book identity, with export to Markdown. Copy with Citation covers the need until then |
+| Sync of positions or bookmarks between devices | Later, if at all | Possible through iCloud key-value storage keyed by book identity, with no account; reconsider after iOS ships |
 | In-app colour-temperature (warm after sunset) | Rejected | Night Shift already does this system-wide; theme scheduling covers the rest |
 | Text selection mode | Rejected | Click-drag selects text natively |
 | DRM removal or DRM-protected playback | Out of scope | Legal and licensing reasons |
 | KFX format | Out of scope | Proprietary and poorly documented |
-| Text-to-speech, read-aloud sync | Parked | Possible later via system speech |
+| Text-to-speech, read-aloud sync | Parked | Possible later via system speech, highlighting the sentence being read |
 | Custom themes | Parked to M2 |  |
 | Visual typography control | Parked to M2 |  |
-| PDF | Parked to M4 |  |
+| In-app book list, OPDS catalogues, downloading books | Out of scope | Platen shows files the user already has; a catalogue is a library and needs the network |
+| Mac App Store build | After launch | See "iOS and iPadOS (M3)" |
 | CBZ comics | Parked | foliate-js supports it, so it may come almost free; decide after M1 |
+
+## To be decided
+
+Ideas worth keeping that need more thought before they are planned.
+
+- **Bundled first book.** Ship one public-domain Standard Ebooks title so the first launch opens straight into a book instead of the welcome window. Note that "Platen ships no content" is part of the case for the 4+ age rating.
+- **Stable computed page numbers.** For books without a page list, a computed count that does not change with the window, shown as "page X of Y", and an estimate of time left in the chapter. Risks being complex, and the spec currently says Platen's own page counts are never presented as stable.
