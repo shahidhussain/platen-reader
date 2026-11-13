@@ -21,8 +21,8 @@ extension ReaderViewController {
             close: { [weak self] in self?.state.sidebarVisible = false }
         )
         let actions = OverlayActions(
-            previousPage: { [weak self] in self?.js("platen.prev()") },
-            nextPage: { [weak self] in self?.js("platen.next()") },
+            previousPage: { [weak self] in self?.turn(.prev) },
+            nextPage: { [weak self] in self?.turn(.next) },
             goToFraction: { [weak self] f in self?.callPlaten("jumpToFraction", f) },
             goBack: { [weak self] in self?.js("platen.goBack()") },
             toggleContents: { [weak self] in

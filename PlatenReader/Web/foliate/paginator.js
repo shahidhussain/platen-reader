@@ -874,8 +874,12 @@ export class Paginator extends HTMLElement {
         this.scrollBy(dx, dy)
     }
     #onTouchEnd() {
+        // Platen: only a drag needs settling on a page. After a tap nothing
+        // moved, and settling (from the position before the tap) undid page
+        // turns the tap had asked for, such as iOS's page curl.
+        const dragged = this.#touchScrolled
         this.#touchScrolled = false
-        if (this.scrolled) return
+        if (this.scrolled || !dragged) return
 
         // XXX: Firefox seems to report scale as 1... sometimes...?
         // at this point I'm basically throwing `requestAnimationFrame` at
