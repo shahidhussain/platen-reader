@@ -94,9 +94,24 @@ final class ReaderState: ObservableObject {
     /// How many pages are side by side on screen right now.
     @Published var columnsOnScreen = 1
 
+    /// False on iPhone, where books always show one page (spec, "Layout");
+    /// Two Pages is then not offered at all.
+    var allowsTwoPages = true
+
+    /// The layouts the reader can choose here.
+    var availableLayouts: [ReadingLayout] {
+        ReadingLayout.allCases.filter { $0 != .twoPages || allowsTwoPages }
+    }
+
+    /// The layout in use, as the Layout picker shows it.
+    var currentLayout: ReadingLayout {
+        ReadingLayout(flow: flow, pages: allowsTwoPages ? ReaderSettings.shared.pageLayout : .one)
+    }
+
     /// Two Pages is chosen but the window is too narrow, so one page shows.
     var twoPagesTooNarrow: Bool {
-        flow == .paginated && !isFixedLayout && ReaderSettings.shared.pageLayout == .two && columnsOnScreen < 2
+        allowsTwoPages && flow == .paginated && !isFixedLayout
+            && ReaderSettings.shared.pageLayout == .two && columnsOnScreen < 2
     }
 
     var allHits: [SearchHit] { searchGroups.flatMap(\.hits) }

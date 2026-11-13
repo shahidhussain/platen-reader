@@ -138,6 +138,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     override func viewDidLoad() {
         super.viewDidLoad()
         state.flow = settings.defaultFlow
+        state.allowsTwoPages = UIDevice.current.userInterfaceIdiom != .phone
         applyTheme()
 
         // Re-style whenever a global setting changes.
@@ -352,6 +353,10 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     var webPayload: [String: Any] {
         var payload = settings.webPayload(theme: currentTheme, flow: state.flow)
         payload["touch"] = true
+        // iPhone: one page always, in either orientation (spec, "Layout").
+        // iPad: the Two Pages rule decides by width, as on the Mac, so two
+        // pages appear in landscape and in wide Split View windows.
+        if UIDevice.current.userInterfaceIdiom == .phone { payload["pageLayout"] = PageLayout.one.rawValue }
         payload["animated"] = settings.pageTurnStyle != .none && !UIAccessibility.isReduceMotionEnabled
         let insets = view.safeAreaInsets
         let compact = traitCollection.horizontalSizeClass == .compact

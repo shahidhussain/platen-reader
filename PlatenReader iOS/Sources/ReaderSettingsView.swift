@@ -1,5 +1,6 @@
 import PlatenCore
 import SwiftUI
+import UIKit
 
 /// The settings sheet on iOS, opened from the gear button in the overlay.
 /// It holds what the overlay's own popovers do not: text size, font, line
@@ -25,8 +26,16 @@ struct ReaderSettingsView: View {
         NavigationStack {
             Form {
                 Section("Layout") {
-                    Picker("New Books Open In", selection: $settings.defaultLayout) {
-                        ForEach(ReadingLayout.allCases) { Text($0.label).tag($0) }
+                    Picker("New Books Open In", selection: Binding(
+                        get: {
+                            let layout = settings.defaultLayout
+                            return layout == .twoPages && UIDevice.current.userInterfaceIdiom == .phone ? .onePage : layout
+                        },
+                        set: { settings.defaultLayout = $0 })) {
+                        // iPhone: books always show one page, so no Two Pages.
+                        ForEach(ReadingLayout.allCases.filter {
+                            $0 != .twoPages || UIDevice.current.userInterfaceIdiom != .phone
+                        }) { Text($0.label).tag($0) }
                     }
                     Picker("Line Width", selection: $settings.lineWidth) {
                         ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
