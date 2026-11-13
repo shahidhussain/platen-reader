@@ -12,9 +12,14 @@ import os
 ///   first render, each followed by a snapshot. A step is JavaScript (e.g.
 ///   "platen.next()"), or a reader command starting with "@": "@<selector>"
 ///   sends a menu action (e.g. "@toggleContents:"), "@search:<query>" runs a
-///   search, "@tab:<contents|bookmarks|search>" opens the panel on a tab. Each step also writes "<book>-<n>-native.png" of the native views
+///   search, "@tab:<contents|bookmarks|search>" opens the panel on a tab,
+///   "@resize:<w>x<h>" resizes the window and logs the re-layout time. Each step also writes "<book>-<n>-native.png" of the native views
 ///   (sidebar, overlay), which web snapshots do not include.
 enum DebugHooks {
+    /// When an "@resize:" step changed the window size; the next page
+    /// position report (sent once the text is laid out again) logs the time.
+    static var resizeStarted: CFAbsoluteTime?
+
     static func afterFirstRender(webView: WKWebView, bookName: String, root: NSView, run: @escaping (String) -> Void) {
         let env = ProcessInfo.processInfo.environment
         guard let dir = env["PLATEN_SNAPSHOT_DIR"] else { return }
@@ -60,6 +65,14 @@ extension ReaderViewController {
         } else if step.hasPrefix("@search:") {
             self.setSidebar(visible: true, tab: .search)
             self.startSearch(String(step.dropFirst("@search:".count)))
+        } else if step.hasPrefix("@resize:") {
+            // "@resize:900x700": resize the window (content size, in points)
+            // and log how long until the text has been laid out again.
+            let parts = step.dropFirst("@resize:".count).split(separator: "x").compactMap { Double($0) }
+            if parts.count == 2, let window = self.view.window {
+                DebugHooks.resizeStarted = CFAbsoluteTimeGetCurrent()
+                window.setContentSize(NSSize(width: parts[0], height: parts[1]))
+            }
         } else if step == "@ax" {
             // What VoiceOver sees in this window: the accessibility tree,
             // walked in-process, plus where focus and hit-testing land.

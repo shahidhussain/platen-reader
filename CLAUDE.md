@@ -41,6 +41,9 @@ scripts/run-ios-debug.sh Fixtures/generated/novel.epub "@tap:right;@tap:centre"
 - `@<selector>` sends a menu action, such as `@toggleContents:` or `@findNext:`.
 - `@search:<query>` runs a search; `@tab:<contents|bookmarks|search>` opens the panel on a tab.
 - `@ax` logs the window's accessibility tree as VoiceOver sees it (lines starting `ax:`).
+- `@resize:<w>x<h>` resizes the window and logs how long re-layout took.
+
+UI tests (`PlatenReaderUITests`, run by `xcodebuild test -scheme PlatenReader -only-testing:PlatenReaderUITests`) drive the real app and read the page through its VoiceOver "page" element. `PLATEN_TEST_HOME` (Debug builds) sends settings, positions and bookmarks to a throwaway place; keep using it for anything automated. `scripts/measure-performance.py <book> [<second book>]` times a Release build against the spec's performance targets.
 
 The screen-control tools may lack macOS permissions in this environment, so verify UI through these snapshots.
 
