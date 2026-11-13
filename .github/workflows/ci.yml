@@ -23,5 +23,11 @@ jobs:
             -configuration Debug -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO build
 
+      - name: Build the iOS app (Simulator)
+        run: |
+          xcodebuild -project PlatenReader.xcodeproj -scheme "PlatenReader iOS" \
+            -configuration Debug -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build
+
       - name: Generate the robustness corpus
         run: python3 scripts/make-fixtures.py

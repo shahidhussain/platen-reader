@@ -13,6 +13,10 @@ extension ReaderViewController {
         // Every message is { type, body } (see post() in reader.js).
         guard let envelope = message.body as? [String: Any], let type = envelope["type"] as? String else { return }
         let body = envelope["body"] as? [String: Any] ?? [:]
+        // What the overlay and contents show is decoded in one place for
+        // both apps (Shared/ReaderState+Messages.swift); the cases below add
+        // the Mac's own work.
+        state.apply(message: type, body: body)
         switch type {
         case "ready":
             shellReady = true
@@ -29,11 +33,6 @@ extension ReaderViewController {
             #endif
 
         case "opened":
-            if let title = body["title"] as? String, !title.isEmpty { state.title = title }
-            state.author = body["author"] as? String ?? ""
-            state.isFixedLayout = body["fixedLayout"] as? Bool ?? false
-            state.isRightToLeft = (body["dir"] as? String) == "rtl"
-            state.sectionFractions = (body["sectionFractions"] as? [NSNumber])?.map(\.doubleValue) ?? []
             view.window?.windowController?.synchronizeWindowTitleWithDocumentName()
             sendBookmarksToPage()
             showFirstRunExplainerIfNeeded()
@@ -43,20 +42,12 @@ extension ReaderViewController {
             callPlaten("setVoiceOver", NSWorkspace.shared.isVoiceOverEnabled)
 
         case "contents":
-            // Arrives after the first page is on screen (built in the background).
-            state.toc = ((body["toc"] as? [[String: Any]]) ?? []).enumerated().map { index, item in
-                ReaderState.TOCItem(id: index, label: item["label"] as? String ?? "",
-                                    href: item["href"] as? String ?? "", depth: item["depth"] as? Int ?? 0)
-            }
-            state.sectionLabels = body["sectionLabels"] as? [String] ?? []
             log.debug("contents: \(self.state.toc.count) entries\((body["synthesised"] as? Bool) == true ? " (built from headings)" : "", privacy: .public)")
 
         case "back":
-            state.backLabel = body["label"] as? String
             log.debug("back label: \(self.state.backLabel ?? "none", privacy: .public)")
 
         case "pageBookmarked":
-            state.isPageBookmarked = body["bookmarked"] as? Bool ?? false
             log.debug("page bookmarked: \(self.state.isPageBookmarked)")
 
         case "addBookmark":
@@ -66,40 +57,9 @@ extension ReaderViewController {
             if let cfi = body["cfi"] as? String { removeBookmark(cfi: cfi) }
 
         case "selection":
-            let text = body["text"] as? String ?? ""
-            state.selection = text.isEmpty ? nil
-                : ReaderState.Selection(text: text, chapter: body["chapter"] as? String ?? "", page: body["page"] as? String)
-            log.debug("selection: \(text.count) characters")
-
-        case "searchResults":
-            guard (body["query"] as? String) == activeSearchQuery else { break }
-            let items = body["items"] as? [[String: Any]] ?? []
-            var nextID = state.allHits.count
-            let hits = items.map { item -> ReaderState.SearchHit in
-                defer { nextID += 1 }
-                return ReaderState.SearchHit(id: nextID, cfi: item["cfi"] as? String ?? "",
-                                             pre: item["pre"] as? String ?? "", match: item["match"] as? String ?? "",
-                                             post: item["post"] as? String ?? "")
-            }
-            state.searchGroups.append(.init(id: state.searchGroups.count, label: body["label"] as? String ?? "", hits: hits))
-
-        case "searchProgress":
-            if (body["query"] as? String) == activeSearchQuery {
-                state.searchProgress = (body["progress"] as? NSNumber)?.doubleValue ?? 0
-            }
-
-        case "searchDone":
-            if (body["query"] as? String) == activeSearchQuery {
-                state.searchRunning = false
-                state.searchDoneQuery = activeSearchQuery
-            }
+            log.debug("selection: \(self.state.selection?.text.count ?? 0) characters")
 
         case "relocate":
-            state.fraction = (body["fraction"] as? NSNumber)?.doubleValue ?? state.fraction
-            state.chapter = body["chapter"] as? String ?? ""
-            state.chapterHref = body["chapterHref"] as? String
-            state.pagesLeftInChapter = (body["pagesLeft"] as? NSNumber)?.intValue
-            state.columnsOnScreen = (body["columns"] as? NSNumber)?.intValue ?? 1
             reportLayoutToSettings()
             view.window?.subtitle = state.chapter
             if let cfi = body["cfi"] as? String, var record {

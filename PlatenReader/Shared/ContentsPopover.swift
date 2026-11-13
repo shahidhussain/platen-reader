@@ -37,7 +37,10 @@ struct ContentsPopover: View {
         }
         // A popover from the overlay's Contents button.
         .frame(width: 340, height: 460)
+        #if os(macOS)
         .onExitCommand(perform: actions.close) // Esc closes the popover
+        #endif
+        .platenPopover()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Contents and Bookmarks"))
     }
@@ -86,7 +89,11 @@ private struct BookmarksList: View {
 
     var body: some View {
         if state.bookmarks.isEmpty {
+            #if os(macOS)
             EmptyPanel(text: String(localized: "No bookmarks yet. Click the top-right corner of a page, or press ⌘D."))
+            #else
+            EmptyPanel(text: String(localized: "No bookmarks yet. Tap the top-right corner of a page, or the bookmark button."))
+            #endif
         } else {
             List(state.bookmarks, id: \.cfi) { bookmark in
                 Button { actions.goToBookmark(bookmark) } label: {

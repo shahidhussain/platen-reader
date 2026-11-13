@@ -12,12 +12,31 @@ struct OverlayActions {
     /// Called whenever the user interacts, so the overlay does not auto-hide
     /// while it is being used.
     var interacted: () -> Void
+    /// iOS: opens the settings sheet (a gear button in the bar). The Mac
+    /// has Platen Reader > Settings… instead, so leaves this out.
+    var openSettings: (() -> Void)? = nil
+}
+
+extension View {
+    /// Popovers from the overlay stay popovers on iPhone too (iOS would
+    /// otherwise turn them into full-height sheets).
+    func platenPopover() -> some View {
+        #if os(iOS)
+        presentationCompactAdaptation(.popover)
+        #else
+        self
+        #endif
+    }
 }
 
 /// The bottom part of the overlay: location line, progress slider with
 /// chapter ticks, page buttons, Contents, Back and the Aa (typography)
-/// button. The top part is the real window title bar, faded in by the view
-/// controller.
+/// button. On the Mac the top part is the real window title bar, faded in by
+/// the view controller; on iOS it is a floating Close button and the title.
+///
+/// On a narrow screen (an iPhone, or a narrow iPad window) the controls do
+/// not fit in one row, so they stack: the location line, the slider between
+/// the page buttons, then a row of buttons.
 struct OverlayBar: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
@@ -29,6 +48,15 @@ struct OverlayBar: View {
     @State private var showLayout = false
     /// The bar is slightly see-through, and solid while the pointer is on it.
     @State private var hovering = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var isCompact: Bool { sizeClass == .compact }
+    /// Touch screens have no hover, so the bar is always solid there.
+    private let isTouch = true
+    #else
+    private let isCompact = false
+    private let isTouch = false
+    #endif
 
     private var locationText: String {
         if let f = dragFraction {
@@ -41,117 +69,60 @@ struct OverlayBar: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            HStack {
-                // Shown only after a jump, until the reader moves on.
-                if let back = state.backLabel {
-                    Button {
-                        actions.goBack()
-                    } label: {
-                        Label(String(localized: "Back to \(back)"), systemImage: "arrow.uturn.backward")
+            locationRow
+            if isCompact {
+                HStack(spacing: 14) {
+                    previousButton
+                    slider
+                    nextButton
+                }
+                .frame(minHeight: 32)
+                HStack {
+                    contentsButton
+                    Spacer()
+                    bookmarkButton
+                    Spacer()
+                    layoutButton
+                    Spacer()
+                    typographyButton
+                    if actions.openSettings != nil {
+                        Spacer()
+                        settingsButton
                     }
-                    .help(String(localized: "Back to \(back) (⌘[)"))
                 }
-                Spacer(minLength: 0)
-                Text(locationText)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .accessibilityLabel(Text("Location"))
-                    .accessibilityValue(Text(locationText))
-                Spacer(minLength: 0)
+                .frame(minHeight: 32)
+            } else {
+                HStack(spacing: 18) {
+                    contentsButton
+                    previousButton
+                    slider
+                    nextButton
+                    bookmarkButton
+                    layoutButton
+                    typographyButton
+                    if actions.openSettings != nil { settingsButton }
+                }
+                .frame(minHeight: 32)
             }
-            .frame(minHeight: 22)
-
-            HStack(spacing: 18) {
-                // Every button here has a Label (a name and an icon, shown as
-                // the icon only): VoiceOver reads the name.
-                Button(action: actions.toggleContents) {
-                    Label(String(localized: "Contents, Bookmarks and Search"), systemImage: "list.bullet")
-                }
-                .help("Contents, Bookmarks and Search (⌘T)")
-                .popover(isPresented: $state.sidebarVisible, arrowEdge: .top) {
-                    ContentsPopover(state: state, actions: sidebarActions)
-                }
-
-                Button(action: state.isRightToLeft ? actions.nextPage : actions.previousPage) {
-                    Label((state.isRightToLeft ? String(localized: "Next Page") : String(localized: "Previous Page")), systemImage: "chevron.left")
-                }
-                .help((state.isRightToLeft ? String(localized: "Next Page") : String(localized: "Previous Page")))
-
-                ProgressSlider(
-                    value: Binding(
-                        get: { dragFraction ?? state.fraction },
-                        set: { dragFraction = $0; actions.interacted() }
-                    ),
-                    ticks: state.sectionFractions,
-                    rightToLeft: state.isRightToLeft,
-                    onEditingChanged: { editing in
-                        if !editing, let f = dragFraction {
-                            actions.goToFraction(f)
-                            // Keep showing the target until the reader catches up.
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { dragFraction = nil }
-                        }
-                    }
-                )
-
-                Button(action: state.isRightToLeft ? actions.previousPage : actions.nextPage) {
-                    Label((state.isRightToLeft ? String(localized: "Previous Page") : String(localized: "Next Page")), systemImage: "chevron.right")
-                }
-                .help((state.isRightToLeft ? String(localized: "Previous Page") : String(localized: "Next Page")))
-
-                // Bookmarks the page on screen (or removes its bookmark).
-                Button(action: actions.toggleBookmark) {
-                    Label(state.isPageBookmarked ? String(localized: "Remove Bookmark") : String(localized: "Bookmark This Page"),
-                          systemImage: state.isPageBookmarked ? "bookmark.fill" : "bookmark")
-                        .foregroundStyle(state.isPageBookmarked ? Color.red : Color.primary)
-                }
-                .help(state.isPageBookmarked ? String(localized: "Remove Bookmark (⌘D)") : String(localized: "Bookmark This Page (⌘D)"))
-
-                // Layout: one page, two pages or scroll, and line width.
-                Button {
-                    showLayout.toggle()
-                    actions.interacted()
-                } label: {
-                    Label(String(localized: "Layout"), systemImage: state.flow == .scrolled ? "scroll"
-                          : settings.pageLayout == .two ? "book" : "doc.plaintext")
-                }
-                .help(String(localized: "Layout"))
-                .popover(isPresented: $showLayout, arrowEdge: .top) {
-                    LayoutPopover(state: state, actions: actions)
-                }
-
-                Button {
-                    showTypography.toggle()
-                    actions.interacted()
-                } label: {
-                    // "textformat" is the system's "Aa" symbol.
-                    Label(String(localized: "Text and Appearance"), systemImage: "textformat")
-                }
-                .help("Text and Appearance")
-                .popover(isPresented: $showTypography, arrowEdge: .top) {
-                    TypographyPopover(state: state, actions: actions)
-                }
-            }
-            .buttonStyle(.borderless)
-            .labelStyle(.iconOnly)
-            .font(.title3)
-            .imageScale(.large)
-            .frame(minHeight: 32)
         }
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .font(.title3)
+        .imageScale(.large)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
-        // Slightly see-through (about 18%), so the bar reads as something
-        // laid over the page; solid while the pointer is over it.
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.regularMaterial)
-                .opacity(hovering ? 1 : 0.82)
-        }
+        // Liquid Glass on macOS 26 / iOS 26 and later. Before that, the
+        // material is slightly see-through (about 18%), so the bar reads as
+        // something laid over the page; solid while the pointer is over it.
+        .overlaySurface(RoundedRectangle(cornerRadius: 16, style: .continuous),
+                        seeThrough: !(hovering || isTouch))
+        #if os(iOS)
+        // Icons in the text colour, as on the Mac (not the system blue).
+        .tint(.primary)
+        #endif
         .onHover { inside in
             withAnimation(.easeOut(duration: 0.15)) { hovering = inside }
         }
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
         .frame(maxWidth: 760)
         // The overlay must stay while its popover is open.
         .onChange(of: showTypography || showLayout) { _, open in
@@ -163,6 +134,138 @@ struct OverlayBar: View {
         .onChange(of: showTypography) { _, open in if open { showLayout = false } }
         .onChange(of: showLayout) { _, open in if open { showTypography = false } }
     }
+
+    private var locationRow: some View {
+        HStack {
+            // Shown only after a jump, until the reader moves on.
+            if let back = state.backLabel {
+                Button {
+                    actions.goBack()
+                } label: {
+                    Label(String(localized: "Back to \(back)"), systemImage: "arrow.uturn.backward")
+                }
+                // As before the bar's buttons were restyled: a normal button
+                // with its name, not an icon-only one.
+                .buttonStyle(.automatic)
+                .labelStyle(.titleAndIcon)
+                .font(.body)
+                .imageScale(.medium)
+                .help(String(localized: "Back to \(back) (⌘[)"))
+            }
+            Spacer(minLength: 0)
+            Text(locationText)
+                .font(.body)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .accessibilityLabel(Text("Location"))
+                .accessibilityValue(Text(locationText))
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: 22)
+    }
+
+    // Every button here has a Label (a name and an icon, shown as the icon
+    // only): VoiceOver reads the name.
+
+    private var contentsButton: some View {
+        Button(action: actions.toggleContents) {
+            Label(String(localized: "Contents, Bookmarks and Search"), systemImage: "list.bullet")
+        }
+        .help("Contents, Bookmarks and Search (⌘T)")
+        .popover(isPresented: $state.sidebarVisible, arrowEdge: popoverEdge) {
+            ContentsPopover(state: state, actions: sidebarActions)
+        }
+    }
+
+    private var previousButton: some View {
+        Button(action: state.isRightToLeft ? actions.nextPage : actions.previousPage) {
+            Label((state.isRightToLeft ? String(localized: "Next Page") : String(localized: "Previous Page")), systemImage: "chevron.left")
+        }
+        .help((state.isRightToLeft ? String(localized: "Next Page") : String(localized: "Previous Page")))
+    }
+
+    private var nextButton: some View {
+        Button(action: state.isRightToLeft ? actions.previousPage : actions.nextPage) {
+            Label((state.isRightToLeft ? String(localized: "Previous Page") : String(localized: "Next Page")), systemImage: "chevron.right")
+        }
+        .help((state.isRightToLeft ? String(localized: "Previous Page") : String(localized: "Next Page")))
+    }
+
+    private var slider: some View {
+        ProgressSlider(
+            value: Binding(
+                get: { dragFraction ?? state.fraction },
+                set: { dragFraction = $0; actions.interacted() }
+            ),
+            ticks: state.sectionFractions,
+            rightToLeft: state.isRightToLeft,
+            onEditingChanged: { editing in
+                if !editing, let f = dragFraction {
+                    actions.goToFraction(f)
+                    // Keep showing the target until the reader catches up.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { dragFraction = nil }
+                }
+            }
+        )
+    }
+
+    /// Bookmarks the page on screen (or removes its bookmark).
+    private var bookmarkButton: some View {
+        Button(action: actions.toggleBookmark) {
+            Label(state.isPageBookmarked ? String(localized: "Remove Bookmark") : String(localized: "Bookmark This Page"),
+                  systemImage: state.isPageBookmarked ? "bookmark.fill" : "bookmark")
+                .foregroundStyle(state.isPageBookmarked ? Color.red : Color.primary)
+        }
+        .help(state.isPageBookmarked ? String(localized: "Remove Bookmark (⌘D)") : String(localized: "Bookmark This Page (⌘D)"))
+    }
+
+    /// Layout: one page, two pages or scroll, and line width.
+    private var layoutButton: some View {
+        Button {
+            showLayout.toggle()
+            actions.interacted()
+        } label: {
+            Label(String(localized: "Layout"), systemImage: state.flow == .scrolled ? "scroll"
+                  : settings.pageLayout == .two ? "book" : "doc.plaintext")
+        }
+        .help(String(localized: "Layout"))
+        .popover(isPresented: $showLayout, arrowEdge: popoverEdge) {
+            LayoutPopover(state: state, actions: actions)
+        }
+    }
+
+    private var typographyButton: some View {
+        Button {
+            showTypography.toggle()
+            actions.interacted()
+        } label: {
+            // "textformat" is the system's "Aa" symbol.
+            Label(String(localized: "Text and Appearance"), systemImage: "textformat")
+        }
+        .help("Text and Appearance")
+        .popover(isPresented: $showTypography, arrowEdge: popoverEdge) {
+            TypographyPopover(state: state, actions: actions)
+        }
+    }
+
+    private var settingsButton: some View {
+        Button {
+            actions.openSettings?()
+        } label: {
+            Label(String(localized: "Settings"), systemImage: "gearshape")
+        }
+    }
+
+    /// Popovers hang above the bar (it sits at the bottom of the screen).
+    /// The two platforms read the edge differently: the Mac needs .top for a
+    /// popover above the button, iOS needs .bottom.
+    #if os(iOS)
+    private var popoverEdge: Edge { .bottom }
+    #else
+    private var popoverEdge: Edge { .top }
+    #endif
 }
 
 /// The progress slider: a thin track with tick marks at chapter starts and
@@ -281,11 +384,17 @@ struct TypographyPopover: View {
             .pickerStyle(.menu)
         }
         .formStyle(.grouped)
+        #if os(iOS)
+        // A form in a popover has no height of its own on iOS.
+        .frame(width: 340, height: 300)
+        #else
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
+        #endif
         // VoiceOver names the popover rather than saying "scroll area".
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Text and Appearance"))
+        .platenPopover()
     }
 }
 
@@ -297,9 +406,8 @@ struct LayoutPopover: View {
 
     var body: some View {
         Form {
-            Picker("Layout", selection: Binding(get: { ReadingLayout(flow: state.flow, pages: settings.pageLayout) },
-                                                set: actions.setLayout)) {
-                ForEach(ReadingLayout.allCases) { Text($0.label).tag($0) }
+            Picker("Layout", selection: Binding(get: { state.currentLayout }, set: actions.setLayout)) {
+                ForEach(state.availableLayouts) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
@@ -318,36 +426,14 @@ struct LayoutPopover: View {
             .disabled(state.isFixedLayout)
         }
         .formStyle(.grouped)
+        #if os(iOS)
+        .frame(width: 340, height: state.twoPagesTooNarrow ? 230 : 180)
+        #else
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
+        #endif
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Layout"))
-    }
-}
-
-/// Shown in place of the page when a book cannot be opened.
-struct OpenFailureView: View {
-    let title: String
-    let detail: String?
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "book.closed")
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(.secondary)
-            Text(title)
-                .font(.title3.weight(.semibold))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            if let detail {
-                Text(detail)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(40)
-        .frame(width: 460)
-        .textSelection(.enabled)
+        .platenPopover()
     }
 }

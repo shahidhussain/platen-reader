@@ -345,6 +345,17 @@ def main():
     open(p, "wb").write(("Café notes\n\n" + textwrap.fill(paragraph(rng, 5), 70) + "\n\n\u201cQuoted,\u201d she said.\n").encode("cp1252"))
     made.append(p)
 
+    # Footnotes: a marked footnote (epub:type="noteref" to an aside in the
+    # same chapter) and an unmarked endnote (a superscript link into a notes
+    # file). Both should open in a pop-up rather than jumping.
+    ch = xhtml("Notes chapter",
+               '<h1>Notes chapter</h1>'
+               '<p>A claim that needs a source.<a epub:type="noteref" href="#n1" id="r1">1</a> '
+               'And a second one.<sup><a href="notes.xhtml#e1" id="r2">2</a></sup></p>'
+               '<aside epub:type="footnote" id="n1"><p>The footnote text. <a href="#r1">↩</a></p></aside>')
+    notes = xhtml("Notes", '<h1>Notes</h1><p id="e1">The endnote text.</p>')
+    made.append(simple("footnotes.epub", "Footnotes", [("ch1.xhtml", ch), ("notes.xhtml", notes)]))
+
     for m in made:
         print(f"{os.path.getsize(m):>10,}  {os.path.relpath(m, ROOT)}")
 
