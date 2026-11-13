@@ -35,3 +35,21 @@ extension View {
             .overlay(shape.strokeBorder(.separator, lineWidth: 0.5))
     }
 }
+
+extension View {
+    /// Groups glass pieces that sit close together, so they blend into each
+    /// other as the system's own controls do (iOS 26 and later). Elsewhere
+    /// the view is returned unchanged.
+    @ViewBuilder
+    func glassGroup(spacing: CGFloat) -> some View {
+        #if os(iOS) && compiler(>=6.2)
+        if #available(iOS 26, *) {
+            GlassEffectContainer(spacing: spacing) { self }
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}

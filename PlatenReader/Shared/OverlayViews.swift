@@ -29,19 +29,24 @@ extension View {
     }
 }
 
-/// The bottom part of the overlay: location line, progress slider with
-/// chapter ticks, page buttons, Contents, Back and the Aa (typography)
-/// button. On the Mac the top part is the real window title bar, faded in by
-/// the view controller; on iOS it is a floating Close button and the title.
-///
-/// On a narrow screen (an iPhone, or a narrow iPad window) the controls do
-/// not fit in one row, so they stack: the location line, the slider between
-/// the page buttons, then a row of buttons.
+/// The overlay's controls: location line, progress slider with chapter
+/// ticks, page buttons, Contents, Back and the Aa (typography) button. On the
+/// Mac they are one bar at the bottom, and the top part is the real window
+/// title bar, faded in by the view controller. On iOS they are split (see
+/// `Part`), beside a floating Close button and the title (ReaderChrome).
 struct OverlayBar: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
     let actions: OverlayActions
     let sidebarActions: ContentsActions
+    /// Which part of the overlay this view draws (see `Part`).
+    var part: Part = .whole
+
+    /// The Mac draws the whole bar as one panel at the bottom of the window.
+    /// iOS splits it, in the way of Apple's own iOS 26 apps: the buttons are
+    /// a small glass group at the top right, beside the Close button, and the
+    /// slider floats at the bottom with ‹ and › at its ends.
+    enum Part { case whole, buttons, scrubber }
 
     @State private var dragFraction: Double?
     @State private var showTypography = false
@@ -49,12 +54,9 @@ struct OverlayBar: View {
     /// The bar is slightly see-through, and solid while the pointer is on it.
     @State private var hovering = false
     #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    private var isCompact: Bool { sizeClass == .compact }
     /// Touch screens have no hover, so the bar is always solid there.
     private let isTouch = true
     #else
-    private let isCompact = false
     private let isTouch = false
     #endif
 
@@ -68,44 +70,103 @@ struct OverlayBar: View {
     }
 
     var body: some View {
+        switch part {
+        case .whole: wholeBar
+        case .buttons: buttonGroup
+        case .scrubber: scrubber
+        }
+    }
+
+    // MARK: - iOS: the buttons, and the floating slider
+
+    /// Contents, bookmark, layout, Aa and settings, side by side on one
+    /// piece of glass.
+    private var buttonGroup: some View {
+        HStack(spacing: 0) {
+            contentsButton.frame(width: 44, height: 44)
+            bookmarkButton.frame(width: 44, height: 44)
+            layoutButton.frame(width: 44, height: 44)
+            typographyButton.frame(width: 44, height: 44)
+            if actions.openSettings != nil { settingsButton.frame(width: 44, height: 44) }
+        }
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .font(.body.weight(.medium))
+        .imageScale(.large)
+        .padding(.horizontal, 4)
+        .overlaySurface(Capsule())
+        .tint(.primary)
+        .popoverBookkeeping(state: state, actions: actions, showTypography: $showTypography, showLayout: $showLayout)
+    }
+
+    /// Where the reader is, and the slider between round ‹ › buttons, each
+    /// on its own small piece of glass, so the page shows around them.
+    private var scrubber: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                if let back = state.backLabel {
+                    Button {
+                        actions.goBack()
+                    } label: {
+                        Label(String(localized: "Back to \(back)"), systemImage: "arrow.uturn.backward")
+                            .labelStyle(.titleAndIcon)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 32)
+                            .overlaySurface(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text(locationText)
+                    .font(.subheadline)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 32)
+                    .overlaySurface(Capsule())
+                    .accessibilityLabel(Text("Location"))
+                    .accessibilityValue(Text(locationText))
+            }
+            HStack(spacing: 8) {
+                previousButton
+                    .frame(width: 44, height: 44)
+                    .overlaySurface(Circle())
+                slider
+                    .padding(.horizontal, 16)
+                    .frame(height: 44)
+                    .overlaySurface(Capsule())
+                nextButton
+                    .frame(width: 44, height: 44)
+                    .overlaySurface(Circle())
+            }
+        }
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .font(.body.weight(.semibold))
+        .tint(.primary)
+        .glassGroup(spacing: 8)
+        .frame(maxWidth: 760)
+    }
+
+    // MARK: - The Mac's bar
+
+    private var wholeBar: some View {
         VStack(spacing: 10) {
             locationRow
-            if isCompact {
-                HStack(spacing: 14) {
-                    previousButton
-                    slider
-                    nextButton
-                }
-                .frame(minHeight: 32)
-                HStack {
-                    contentsButton
-                    Spacer()
-                    bookmarkButton
-                    if showsLayoutButton {
-                        Spacer()
-                        layoutButton
-                    }
-                    Spacer()
-                    typographyButton
-                    if actions.openSettings != nil {
-                        Spacer()
-                        settingsButton
-                    }
-                }
-                .frame(minHeight: 32)
-            } else {
-                HStack(spacing: 18) {
-                    contentsButton
-                    previousButton
-                    slider
-                    nextButton
-                    bookmarkButton
-                    if showsLayoutButton { layoutButton }
-                    typographyButton
-                    if actions.openSettings != nil { settingsButton }
-                }
-                .frame(minHeight: 32)
+            HStack(spacing: 18) {
+                contentsButton
+                previousButton
+                slider
+                nextButton
+                bookmarkButton
+                layoutButton
+                typographyButton
+                if actions.openSettings != nil { settingsButton }
             }
+            .frame(minHeight: 32)
         }
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
@@ -126,15 +187,7 @@ struct OverlayBar: View {
             withAnimation(.easeOut(duration: 0.15)) { hovering = inside }
         }
         .frame(maxWidth: 760)
-        // The overlay must stay while its popover is open.
-        .onChange(of: showTypography || showLayout) { _, open in
-            state.overlayPopoverOpen = open
-            actions.interacted()
-        }
-        // One popover at a time.
-        .onChange(of: state.sidebarVisible) { _, open in if open { showTypography = false; showLayout = false } }
-        .onChange(of: showTypography) { _, open in if open { showLayout = false } }
-        .onChange(of: showLayout) { _, open in if open { showTypography = false } }
+        .popoverBookkeeping(state: state, actions: actions, showTypography: $showTypography, showLayout: $showLayout)
     }
 
     private var locationRow: some View {
@@ -229,8 +282,10 @@ struct OverlayBar: View {
             showLayout.toggle()
             actions.interacted()
         } label: {
-            Label(String(localized: "Layout"), systemImage: state.flow == .scrolled ? "scroll"
-                  : settings.pageLayout == .two ? "book" : "doc.plaintext")
+            // The layout in use (an iPhone shows one page whatever the
+            // Two Pages setting says).
+            Label(String(localized: "Layout"), systemImage: state.currentLayout == .scroll ? "scroll"
+                  : state.currentLayout == .twoPages ? "book" : "doc.plaintext")
         }
         .help(String(localized: "Layout"))
         .popover(isPresented: $showLayout, arrowEdge: popoverEdge) {
@@ -252,16 +307,6 @@ struct OverlayBar: View {
         }
     }
 
-    /// On iOS a PDF's layout follows the orientation (one page in portrait,
-    /// two in landscape), so there is nothing to choose.
-    private var showsLayoutButton: Bool {
-        #if os(iOS)
-        !state.isPDF
-        #else
-        true
-        #endif
-    }
-
     private var settingsButton: some View {
         Button {
             actions.openSettings?()
@@ -270,14 +315,32 @@ struct OverlayBar: View {
         }
     }
 
-    /// Popovers hang above the bar (it sits at the bottom of the screen).
-    /// The two platforms read the edge differently: the Mac needs .top for a
-    /// popover above the button, iOS needs .bottom.
+    /// Popovers hang above the bar at the bottom of the screen, and below
+    /// the buttons at the top on iOS. The two platforms read the edge
+    /// differently: the Mac needs .top for a popover above the button, iOS
+    /// .bottom (and .top for one below).
     #if os(iOS)
-    private var popoverEdge: Edge { .bottom }
+    private var popoverEdge: Edge { part == .buttons ? .top : .bottom }
     #else
     private var popoverEdge: Edge { .top }
     #endif
+}
+
+private extension View {
+    /// Keeps the overlay up while one of its popovers is open, and allows
+    /// one popover at a time.
+    func popoverBookkeeping(state: ReaderState, actions: OverlayActions,
+                            showTypography: Binding<Bool>, showLayout: Binding<Bool>) -> some View {
+        onChange(of: showTypography.wrappedValue || showLayout.wrappedValue) { _, open in
+            state.overlayPopoverOpen = open
+            actions.interacted()
+        }
+        .onChange(of: state.sidebarVisible) { _, open in
+            if open { showTypography.wrappedValue = false; showLayout.wrappedValue = false }
+        }
+        .onChange(of: showTypography.wrappedValue) { _, open in if open { showLayout.wrappedValue = false } }
+        .onChange(of: showLayout.wrappedValue) { _, open in if open { showTypography.wrappedValue = false } }
+    }
 }
 
 /// The progress slider: a thin track with tick marks at chapter starts and
@@ -424,7 +487,7 @@ struct LayoutPopover: View {
     var body: some View {
         Form {
             Picker("Layout", selection: Binding(get: { state.currentLayout }, set: actions.setLayout)) {
-                ForEach(state.availableLayouts) { Text($0.label).tag($0) }
+                ForEach(state.availableLayouts) { Text(label(for: $0)).tag($0) }
             }
             .pickerStyle(.segmented)
             .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
@@ -446,7 +509,8 @@ struct LayoutPopover: View {
         }
         .formStyle(.grouped)
         #if os(iOS)
-        .frame(width: 340, height: state.twoPagesTooNarrow ? 230 : 180)
+        // PDFs have only the layout picker (no line width).
+        .frame(width: 340, height: state.isPDF ? 90 : state.twoPagesTooNarrow ? 230 : 180)
         #else
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
@@ -454,5 +518,14 @@ struct LayoutPopover: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Layout"))
         .platenPopover()
+    }
+
+    /// On iOS a PDF in pages shows one page in portrait and two in landscape
+    /// (spec, "PDF"), so that choice is called Pages rather than One Page.
+    private func label(for layout: ReadingLayout) -> String {
+        #if os(iOS)
+        if state.isPDF, layout == .onePage { return String(localized: "Pages") }
+        #endif
+        return layout.label
     }
 }

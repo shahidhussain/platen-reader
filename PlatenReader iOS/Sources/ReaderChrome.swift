@@ -2,18 +2,27 @@ import Combine
 import SwiftUI
 import UIKit
 
-/// The overlay on iOS, shared by the book reader and the PDF reader: the
-/// same bar as on the Mac (Shared/OverlayViews.swift) at the bottom, and a
-/// floating Close button with the title at the top left. A centre tap shows
-/// and hides both; they also hide after 4 seconds unless they are in use.
+/// The overlay on iOS, shared by the book reader and the PDF reader. Three
+/// small pieces of glass float over the page, with no panel behind them:
+/// - top left: a round Close button, and the title and chapter;
+/// - top right: Contents, Bookmark, Layout, Aa and Settings in one group;
+/// - bottom: where the reader is, and the slider between ‹ and ›.
+/// The buttons and the slider are the Mac bar's own (Shared/OverlayViews.swift,
+/// drawn in parts). A centre tap shows and hides them all; they also hide
+/// after 4 seconds unless they are in use.
 ///
 /// The reader that owns this keeps the status bar and home indicator in step
 /// by reading `isVisible` (see `prefersStatusBarHidden`).
 final class ReaderChrome {
     private weak var owner: UIViewController?
     let state: ReaderState
+    /// The slider, at the bottom.
     let bottom: UIHostingController<OverlayBar>
+    /// Close, and the title.
     let top: UIHostingController<ReaderTopControls>
+    /// The group of buttons at the top right.
+    let buttons: UIHostingController<OverlayBar>
+    private var pieces: [UIView] { [bottom.view, top.view, buttons.view] }
     private(set) var isVisible = false
     private var hideTimer: Timer?
     private var cancellables: Set<AnyCancellable> = []
@@ -27,8 +36,11 @@ final class ReaderChrome {
          close: @escaping () -> Void, sidebarClosed: @escaping () -> Void) {
         self.owner = owner
         self.state = state
-        bottom = UIHostingController(rootView: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions))
+        bottom = UIHostingController(rootView: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions,
+                                                          part: .scrubber))
         top = UIHostingController(rootView: ReaderTopControls(state: state, close: close))
+        buttons = UIHostingController(rootView: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions,
+                                                           part: .buttons))
 
         // When the contents popover closes, the hide countdown starts again.
         state.$sidebarVisible
@@ -48,14 +60,14 @@ final class ReaderChrome {
             .store(in: &cancellables)
     }
 
-    /// Adds both pieces to the reader's view, hidden.
+    /// Adds the pieces to the reader's view, hidden.
     func install(in root: UIView) {
         guard let owner else { return }
         // The hosting views take their size from the SwiftUI content, and let
         // the page show around it.
-        bottom.sizingOptions = [.intrinsicContentSize]
-        top.sizingOptions = [.intrinsicContentSize]
-        for host in [bottom, top] as [UIViewController] {
+        for host in [bottom, top, buttons] as [UIViewController] {
+            (host as? UIHostingController<OverlayBar>)?.sizingOptions = [.intrinsicContentSize]
+            (host as? UIHostingController<ReaderTopControls>)?.sizingOptions = [.intrinsicContentSize]
             host.view.backgroundColor = .clear
             host.view.translatesAutoresizingMaskIntoConstraints = false
             host.view.alpha = 0
@@ -73,9 +85,23 @@ final class ReaderChrome {
             bottom.view.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -6),
 
             top.view.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 12),
-            top.view.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -12),
             top.view.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4),
+            // The title gives way (it truncates) before the buttons do.
+            top.view.trailingAnchor.constraint(lessThanOrEqualTo: buttons.view.leadingAnchor, constant: -8),
+
+            buttons.view.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -12),
+            buttons.view.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4),
         ])
+        top.view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        buttons.view.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+
+    /// Light or dark controls, whatever the reader's own style is. The PDF
+    /// reader asks for light: its pages are white in every theme, and the
+    /// controls often sit over them.
+    func setInterfaceStyle(_ style: UIUserInterfaceStyle) {
+        for host in [bottom, buttons] as [UIViewController] { host.overrideUserInterfaceStyle = style }
+        top.overrideUserInterfaceStyle = style
     }
 
     func toggle() { setVisible(!isVisible) }
@@ -84,7 +110,7 @@ final class ReaderChrome {
         // Popovers hang from the overlay, so they go with it.
         if !visible && state.sidebarVisible { state.sidebarVisible = false }
         isVisible = visible
-        let views = [bottom.view!, top.view!]
+        let views = pieces
         if visible { views.forEach { $0.isHidden = false } }
         UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.15, animations: {
             views.forEach { $0.alpha = visible ? 1 : 0 }
@@ -102,6 +128,7 @@ final class ReaderChrome {
     func showCloseOnly() {
         hideTimer?.invalidate()
         bottom.view.removeFromSuperview()
+        buttons.view.removeFromSuperview()
         top.view.isHidden = false
         top.view.alpha = 1
         isVisible = true
@@ -144,7 +171,7 @@ struct ReaderTopControls: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Button(action: close) {
                 Image(systemName: "xmark")
                     .font(.body.weight(.semibold))

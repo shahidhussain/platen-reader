@@ -274,7 +274,7 @@ The iOS app is the Mac reader on a touch screen: the same core, the same web she
 | Tap a picture | Zoom it | Zoom it |
 
 - **Page turns:** a swipe uses the page-turn animation chosen in Settings (Page Curl, Slide or None), tracking the finger in every case. On touch the swipe is the primary way to turn pages, so unlike the Mac trackpad (which always slides) there is no override.
-- **Bookmarks:** there is no hover on touch, so the faint ribbon outline in the top-right corner shows while the overlay is up.
+- **Bookmarks:** there is no hover on touch to reveal the faint ribbon outline in the top-right corner; the overlay's Bookmark button (in the same corner) does that job.
 - **Selection menu:** the system edit menu gains Copy with Citation, Search Book for "…" and Share, alongside Copy, Look Up and Translate.
 - **Hardware keyboard (iPad and iPhone):** the Mac shortcuts apply, listed in the iPad ⌘ shortcut overlay.
 
@@ -282,6 +282,7 @@ The iOS app is the Mac reader on a touch screen: the same core, the same web she
 
 - Two pages side by side on iPad in landscape only. iPhone (either orientation) and iPad in portrait show one page. Split View and Slide Over use the window width as on the Mac.
 - The status bar and home indicator hide with the overlay.
+- **Overlay:** the Mac bar's controls, arranged as Apple's own iOS 26 apps arrange theirs, as small pieces of glass floating over the page with no panel behind them. Top left: a round Close button, then the title and chapter. Top right: Contents, Bookmark, Layout, Aa and Settings in one group; their popovers open below it. Bottom: the location line, and the progress slider between round ‹ and › buttons. Over PDFs the controls are always light, since the pages are white in every theme.
 - Default text size follows Dynamic Type.
 
 **Settings**
@@ -311,7 +312,7 @@ PDFs open in the same window and overlay as books, rendered by PDFKit (`PDFView`
 - **Position:** reopens at the last page and zoom, stored in the per-book data. A PDF is identified by the same fingerprint as a book (file size plus a hash of the first and last 64 KB), with the PDF's document ID in place of the OPF identifier.
 - **Contents:** the PDF outline in the Contents tab; bookmarks and search work as for books, anchored to page numbers instead of CFIs.
 - **Layout on the Mac:** the Layout setting maps to PDFKit's display modes. One Page is single page, Two Pages is two-up, Scroll is continuous.
-- **Layout on iPhone and iPad:** follows orientation. Portrait shows one page at a time. Landscape shows the current page and the next one side by side, touching, so a scanned two-page spread reads as one. This applies to iPhone as well as iPad, unlike EPUB, where iPhone always shows one page.
+- **Layout on iPhone and iPad:** the Layout button offers Pages and Scroll (remembered per PDF, as for books). Scroll is one continuous column of pages. Pages follows orientation: portrait shows one page at a time. Landscape shows the current page and the next one side by side, touching, so a scanned two-page spread reads as one. This applies to iPhone as well as iPad, unlike EPUB, where iPhone always shows one page.
 - **Spread pairing is the reader's choice, by rotating.** PDFs of books pair their pages inconsistently: some have the cover alone and then left-right spreads, and some have a second cover page first, which shifts every pair by one. Platen does not guess. Rotating to landscape shows the page the reader was on plus the next one, and that pairing holds: each turn in landscape moves two pages. If the pairs look wrong, the reader rotates back to portrait, turns one page and rotates again. Rotating back to portrait shows the left page of the pair.
 - **Controls:** EPUB-only controls (font, text size, line spacing, line width) are hidden for PDFs. Themes colour only the background around the page; an optional inverted-colour night mode may follow.
 - **File association:** `com.adobe.pdf` is listed in File Types, but Platen is never made the default for PDFs unless the user chooses it.

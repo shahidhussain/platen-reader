@@ -71,10 +71,9 @@ foliate-view::part(filter) {
     opacity: 0;
     transition: opacity 120ms;
 }
-/* A faint outline on hover makes the feature discoverable. Touch screens
-   have no hover, so on iOS it shows while the controls are up instead. */
-#ribbons .corner:hover svg,
-#ribbons.hints .corner svg { opacity: .35; }
+/* A faint outline on hover makes the feature discoverable. (Touch screens
+   have no hover; on iOS the overlay's Bookmark button does that job.) */
+#ribbons .corner:hover svg { opacity: .35; }
 #ribbons .corner.marked svg {
     fill: #d0342c;
     stroke: none;

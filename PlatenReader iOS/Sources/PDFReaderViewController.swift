@@ -8,7 +8,10 @@ import UIKit
 /// pages; the overlay, contents, bookmarks and search are the same as for
 /// books (ReaderChrome, and the shared PDFReaderModel).
 ///
-/// Layout follows the orientation, on iPhone and iPad alike:
+/// Two layouts, chosen with the overlay's Layout button (and remembered per
+/// PDF): **Pages** and **Scroll** (one long column of pages, scrolled up and
+/// down). In Pages, the number of pages follows the orientation, on iPhone
+/// and iPad alike:
 /// - **Portrait:** one page at a time; a swipe follows the finger.
 /// - **Landscape:** two pages side by side, touching, so a scanned spread
 ///   reads as one. The pairing starts at the page the reader was on when they
@@ -129,7 +132,11 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
                                       self?.model?.cancelSearch()
                                   })
         chrome.onVisibilityChanged = { [weak self] _ in self?.updateRibbon() }
+        // Pages (one or a spread, by orientation) or Scroll; never "Two
+        // Pages" as a choice of its own.
+        state.allowsTwoPages = false
         chrome.install(in: root)
+        chrome.setInterfaceStyle(.light)
         self.chrome = chrome
 
         let safe = root.safeAreaLayoutGuide
@@ -203,6 +210,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
                 case .success(let loaded):
                     let model = PDFReaderModel(loaded: loaded, url: url, state: self.state)
                     self.model = model
+                    if model.record.readingMode.flatMap(ReadingFlow.init) == .scrolled { self.state.flow = .scrolled }
                     self.pdfView.document = loaded.document
                     self.layoutForOrientation(force: true, keepPage: model.startPage)
                     // Once PDFKit has laid the document out, go to the saved
@@ -248,7 +256,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         chrome?.showCloseOnly()
     }
 
-    // MARK: - Layout (portrait: one page; landscape: a spread)
+    // MARK: - Layout (Scroll; or pages: one in portrait, a spread in landscape)
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -265,7 +273,15 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         // left page, which PDFKit reports as the current page).
         let current = keepPage ?? pdfView.currentPage.map { document.index(for: $0) } ?? 0
 
-        if landscape {
+        if state.flow == .scrolled {
+            // One long column of pages, in either orientation.
+            pdfView.usePageViewController(false)
+            pdfView.displayMode = .singlePageContinuous
+            pdfView.displayDirection = .vertical
+            pdfView.displaysAsBook = false
+            pdfView.displaysPageBreaks = true
+        } else if landscape {
+            pdfView.displayDirection = .horizontal
             if !wasLandscape || force { spreadsStartOdd = current % 2 == 1 }
             pdfView.usePageViewController(false)
             pdfView.displayMode = .twoUp
@@ -275,6 +291,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
             pdfView.displaysPageBreaks = false // the two pages touch
             pdfView.pageBreakMargins = .zero
         } else {
+            pdfView.displayDirection = .horizontal
             pdfView.displayMode = .singlePage
             pdfView.displaysAsBook = false
             pdfView.displaysPageBreaks = true
@@ -282,13 +299,21 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
             // finger, as for books.
             pdfView.usePageViewController(true, withViewOptions: [UIPageViewController.OptionsKey.interPageSpacing: 12])
         }
-        swipes.forEach { $0.isEnabled = landscape }
+        swipes.forEach { $0.isEnabled = landscape && state.flow == .paginated }
         pdfView.autoScales = true
         if let page = document.page(at: current) { pdfView.go(to: page) }
         // Switching modes gives PDFKit's inner views their own (grey)
         // background and scroll bars; the theme colour goes back on.
         DispatchQueue.main.async { self.applyTheme() }
         reportPage()
+    }
+
+    /// Pages or Scroll, from the overlay's Layout button.
+    private func setLayout(_ layout: ReadingLayout) {
+        guard layout.flow != state.flow else { return }
+        let current = currentIndex
+        state.flow = layout.flow
+        layoutForOrientation(force: true, keepPage: current)
     }
 
     // MARK: - Taps and turns
@@ -305,6 +330,8 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         // The top-right corner bookmarks the page, as for books.
         if point.x > width - 64, point.y < view.safeAreaInsets.top + 48 {
             toggleBookmark()
+        } else if state.flow == .scrolled {
+            chrome?.toggle() // in Scroll, any tap shows or hides the controls
         } else if point.x < side {
             turn(forward: false)
         } else if point.x > width - side {
@@ -327,7 +354,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         case .slide: style = .slide
         case .curl: style = .curl
         }
-        if UIAccessibility.isReduceMotionEnabled { style = .none }
+        if UIAccessibility.isReduceMotionEnabled || state.flow == .scrolled { style = .none }
         pageTurner.turn(forward ? .next : .prev, leafMovesLeft: forward, style: style)
     }
 
@@ -340,7 +367,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         guard let document = pdfView.document else { return [] }
         let pages = pdfView.visiblePages.map { document.index(for: $0) }.sorted()
         if pages.isEmpty, let current = pdfView.currentPage { return [document.index(for: current)] }
-        return isLandscape ? Array(pages.prefix(2)) : Array(pages.prefix(1))
+        return isLandscape && state.flow == .paginated ? Array(pages.prefix(2)) : Array(pages.prefix(1))
     }
 
     private func reportPage() {
@@ -355,11 +382,12 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
     }
 
     private func updateRibbon() {
+        // Hidden while the controls are up: their buttons sit over this
+        // corner, and the Bookmark button there shows the same thing.
         let visible = chrome?.isVisible ?? false
-        ribbon.isHidden = model == nil || !(state.isPageBookmarked || visible)
-        ribbon.image = UIImage(systemName: state.isPageBookmarked ? "bookmark.fill" : "bookmark")
-        ribbon.tintColor = state.isPageBookmarked ? UIColor(red: 0.82, green: 0.2, blue: 0.17, alpha: 1)
-            : UIColor.secondaryLabel.withAlphaComponent(0.5)
+        ribbon.isHidden = model == nil || !state.isPageBookmarked || visible
+        ribbon.image = UIImage(systemName: "bookmark.fill")
+        ribbon.tintColor = UIColor(red: 0.82, green: 0.2, blue: 0.17, alpha: 1)
     }
 
     // MARK: - Overlay actions
@@ -394,7 +422,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
                 self?.state.sidebarVisible.toggle()
                 self?.chrome?.restartHideTimer()
             },
-            setLayout: { _ in }, // a PDF's layout follows the orientation
+            setLayout: { [weak self] layout in self?.setLayout(layout) },
             toggleBookmark: { [weak self] in self?.toggleBookmark() },
             interacted: { [weak self] in self?.chrome?.restartHideTimer() },
             openSettings: { [weak self] in

@@ -44,9 +44,9 @@ extension ReaderViewController {
                                           self.js("platen.clearSearch()")
                                       }
                                   })
-        // The bookmark corner shows a faint ribbon while the controls are up
-        // (there is no hover on touch screens).
-        chrome.onVisibilityChanged = { [weak self] visible in self?.callPlaten("setCornerHints", visible) }
+        // No faint ribbon in the bookmark corner while the controls are up
+        // (as on the Mac): the buttons sit over that corner, and include a
+        // Bookmark button of their own.
         chrome.install(in: root)
         self.chrome = chrome
     }
