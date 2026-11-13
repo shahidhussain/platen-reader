@@ -23,6 +23,7 @@
 //   search.js       find in book
 //   contents.js     table of contents
 //   accessibility.js  VoiceOver: names, and reading each page aloud
+//   footnotes.js    notes in a pop-up instead of a jump
 
 import './foliate/view.js'
 import { EPUB } from './foliate/epub.js'
@@ -37,6 +38,7 @@ import { applyLayout } from './modules/layout.js'
 import { nameBook, nameSection, pageChanged, readPage, setVoiceOver } from './modules/accessibility.js'
 import { followScroll, updatePageNumbers } from './modules/pagenumbers.js'
 import { clearSearch, search } from './modules/search.js'
+import { closeNote, handleNoteLink } from './modules/footnotes.js'
 
 // ---------------------------------------------------------------------------
 // Loading book files from Swift
@@ -162,7 +164,9 @@ window.platen = {
                 post('externalLink', { href: e.detail.a.href })
             })
             // Following a link is a jump: offer a way back.
-            reader.view.addEventListener('link', () => rememberJumpOrigin())
+            // Note references show their note in a pop-up instead of going
+            // there (footnotes.js); any other link is a jump.
+            reader.view.addEventListener('link', e => { if (!handleNoteLink(e)) rememberJumpOrigin() })
             applyLayout()
 
             // Restore the saved position, or start where the main text begins.
@@ -239,6 +243,8 @@ window.platen = {
     swipeEnd: direction => swipe.end(direction),
     // iOS: what is under a tap (see tapTarget in input.js).
     tapTarget,
+    // Esc closes an open note pop-up; says whether there was one.
+    closeNote,
     // iOS: show the faint bookmark outline in each page corner (while the
     // controls are up; touch screens have no hover to reveal it).
     setCornerHints: on => document.getElementById('ribbons')?.classList.toggle('hints', !!on),

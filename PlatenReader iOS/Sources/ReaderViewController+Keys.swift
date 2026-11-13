@@ -73,7 +73,9 @@ extension ReaderViewController {
 
     /// Esc closes the panel, then the controls.
     @objc private func escapePressed() {
-        if presentedViewController != nil, !state.sidebarVisible {
+        if state.noteOpen {
+            js("platen.closeNote()")
+        } else if presentedViewController != nil, !state.sidebarVisible {
             dismiss(animated: true)
         } else if state.sidebarVisible {
             state.sidebarVisible = false

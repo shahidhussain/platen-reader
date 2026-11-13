@@ -87,6 +87,9 @@ final class ReaderState: ObservableObject {
 
     @Published var selection: Selection?
 
+    /// A footnote pop-up is open in the page (Esc closes it first).
+    @Published var noteOpen = false
+
     /// True while a popover from the overlay (Aa) is open, so the overlay
     /// does not hide underneath it.
     @Published var overlayPopoverOpen = false

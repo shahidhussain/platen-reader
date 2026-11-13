@@ -48,7 +48,9 @@ extension ReaderViewController {
         case 125: if state.flow == .scrolled { js("platen.scrollLines(1)") } else { turn(.next) } // ↓
         case 126: if state.flow == .scrolled { js("platen.scrollLines(-1)") } else { turn(.prev) } // ↑
         case 53: // Esc: close the panel or overlay; exit full screen if neither is showing
-            if imageZoom != nil {
+            if state.noteOpen {
+                js("platen.closeNote()")
+            } else if imageZoom != nil {
                 closeImage()
             } else if explainerHost != nil {
                 dismissExplainer()
