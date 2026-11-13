@@ -32,9 +32,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     var spinner: UIActivityIndicatorView!
     var failureHost: UIViewController?
     /// The overlay: the bar at the bottom and the Close button at the top.
-    var overlayHost: UIViewController?
-    var topControlsHost: UIViewController?
-    var hideTimer: Timer?
+    var chrome: ReaderChrome?
 
     var book: Book?
     var record: BookRecord?
@@ -42,7 +40,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     var bookSentToShell = false
     var hasRendered = false
     var openStarted = CFAbsoluteTimeGetCurrent()
-    var overlayVisible = false
+    var overlayVisible: Bool { chrome?.isVisible ?? false }
     /// Whether text was selected just before the latest tap (reported by
     /// reader.js). A tap then only dismisses the selection.
     var hasSelection = false
@@ -258,7 +256,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         host.view.backgroundColor = .clear
         host.view.translatesAutoresizingMaskIntoConstraints = false
         addChild(host)
-        view.insertSubview(host.view, belowSubview: overlayHost?.view ?? webView)
+        view.insertSubview(host.view, belowSubview: chrome?.top.view ?? webView)
         NSLayoutConstraint.activate([
             host.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             host.view.centerYAnchor.constraint(equalTo: view.centerYAnchor),
@@ -268,11 +266,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         failureHost = host
         // With no page to read, keep Close on screen (and nothing else).
         if state.title.isEmpty { state.title = url.deletingPathExtension().lastPathComponent }
-        overlayHost?.view.removeFromSuperview()
-        topControlsHost?.view.isHidden = false
-        topControlsHost?.view.alpha = 1
-        overlayVisible = true
-        setNeedsStatusBarAppearanceUpdate()
+        chrome?.showCloseOnly()
     }
 
     // MARK: - Taps

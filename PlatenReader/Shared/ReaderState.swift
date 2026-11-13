@@ -49,6 +49,12 @@ final class ReaderState: ObservableObject {
     @Published var title = ""
     @Published var author = ""
     @Published var isFixedLayout = false
+    /// A PDF (shown by PDFKit) rather than a book: the text controls (font,
+    /// size, spacing, line width) do not apply.
+    @Published var isPDF = false
+    /// PDFs: "p. 12 of 300", shown in the location line instead of a
+    /// percentage (a PDF's pages are fixed, so its page numbers are stable).
+    @Published var locationDetail: String?
     @Published var isRightToLeft = false
     @Published var flow: ReadingFlow = .paginated
 
@@ -105,7 +111,7 @@ final class ReaderState: ObservableObject {
     func locationLine(showPagesLeft: Bool) -> String {
         var parts: [String] = []
         if !chapter.isEmpty { parts.append(chapter) }
-        parts.append(fraction.formatted(.percent.precision(.fractionLength(0))))
+        parts.append(locationDetail ?? fraction.formatted(.percent.precision(.fractionLength(0))))
         if showPagesLeft, let left = pagesLeftInChapter, flow == .paginated {
             parts.append(left == 0
                 ? String(localized: "last page in chapter")
