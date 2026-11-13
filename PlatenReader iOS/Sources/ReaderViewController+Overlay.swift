@@ -190,11 +190,15 @@ struct ReaderTopControls: View {
     var body: some View {
         // One glass container, so the two pieces blend as the system's own
         // controls do (on iOS 26 and later).
+        #if compiler(>=6.2) // the iOS 26 SDK (see GlassSurface.swift)
         if #available(iOS 26, *) {
             GlassEffectContainer(spacing: 10) { controls }
         } else {
             controls
         }
+        #else
+        controls
+        #endif
     }
 
     private var controls: some View {

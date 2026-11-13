@@ -17,7 +17,9 @@ extension View {
     ///   until the pointer is over it).
     @ViewBuilder
     func overlaySurface<S: InsettableShape>(_ shape: S, seeThrough: Bool = false) -> some View {
-        #if os(iOS)
+        // The glass API exists only in the iOS 26 SDK (Swift 6.2, Xcode 26
+        // and later); older toolchains, such as CI's, build the material.
+        #if os(iOS) && compiler(>=6.2)
         if #available(iOS 26, *) {
             glassEffect(.regular, in: shape)
         } else {
