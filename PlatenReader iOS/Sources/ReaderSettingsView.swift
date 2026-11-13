@@ -15,12 +15,6 @@ struct ReaderSettingsView: View {
 
     @State private var confirmClear = false
 
-    /// Page Curl is not drawn on iOS yet, so it is not offered; a stored
-    /// "Page Curl" (the default) shows and behaves as Slide until it is.
-    private var pageTurn: Binding<PageTurnStyle> {
-        Binding(get: { settings.pageTurnStyle == .none ? .none : .slide },
-                set: { settings.pageTurnStyle = $0 })
-    }
 
     var body: some View {
         NavigationStack {
@@ -40,9 +34,8 @@ struct ReaderSettingsView: View {
                     Picker("Line Width", selection: $settings.lineWidth) {
                         ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
                     }
-                    Picker("Page Turn", selection: pageTurn) {
-                        Text(PageTurnStyle.slide.label).tag(PageTurnStyle.slide)
-                        Text(PageTurnStyle.none.label).tag(PageTurnStyle.none)
+                    Picker("Page Turn", selection: $settings.pageTurnStyle) {
+                        ForEach(PageTurnStyle.allCases) { Text($0.label).tag($0) }
                     }
                     Toggle("Show Pages Left in Chapter", isOn: $settings.showPagesLeftInChapter)
                     Toggle("Hyphenate Text", isOn: $settings.hyphenate)

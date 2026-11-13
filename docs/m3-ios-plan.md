@@ -66,7 +66,10 @@ At the user's request, parts of phases 2 to 4 came forward:
 - **Settings sheet** holds only what the popovers do not (the layout new books open in, line width, page turn, pages left, hyphenation, clearing data); text size, font, line spacing and appearance stay in Aa.
 - **Line width on phones** sets the side margins (Narrow 44, Medium 24, Wide 12 points), because the character caps (about 55, 66, 80) are all wider than an iPhone screen.
 - **Plain text (.txt)** opens on iOS as on the Mac (PlatenCore's TextBook).
-- Still to do from phase 4: on iPhone the Layout popover offers Two Pages and explains "the window is too narrow"; iPhone should simply show one page.
+- **iPhone layout:** books always show one page on iPhone; Two Pages is not offered there. iPad keeps the width rule (two pages in landscape and wide Split View windows).
+- **Hardware keyboard:** the Mac's shortcuts as titled UIKeyCommands, listed in the iPad ⌘ overlay.
+- **Page Curl on iOS** for taps, the ‹ › buttons and keys: snapshots before and after an instant turn, curled by UIPageViewController. Swipes still slide with the finger; a curl that follows the finger needs the next page drawn before the finger moves (to do).
+- **Footnote pop-ups** on both platforms (shared web code, `modules/footnotes.js`).
 - **Text and margins:** the default size follows Dynamic Type (20 pt at the standard size) until the reader picks one; 24-point side margins on iPhone; top and bottom margins clear of the Dynamic Island and home indicator, steady when the status bar comes and goes.
 
 ### Phase 2: shared reader session

@@ -48,10 +48,10 @@ extension ReaderViewController {
         return commands
     }
 
-    @objc private func keyLeft() { js("platen.goLeft()") }
-    @objc private func keyRight() { js("platen.goRight()") }
-    @objc private func keyNext() { js("platen.next()") }
-    @objc private func keyPrevious() { js("platen.prev()") }
+    @objc private func keyLeft() { turn(.left) }
+    @objc private func keyRight() { turn(.right) }
+    @objc private func keyNext() { turn(.next) }
+    @objc private func keyPrevious() { turn(.prev) }
     @objc private func keyPreviousChapter() { js("platen.prevSection()") }
     @objc private func keyNextChapter() { js("platen.nextSection()") }
     @objc private func keyBack() { js("platen.goBack()") }

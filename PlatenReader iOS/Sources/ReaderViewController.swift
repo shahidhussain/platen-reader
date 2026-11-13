@@ -44,6 +44,8 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     /// Whether text was selected just before the latest tap (reported by
     /// reader.js). A tap then only dismisses the selection.
     var hasSelection = false
+    /// The page curl on screen, if one is running (ReaderViewController+PageCurl).
+    var curlInProgress: UIPageViewController?
     /// The last settings sent to the page, so unchanged ones are not resent.
     var lastPayload: [String: Any]?
     /// See `webPayload`.
@@ -309,9 +311,9 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         if state.flow == .scrolled || zone == "centre" {
             setOverlay(visible: !overlayVisible)
         } else if zone == "left" {
-            js("platen.goLeft()")
+            turn(.left)
         } else {
-            js("platen.goRight()")
+            turn(.right)
         }
     }
 
@@ -351,6 +353,8 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         // iPad: the Two Pages rule decides by width, as on the Mac, so two
         // pages appear in landscape and in wide Split View windows.
         if UIDevice.current.userInterfaceIdiom == .phone { payload["pageLayout"] = PageLayout.one.rawValue }
+        // Slide and Page Curl both slide here: taps curl through their own
+        // path (turnInstantly), and swipes slide with the finger.
         payload["animated"] = settings.pageTurnStyle != .none && !UIAccessibility.isReduceMotionEnabled
         let insets = view.safeAreaInsets
         let compact = traitCollection.horizontalSizeClass == .compact
@@ -500,6 +504,10 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
             handleTap(zone: String(step.dropFirst(5)))
         } else if step == "@close" {
             close()
+        } else if step == "@snapshot" {
+            webView.takeSnapshot(with: nil) { image, _ in log.notice("snapshot \(image == nil ? "failed" : "taken")") }
+        } else if step.hasPrefix("@turn:"), let request = PageTurnRequest(rawValue: String(step.dropFirst(6))) {
+            turn(request)
         } else {
             webView.evaluateJavaScript(step) { result, _ in
                 if let result = result as? String { log.notice("step result: \(result, privacy: .public)") }

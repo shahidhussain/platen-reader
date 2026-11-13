@@ -26,6 +26,11 @@ If you patch a file, list it here with the reason, so updates can re-apply it.
   within a section (upstream waits after every unanimated turn), so fast
   key presses turn pages as fast as they come. Marked `// Platen:`.
 
+- `paginator.js`, `#onTouchEnd`: settles on a page only after a drag, not
+  after a tap. Settling from the position before the tap undid the page
+  turn the tap asked for (iOS page curl, which turns the page instantly
+  underneath). Marked `// Platen:`.
+
 ## How to update
 
 1. `git clone https://github.com/johnfactotum/foliate-js && cd foliate-js && git checkout <commit>`

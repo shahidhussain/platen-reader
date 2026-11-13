@@ -12,7 +12,9 @@ import Foundation
 ///   coordinated reads of paths on the Mac itself stall in the Simulator.
 /// - `PLATEN_STEPS="<step>;<step>"` runs steps 1.5 s apart after the first
 ///   page renders. A step is `@tap:<left|centre|right>` (as if that zone
-///   were tapped), `@close`, or JavaScript such as `platen.next()`. Each
+///   were tapped), `@turn:<left|right|next|prev>` (a page turn, curled if
+///   that is the setting), `@snapshot` (a snapshot of the web view),
+///   `@close`, or JavaScript such as `platen.next()`. Each
 ///   step is logged as `step: …`; take screenshots between them with
 ///   `xcrun simctl io booted screenshot`.
 extension ReaderViewController {
