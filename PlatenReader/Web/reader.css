@@ -95,6 +95,9 @@ foliate-view::part(filter) {
     font-variant-numeric: tabular-nums;
     color: var(--platen-fg);
 }
+/* iOS: hidden while the controls are up; their location line sits in the
+   same place and says the same. */
+#page-numbers.under-controls { opacity: 0; }
 #page-numbers > div {
     position: absolute;
     top: 0;

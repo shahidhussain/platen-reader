@@ -138,6 +138,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         chrome.install(in: root)
         chrome.setInterfaceStyle(.light)
         self.chrome = chrome
+        setUpEdgeNotice()
 
         let safe = root.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
@@ -345,6 +346,15 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         turn(forward: recogniser.direction == .left)
     }
 
+    private func setUpEdgeNotice() {
+        // A turn past the first or last page says so, rather than just not
+        // moving.
+        pageTurner.onEdge = { [weak self] request in
+            self?.chrome?.showNotice(request == .next ? String(localized: "End of document")
+                                                      : String(localized: "Start of document"))
+        }
+    }
+
     /// Turns a page (PDFs are always left to right), drawn in the Page Turn
     /// style: none in Scroll layout or under Reduce Motion.
     private func turn(forward: Bool) {
@@ -382,10 +392,9 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
     }
 
     private func updateRibbon() {
-        // Hidden while the controls are up: their buttons sit over this
-        // corner, and the Bookmark button there shows the same thing.
-        let visible = chrome?.isVisible ?? false
-        ribbon.isHidden = model == nil || !state.isPageBookmarked || visible
+        // Only on a bookmarked page. (No faint outline while the controls
+        // are up: their Bookmark button does that job.)
+        ribbon.isHidden = model == nil || !state.isPageBookmarked
         ribbon.image = UIImage(systemName: "bookmark.fill")
         ribbon.tintColor = UIColor(red: 0.82, green: 0.2, blue: 0.17, alpha: 1)
     }
@@ -425,10 +434,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
             setLayout: { [weak self] layout in self?.setLayout(layout) },
             toggleBookmark: { [weak self] in self?.toggleBookmark() },
             interacted: { [weak self] in self?.chrome?.restartHideTimer() },
-            openSettings: { [weak self] in
-                guard let self else { return }
-                self.presentReaderSettings(isFixedLayout: true, chrome: self.chrome)
-            }
+            settingsContent: { AnyView(ReaderSettingsView(isFixedLayout: true)) }
         )
     }
 

@@ -274,7 +274,7 @@ The iOS app is the Mac reader on a touch screen: the same core, the same web she
 | Tap a picture | Zoom it | Zoom it |
 
 - **Page turns:** a swipe uses the page-turn animation chosen in Settings (Page Curl, Slide or None), tracking the finger in every case. On touch the swipe is the primary way to turn pages, so unlike the Mac trackpad (which always slides) there is no override.
-- **Bookmarks:** there is no hover on touch to reveal the faint ribbon outline in the top-right corner; the overlay's Bookmark button (in the same corner) does that job.
+- **Bookmarks:** there is no hover on touch to reveal the faint ribbon outline in the top-right corner; the overlay's Bookmark button does that job.
 - **Selection menu:** the system edit menu gains Copy with Citation, Search Book for "…" and Share, alongside Copy, Look Up and Translate.
 - **Hardware keyboard (iPad and iPhone):** the Mac shortcuts apply, listed in the iPad ⌘ shortcut overlay.
 
@@ -282,7 +282,8 @@ The iOS app is the Mac reader on a touch screen: the same core, the same web she
 
 - Two pages side by side on iPad in landscape only. iPhone (either orientation) and iPad in portrait show one page. Split View and Slide Over use the window width as on the Mac.
 - The status bar and home indicator hide with the overlay.
-- **Overlay:** the Mac bar's controls, arranged as Apple's own iOS 26 apps arrange theirs, as small pieces of glass floating over the page with no panel behind them. Top left: a round Close button, then the title and chapter. Top right: Contents, Bookmark, Layout, Aa and Settings in one group; their popovers open below it. Bottom: the location line, and the progress slider between round ‹ and › buttons. Over PDFs the controls are always light, since the pages are white in every theme.
+- **Overlay:** the Mac bar's controls, arranged as Apple's own iOS 26 apps arrange theirs, as small pieces of glass floating over the page with no panel behind them. Top left: a round Close button, then the title and chapter, with the width of the screen to themselves. Bottom right, just above the slider and within reach of a thumb: Contents, Bookmark, Layout, Aa and Settings in one group; each opens a popover (Settings too, not a sheet). Bottom: the progress slider (on no glass of its own) between round ‹ and › buttons, and the location line in small text below it, in place of the page number. Over PDFs the controls are always light, since the pages are white in every theme.
+- **Start and end:** a turn or swipe past the first or last page shows a short notice ("Start of book", "End of book") in the middle of the page, read out by VoiceOver.
 - Default text size follows Dynamic Type.
 
 **Settings**

@@ -56,6 +56,18 @@ final class PageTurnAnimator {
         self.turnUnderneath = turnUnderneath
     }
 
+    /// Called when a turn finds nowhere to go: the reader is at the start
+    /// or end of the book. The reader says so (ReaderChrome.showNotice).
+    var onEdge: ((PageTurnRequest) -> Void)?
+
+    /// Turns underneath, and reports the start or end of the book.
+    private func turnOrReportEdge(_ request: PageTurnRequest, _ done: @escaping (Bool) -> Void = { _ in }) {
+        turnUnderneath(request) { [weak self] moved in
+            if !moved { self?.onEdge?(request) }
+            done(moved)
+        }
+    }
+
     /// True while a turn is being drawn or a finger is moving the page.
     var isBusy: Bool { cover != nil || pager != nil || swipe != nil }
 
@@ -75,10 +87,10 @@ final class PageTurnAnimator {
         // key) skips the rest of that one and turns at once.
         if isBusy {
             finishNow()
-            return turnUnderneath(request) { _ in }
+            return turnOrReportEdge(request)
         }
         switch style {
-        case .none: turnUnderneath(request) { _ in }
+        case .none: turnOrReportEdge(request)
         case .slide: slide(request, leafMovesLeft: leafMovesLeft)
         case .curl: curl(request, leafMovesLeft: leafMovesLeft)
         }
@@ -94,9 +106,9 @@ final class PageTurnAnimator {
         cover = placeholder
         snapshot { [weak self] image in
             guard let self, self.generation == turn else { return }
-            guard let image else { self.cover = nil; return self.turnUnderneath(request) { _ in } }
+            guard let image else { self.cover = nil; return self.turnOrReportEdge(request) }
             let cover = self.addCover(image)
-            self.turnUnderneath(request) { moved in
+            self.turnOrReportEdge(request) { moved in
                 guard self.generation == turn else { return }
                 guard moved else { return self.removeCover() }
                 // The new page starts beside the old one, and both move
@@ -126,7 +138,7 @@ final class PageTurnAnimator {
 
         snapshot { [weak self] before in
             guard let self, self.generation == turn else { return }
-            guard let before else { self.pager = nil; return self.turnUnderneath(request) { _ in } }
+            guard let before else { self.pager = nil; return self.turnOrReportEdge(request) }
             // Cover the live page with the page as it is now.
             pager.setViewControllers([self.picturePage(before)], direction: .forward, animated: false)
             self.host.addChild(pager)
@@ -134,7 +146,7 @@ final class PageTurnAnimator {
             pager.didMove(toParent: self.host)
 
             // Turn underneath, then curl the old page away to show the new.
-            self.turnUnderneath(request) { moved in
+            self.turnOrReportEdge(request) { moved in
                 guard self.generation == turn else { return }
                 guard moved else { return self.removePager() } // at the start or end
                 self.snapshot { after in
@@ -200,7 +212,7 @@ final class PageTurnAnimator {
             // uncovers shows the page colour until the new page is ready.
             self.pageView.alpha = 0
             self.pageView.transform = .identity
-            self.turnUnderneath(swipe.request) { moved in
+            self.turnOrReportEdge(swipe.request) { moved in
                 guard self.generation == turn, self.swipe != nil else { return }
                 self.swipe?.moved = moved
                 if moved {
@@ -239,7 +251,7 @@ final class PageTurnAnimator {
         self.swipe = swipe
         if swipe.still {
             self.swipe = nil
-            if swipe.commit == true { turnUnderneath(swipe.request) { _ in } }
+            if swipe.commit == true { turnOrReportEdge(swipe.request) }
             return
         }
         settleIfReady()

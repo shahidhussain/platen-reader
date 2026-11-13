@@ -31,7 +31,9 @@ extension ReaderViewController {
             setLayout: { [weak self] layout in self?.setLayout(layout) },
             toggleBookmark: { [weak self] in self?.js("platen.toggleBookmark()") },
             interacted: { [weak self] in self?.restartHideTimer() },
-            openSettings: { [weak self] in self?.showSettings() }
+            settingsContent: { [weak self] in
+                AnyView(ReaderSettingsView(isFixedLayout: self?.state.isFixedLayout ?? false))
+            }
         )
 
         let chrome = ReaderChrome(owner: self, state: state, actions: actions, sidebarActions: sidebarActions,
@@ -44,9 +46,9 @@ extension ReaderViewController {
                                           self.js("platen.clearSearch()")
                                       }
                                   })
-        // No faint ribbon in the bookmark corner while the controls are up
-        // (as on the Mac): the buttons sit over that corner, and include a
-        // Bookmark button of their own.
+        // While the controls are up, the page number steps aside for their
+        // location line, which sits in the same place.
+        chrome.onVisibilityChanged = { [weak self] visible in self?.callPlaten("setControlsVisible", visible) }
         chrome.install(in: root)
         self.chrome = chrome
     }
@@ -101,9 +103,5 @@ extension ReaderViewController {
 
     func sendBookmarksToPage() {
         callPlaten("setBookmarks", state.bookmarks.map { ["cfi": $0.cfi] })
-    }
-
-    func showSettings() {
-        presentReaderSettings(isFixedLayout: state.isFixedLayout, chrome: chrome)
     }
 }

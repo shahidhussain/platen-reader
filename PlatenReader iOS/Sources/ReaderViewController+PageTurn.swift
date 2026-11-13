@@ -12,7 +12,7 @@ import WebKit
 // see the patch in foliate/paginator.js).
 extension ReaderViewController {
     func makePageTurnAnimator() -> PageTurnAnimator {
-        PageTurnAnimator(
+        let animator = PageTurnAnimator(
             host: self, pageView: webView,
             snapshot: { [weak self] done in
                 guard let self else { return done(nil) }
@@ -25,6 +25,20 @@ extension ReaderViewController {
                     done(((try? result.get()) as? [String: Any])?["moved"] as? Bool ?? false)
                 }
             })
+        // A turn past the start or end of the book says so, rather than
+        // just not moving.
+        animator.onEdge = { [weak self] request in
+            guard let self else { return }
+            let forward: Bool
+            switch request {
+            case .next: forward = true
+            case .prev: forward = false
+            case .right: forward = !self.state.isRightToLeft
+            case .left: forward = self.state.isRightToLeft
+            }
+            self.chrome?.showNotice(forward ? String(localized: "End of book") : String(localized: "Start of book"))
+        }
+        return animator
     }
 
     /// The style for taps, buttons and keys: Page Turn in Settings, with no
