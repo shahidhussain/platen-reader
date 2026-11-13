@@ -314,7 +314,6 @@ PDFs open in the same window and overlay as books, rendered by PDFKit (`PDFView`
 - **Layout on iPhone and iPad:** follows orientation. Portrait shows one page at a time. Landscape shows the current page and the next one side by side, touching, so a scanned two-page spread reads as one. This applies to iPhone as well as iPad, unlike EPUB, where iPhone always shows one page.
 - **Spread pairing is the reader's choice, by rotating.** PDFs of books pair their pages inconsistently: some have the cover alone and then left-right spreads, and some have a second cover page first, which shifts every pair by one. Platen does not guess. Rotating to landscape shows the page the reader was on plus the next one, and that pairing holds: each turn in landscape moves two pages. If the pairs look wrong, the reader rotates back to portrait, turns one page and rotates again. Rotating back to portrait shows the left page of the pair.
 - **Controls:** EPUB-only controls (font, text size, line spacing, line width) are hidden for PDFs. Themes colour only the background around the page; an optional inverted-colour night mode may follow.
-- **Open in Preview** in the overlay on the Mac, for editing, signing or annotating.
 - **File association:** `com.adobe.pdf` is listed in File Types, but Platen is never made the default for PDFs unless the user chooses it.
 
 ## Format support and robustness
