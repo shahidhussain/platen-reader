@@ -33,6 +33,7 @@ Platen stores one JSON file per book:
 
 - In a bookmark, `chapter`, `page` and `fraction` are optional; `fraction` only orders the bookmarks list.
 - `lastKnownPath` is informational only and is never used to find the book.
+- **PDFs** use the same file. The key uses `pdf:<document ID>` (the first part of the PDF trailer's `/ID`) in place of the OPF identifier. `lastPage` is the page shown when last read (counting from 0), `lastZoom` the zoom if the reader zoomed (absent when the page was fitted to the window), and each bookmark's `cfi` is `page:<index>`. `lastCFI` is not used.
 - `readingMode` is `paginated` or `scrolled`, as it was when the book was closed.
 - Writes are atomic: Platen writes a temporary file and renames it over the old one. Saves after page turns are debounced by 0.75 s; closing the window saves immediately.
 - Settings > Advanced > Clear deletes the whole `books` folder.

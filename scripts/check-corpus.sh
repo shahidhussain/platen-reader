@@ -50,6 +50,8 @@ check low-contrast.epub       "'recoloured:'+(platen.view.renderer.getContents()
 # serif by default, and the poem's line breaks kept.
 check gutenberg.txt           "(d=>'title:'+platen.view.book.metadata.title+' toc:'+platen.view.book.toc.length+' font:'+getComputedStyle(d.body).fontFamily.split(',')[0]+' poem:'+d.querySelectorAll('p.lines').length)(platen.view.renderer.getContents()[0].doc)" "title:A Plain Tale toc:3 font:\"Iowan Old Style\""
 check windows-1252.txt        "$TEXT"                                  "Café notes"
+# PDF (PDFKit): its pages and its outline as Contents.
+check outline.pdf             "-"                                      "PDF: 6 pages, 3 contents entries"
 # A note reference opens its note in a pop-up (and the page does not move);
 # a superscript link into a notes file counts as one too.
 NOTE='(d=>(d.querySelector(SEL).click(),"clicked"))(platen.view.renderer.getContents()[0].doc)'

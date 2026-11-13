@@ -12,6 +12,7 @@ A free, open source (MPL-2.0), file-first ebook viewer for macOS, with iOS to fo
   - `ReaderViewController`: WKWebView, overlay, click zones, keys, the JS bridge and position saving.
   - `ReaderSchemeHandler`: serves `platen://reader/app/*` (the shell) and `platen://reader/book/*` (book files from memory). It also holds the CSP and the remote-load blocker.
   - `MainMenu`: the full command set. Actions go to the first responder.
+- PDFs are shown by PDFKit, not the web shell: `PlatenCore/PDFIdentity` (identity), `Shared/PDFReaderModel` (outline, page bookmarks, search, position, feeding the same `ReaderState` and overlay), and a `PDFReaderViewController` in each app. Fixture: `Fixtures/generated/outline.pdf`.
 - `PlatenReader iOS/`: the iOS and iPadOS app (target "PlatenReader iOS", same bundle ID): the document browser as the home screen, and a UIKit reader around the same web shell. M3 is planned phase by phase in `docs/m3-ios-plan.md`.
 - `PlatenReader/Web/`: `reader.html/js/css`, the shell that drives foliate-js. `foliate/` is vendored at a pinned commit (see `foliate/VENDORED.md`).
 - `design/icon/`: the app icon. `make-icons.py` draws it (SVG, in several background colours; Honey is the one in use), Quick Look renders it, and `mask-icon.swift` makes the corners transparent. The sizes live in `PlatenReader/Sources/Assets.xcassets/AppIcon.appiconset`.

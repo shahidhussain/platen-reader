@@ -113,6 +113,19 @@
 			<string>public.plain-text</string>
 		</array>
 	</dict>
+		<!-- PDFs, shown by PDFKit (spec, "PDF"). Never Platen's to take over. -->
+	<dict>
+		<key>CFBundleTypeName</key>
+		<string>PDF Document</string>
+		<key>CFBundleTypeRole</key>
+		<string>Viewer</string>
+		<key>LSHandlerRank</key>
+		<string>Alternate</string>
+		<key>LSItemContentTypes</key>
+		<array>
+			<string>com.adobe.pdf</string>
+		</array>
+	</dict>
 	</array>
 	<!-- Types without a system declaration, as on the Mac. -->
 	<key>UTImportedTypeDeclarations</key>

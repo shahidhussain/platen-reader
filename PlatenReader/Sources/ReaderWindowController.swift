@@ -1,5 +1,17 @@
 import AppKit
 import os
+import UniformTypeIdentifiers
+
+/// What a book window shows: the book reader (EPUB, MOBI, text) or the PDF
+/// reader. The window controller talks to either through this.
+protocol ReaderContent: NSViewController {
+    var bookTitle: String? { get }
+    func savePositionNow()
+    func reportLayoutToSettings()
+    func fullScreenChanged()
+}
+
+extension ReaderViewController: ReaderContent {}
 
 /// The window for one book.
 ///
@@ -8,8 +20,8 @@ import os
 /// overlay or when the pointer reaches the top edge (as in IINA). The window
 /// stays draggable by its top edge throughout.
 final class ReaderWindowController: NSWindowController, NSWindowDelegate {
-    private var readerViewController: ReaderViewController? {
-        contentViewController as? ReaderViewController
+    private var readerViewController: ReaderContent? {
+        contentViewController as? ReaderContent
     }
 
     init(document: BookDocument) {
@@ -28,7 +40,10 @@ final class ReaderWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
 
         window.delegate = self
-        contentViewController = ReaderViewController(document: document)
+        // PDFs are shown by PDFKit; everything else by the web reader.
+        let isPDF = document.fileType.flatMap { UTType($0)?.conforms(to: .pdf) } == true
+            || document.fileURL?.pathExtension.lowercased() == "pdf"
+        contentViewController = isPDF ? PDFReaderViewController(document: document) : ReaderViewController(document: document)
         window.setContentSize(NSSize(width: 900, height: 780))
         // Remember the size of the last window; new windows cascade from it.
         shouldCascadeWindows = true

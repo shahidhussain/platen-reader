@@ -81,8 +81,10 @@ struct OverlayBar: View {
                     contentsButton
                     Spacer()
                     bookmarkButton
-                    Spacer()
-                    layoutButton
+                    if showsLayoutButton {
+                        Spacer()
+                        layoutButton
+                    }
                     Spacer()
                     typographyButton
                     if actions.openSettings != nil {
@@ -98,7 +100,7 @@ struct OverlayBar: View {
                     slider
                     nextButton
                     bookmarkButton
-                    layoutButton
+                    if showsLayoutButton { layoutButton }
                     typographyButton
                     if actions.openSettings != nil { settingsButton }
                 }
@@ -250,6 +252,16 @@ struct OverlayBar: View {
         }
     }
 
+    /// On iOS a PDF's layout follows the orientation (one page in portrait,
+    /// two in landscape), so there is nothing to choose.
+    private var showsLayoutButton: Bool {
+        #if os(iOS)
+        !state.isPDF
+        #else
+        true
+        #endif
+    }
+
     private var settingsButton: some View {
         Button {
             actions.openSettings?()
@@ -351,33 +363,9 @@ struct TypographyPopover: View {
 
     var body: some View {
         Form {
-            LabeledContent("Text Size") {
-                HStack(spacing: 8) {
-                    Button { settings.smallerText() } label: { Image(systemName: "textformat.size.smaller") }
-                        .disabled(settings.fontSizeIndex == 0)
-                        .accessibilityLabel(Text("Smaller Text"))
-                    Text("\(Int(settings.fontSize)) pt").monospacedDigit().frame(minWidth: 44)
-                    Button { settings.biggerText() } label: { Image(systemName: "textformat.size.larger") }
-                        .disabled(settings.fontSizeIndex == ReaderSettings.fontSizes.count - 1)
-                        .accessibilityLabel(Text("Larger Text"))
-                }
-            }
-            .disabled(state.isFixedLayout)
-
-            Picker("Font", selection: $settings.fontFamily) {
-                ForEach(ReaderSettings.curatedFonts, id: \.self) { name in
-                    Text(name.isEmpty ? String(localized: "Publisher Default") : name).tag(name)
-                }
-            }
-            .disabled(state.isFixedLayout)
-
-            Picker("Line Spacing", selection: $settings.lineHeight) {
-                ForEach(ReaderSettings.lineHeights, id: \.self) { value in
-                    Text(value == 0 ? String(localized: "Publisher Default") : value.formatted(.number.precision(.fractionLength(1...2)))).tag(value)
-                }
-            }
-            .disabled(state.isFixedLayout)
-
+            // PDFs: only the theme applies (it colours the area around the
+            // page); text size, font and spacing are the PDF's own.
+            if !state.isPDF { textControls }
             Picker("Appearance", selection: $settings.appearance) {
                 ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }
             }
@@ -386,7 +374,7 @@ struct TypographyPopover: View {
         .formStyle(.grouped)
         #if os(iOS)
         // A form in a popover has no height of its own on iOS.
-        .frame(width: 340, height: 300)
+        .frame(width: 340, height: state.isPDF ? 110 : 300)
         #else
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
@@ -395,6 +383,35 @@ struct TypographyPopover: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Text and Appearance"))
         .platenPopover()
+    }
+
+    @ViewBuilder private var textControls: some View {
+        LabeledContent("Text Size") {
+            HStack(spacing: 8) {
+                Button { settings.smallerText() } label: { Image(systemName: "textformat.size.smaller") }
+                    .disabled(settings.fontSizeIndex == 0)
+                    .accessibilityLabel(Text("Smaller Text"))
+                Text("\(Int(settings.fontSize)) pt").monospacedDigit().frame(minWidth: 44)
+                Button { settings.biggerText() } label: { Image(systemName: "textformat.size.larger") }
+                    .disabled(settings.fontSizeIndex == ReaderSettings.fontSizes.count - 1)
+                    .accessibilityLabel(Text("Larger Text"))
+            }
+        }
+        .disabled(state.isFixedLayout)
+
+        Picker("Font", selection: $settings.fontFamily) {
+            ForEach(ReaderSettings.curatedFonts, id: \.self) { name in
+                Text(name.isEmpty ? String(localized: "Publisher Default") : name).tag(name)
+            }
+        }
+        .disabled(state.isFixedLayout)
+
+        Picker("Line Spacing", selection: $settings.lineHeight) {
+            ForEach(ReaderSettings.lineHeights, id: \.self) { value in
+                Text(value == 0 ? String(localized: "Publisher Default") : value.formatted(.number.precision(.fractionLength(1...2)))).tag(value)
+            }
+        }
+        .disabled(state.isFixedLayout)
     }
 }
 
@@ -419,11 +436,13 @@ struct LayoutPopover: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Picker("Line Width", selection: $settings.lineWidth) {
-                ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
+            if !state.isPDF {
+                Picker("Line Width", selection: $settings.lineWidth) {
+                    ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .disabled(state.isFixedLayout)
             }
-            .pickerStyle(.segmented)
-            .disabled(state.isFixedLayout)
         }
         .formStyle(.grouped)
         #if os(iOS)

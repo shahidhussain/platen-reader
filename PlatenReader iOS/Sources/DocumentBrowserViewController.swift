@@ -6,9 +6,18 @@ import UniformTypeIdentifiers
 /// shares and any file provider). Platen has no library of its own; folders
 /// are the library. Books are opened in place through security-scoped URLs
 /// and never copied into the app.
+/// What the document browser presents: the book reader or the PDF reader.
+protocol OpenReader: UIViewController {
+    var onClose: (() -> Void)? { get set }
+    func savePositionNow()
+}
+
+extension ReaderViewController: OpenReader {}
+extension PDFReaderViewController: OpenReader {}
+
 final class DocumentBrowserViewController: UIDocumentBrowserViewController, UIDocumentBrowserViewControllerDelegate {
-    /// The book on screen, if any.
-    private(set) var reader: ReaderViewController?
+    /// The book or PDF on screen, if any.
+    private(set) var reader: OpenReader?
 
     /// A book asked for before the browser was on screen (at launch, from
     /// another app). Presenting then would lay the book out at zero size, so
@@ -21,7 +30,7 @@ final class DocumentBrowserViewController: UIDocumentBrowserViewController, UIDo
     static let contentTypes: [UTType] = [
         UTType("org.idpf.epub-container"), UTType("com.kobo.kepub"),
         UTType("com.amazon.mobi"), UTType("com.amazon.azw"), UTType("com.amazon.azw3"),
-        .plainText,
+        .plainText, .pdf,
     ].compactMap { $0 }
 
     init() {
@@ -66,7 +75,10 @@ final class DocumentBrowserViewController: UIDocumentBrowserViewController, UIDo
         guard hasAppeared else { pendingBook = url; return }
         let show = { [weak self] in
             guard let self else { return }
-            let reader = ReaderViewController(url: url)
+            // PDFs are shown by PDFKit; everything else by the book reader.
+            let isPDF = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .pdf)) == true
+                || url.pathExtension.lowercased() == "pdf"
+            let reader: OpenReader = isPDF ? PDFReaderViewController(url: url) : ReaderViewController(url: url)
             reader.onClose = { [weak self, weak reader] in
                 reader?.dismiss(animated: true)
                 self?.reader = nil

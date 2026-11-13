@@ -171,6 +171,64 @@ def simple(name, title, chapter_files, extra_files=(), version="3.0", extra_meta
     return write_epub(name, files)
 
 
+def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7D659A2FEAA0C55AD015"):
+    """A small PDF written by hand (no PDF library needed): text pages in
+    Helvetica, an outline with one entry per chapter, a title in the
+    document information, and a document ID in the trailer, which Platen
+    uses to recognise the file again (PDFIdentity)."""
+    objects = []  # bodies, numbered from 1
+
+    def add(body):
+        objects.append(body)
+        return len(objects)
+
+    def esc(text):
+        return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    catalog = add(None)        # filled in below
+    pages_obj = add(None)
+    font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    page_ids = []
+    for c, name in enumerate(chapters):
+        for p in range(pages_per_chapter):
+            lines = [f"{name}" if p == 0 else f"{name} (continued)", ""]
+            lines += [f"Page {len(page_ids) + 1} of the {title.lower()}. Line {i + 1} of the text."
+                      for i in range(20)]
+            text = "BT /F1 12 Tf 72 720 Td 16 TL " + " ".join(f"({esc(l)}) '" for l in lines) + " ET"
+            stream = add(f"<< /Length {len(text)} >>\nstream\n{text}\nendstream")
+            page_ids.append(add(f"<< /Type /Page /Parent {pages_obj} 0 R /MediaBox [0 0 612 792] "
+                                f"/Contents {stream} 0 R /Resources << /Font << /F1 {font} 0 R >> >> >>"))
+    # The outline: one entry per chapter, pointing at its first page.
+    outline = add(None)
+    items = []
+    for c, name in enumerate(chapters):
+        items.append(add(None))
+    for c, name in enumerate(chapters):
+        parts = [f"/Title ({esc(name)})", f"/Parent {outline} 0 R",
+                 f"/Dest [{page_ids[c * pages_per_chapter]} 0 R /Fit]"]
+        if c > 0: parts.append(f"/Prev {items[c - 1]} 0 R")
+        if c < len(items) - 1: parts.append(f"/Next {items[c + 1]} 0 R")
+        objects[items[c] - 1] = "<< " + " ".join(parts) + " >>"
+    objects[outline - 1] = f"<< /Type /Outlines /First {items[0]} 0 R /Last {items[-1]} 0 R /Count {len(items)} >>"
+    objects[pages_obj - 1] = (f"<< /Type /Pages /Kids [{' '.join(f'{p} 0 R' for p in page_ids)}] "
+                              f"/Count {len(page_ids)} >>")
+    objects[catalog - 1] = f"<< /Type /Catalog /Pages {pages_obj} 0 R /Outlines {outline} 0 R /PageMode /UseOutlines >>"
+    info = add(f"<< /Title ({esc(title)}) /Author (Pat D. Eff) >>")
+
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for n, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{n} 0 obj\n{body}\nendobj\n".encode("latin-1")
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for o in offsets:
+        out += f"{o:010d} 00000 n \n".encode()
+    out += (f"trailer\n<< /Size {len(objects) + 1} /Root {catalog} 0 R /Info {info} 0 R "
+            f"/ID [<{doc_id}> <{doc_id}>] >>\nstartxref\n{xref}\n%%EOF\n").encode()
+    open(path, "wb").write(bytes(out))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     rng = random.Random(7)
@@ -343,6 +401,11 @@ def main():
     # Plain text in Windows-1252, not UTF-8 (older files often are).
     p = os.path.join(OUT, "windows-1252.txt")
     open(p, "wb").write(("Café notes\n\n" + textwrap.fill(paragraph(rng, 5), 70) + "\n\n\u201cQuoted,\u201d she said.\n").encode("cp1252"))
+    made.append(p)
+
+    # A PDF with an outline (Contents) and a document ID (spec, "PDF").
+    p = os.path.join(OUT, "outline.pdf")
+    simple_pdf(p, "Sample Report", ["Introduction", "Methods", "Results"])
     made.append(p)
 
     # Footnotes: a marked footnote (epub:type="noteref" to an aside in the

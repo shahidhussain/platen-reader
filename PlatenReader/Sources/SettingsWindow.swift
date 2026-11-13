@@ -108,6 +108,9 @@ private struct FileTypesSettingsView: View {
         Row(id: "com.amazon.azw", label: "AZW (.azw)", type: UTType("com.amazon.azw")),
         Row(id: "com.amazon.azw3", label: "AZW3 (.azw3)", type: UTType("com.amazon.azw3")),
         Row(id: "public.plain-text", label: "Plain Text (.txt)", type: .plainText, inAll: false),
+        // PDFs: listed so Platen can be chosen, but never made the default
+        // by "for All" (spec, "PDF": unless the user chooses it).
+        Row(id: "com.adobe.pdf", label: "PDF (.pdf)", type: .pdf, inAll: false),
     ]
 
     @State private var defaults: [String: String] = [:]
