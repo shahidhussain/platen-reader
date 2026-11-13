@@ -13,7 +13,6 @@ import os
 ///   the controls; click-drag selects text (PDFKit), and links work.
 /// - The Layout setting maps to PDFKit's display modes: One Page is single
 ///   page, Two Pages is two-up, Scroll is continuous.
-/// - The overlay has Open in Preview, for editing, signing or annotating.
 final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
     let document: BookDocument
     let state = ReaderState()
@@ -35,6 +34,11 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
     /// While opening, until the saved page is on screen (PDFKit reports the
     /// first page meanwhile, which must not overwrite the saved place).
     private var restoring = true
+    /// The scale that shows whole pages in the window (see `fitToWindow`),
+    /// and whether the reader has zoomed away from it.
+    private var fitScale: CGFloat = 1
+    private var userZoomed = false
+    private var applyingScale = false
 
     var bookTitle: String? { state.title.isEmpty ? nil : state.title }
 
@@ -54,7 +58,7 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
 
         pdfView = PlatenPDFView()
         pdfView.translatesAutoresizingMaskIntoConstraints = false
-        pdfView.autoScales = true
+        pdfView.pageShadowsEnabled = false
         pdfView.isHidden = true
         pdfView.onClick = { [weak self] point in self?.handleClick(at: point) }
         pdfView.keyHandler = { [weak self] event in self?.handleKey(event) ?? false }
@@ -82,8 +86,7 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
             toggleContents: { [weak self] in self?.toggleContents(nil) },
             setLayout: { [weak self] layout in self?.setLayout(layout) },
             toggleBookmark: { [weak self] in self?.toggleBookmark(nil) },
-            interacted: { [weak self] in self?.restartHideTimer() },
-            openInPreview: { [weak self] in self?.openInPreview() }
+            interacted: { [weak self] in self?.restartHideTimer() }
         )
         overlayHost = NSHostingView(rootView: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions))
         overlayHost.translatesAutoresizingMaskIntoConstraints = false
@@ -171,6 +174,12 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
         NotificationCenter.default.publisher(for: .PDFViewScaleChanged)
             .sink { [weak self] note in
                 guard let self, note.object as? PDFView === self.pdfView else { return }
+                // A pinch or ⌘+ (not our own fitting): keep the reader's zoom
+                // until the layout changes.
+                if !self.applyingScale, !self.restoring, self.state.flow != .scrolled {
+                    self.userZoomed = abs(self.pdfView.scaleFactor / self.fitScale - 1) > 0.02
+                    self.updateScrollers()
+                }
                 self.reportPage()
             }
             .store(in: &cancellables)
@@ -179,6 +188,12 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
             guard let self, self.model == nil, self.failureHost == nil else { return }
             self.spinner.startAnimation(nil)
         }
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        // The window was resized: fit the pages again (unless zoomed in).
+        if !userZoomed { fitToWindow() }
     }
 
     override func viewDidAppear() {
@@ -214,8 +229,11 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
                     // page and zoom, then start reporting the page.
                     DispatchQueue.main.async {
                         if let page = loaded.document.page(at: model.startPage) { self.pdfView.go(to: page) }
-                        if let zoom = model.savedZoom {
-                            self.pdfView.scaleFactor = self.pdfView.scaleFactorForSizeToFit * zoom
+                        self.fitToWindow()
+                        if let zoom = model.savedZoom, self.state.flow != .scrolled {
+                            self.userZoomed = true
+                            self.setScale(self.fitScale * CGFloat(zoom))
+                            self.updateScrollers()
                         }
                         self.restoring = false
                         self.pdfView.isHidden = false
@@ -268,10 +286,53 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
         if pdfView.displayMode != mode {
             let page = pdfView.currentPage
             pdfView.displayMode = mode
-            pdfView.autoScales = true
+            userZoomed = false
+            fitToWindow()
             if let page { pdfView.go(to: page) }
         }
         state.columnsOnScreen = mode == .twoUp ? 2 : 1
+    }
+
+    /// Each page (or two-page spread) shown whole, scaled to fit the window
+    /// with a little room around it, as fixed-layout books are (spec,
+    /// "Reading modes and layout"). PDFKit's own "fit" fits the width only,
+    /// which left spreads taller than the window. Scroll mode fits the width.
+    private func fitToWindow() {
+        guard let page = pdfView.currentPage ?? pdfView.document?.page(at: 0) else { return }
+        if state.flow == .scrolled {
+            applyingScale = true
+            pdfView.autoScales = true
+            applyingScale = false
+            fitScale = pdfView.scaleFactor
+            updateScrollers()
+            return
+        }
+        var size = page.bounds(for: pdfView.displayBox).size
+        if page.rotation % 180 != 0 { size = CGSize(width: size.height, height: size.width) }
+        let across: CGFloat = pdfView.displayMode == .twoUp ? 2 : 1
+        let margin: CGFloat = 16
+        let available = CGSize(width: max(pdfView.bounds.width - 2 * margin, 1),
+                               height: max(pdfView.bounds.height - 2 * margin, 1))
+        guard size.width > 0, size.height > 0 else { return }
+        fitScale = min(available.width / (size.width * across), available.height / size.height)
+        setScale(fitScale)
+        updateScrollers()
+    }
+
+    private func setScale(_ scale: CGFloat) {
+        applyingScale = true
+        pdfView.autoScales = false
+        pdfView.scaleFactor = scale
+        applyingScale = false
+    }
+
+    /// No scroll bars while whole pages fit; back when zoomed in, or in
+    /// Scroll mode, where there is somewhere to scroll to.
+    private func updateScrollers() {
+        guard let scrollView = pdfView.documentView?.enclosingScrollView else { return }
+        let scrolls = userZoomed || state.flow == .scrolled
+        scrollView.hasVerticalScroller = scrolls
+        scrollView.hasHorizontalScroller = userZoomed
     }
 
     private func setLayout(_ layout: ReadingLayout) {
@@ -298,11 +359,12 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
 
     private func reportPage() {
         guard !restoring, let model, pdfView.currentPage != nil else { return }
-        let fit = pdfView.scaleFactorForSizeToFit
-        let zoom = fit > 0 && !pdfView.autoScales ? Double(pdfView.scaleFactor / fit) : 1
+        // The zoom is saved relative to the fitted size, and only if the
+        // reader zoomed.
+        let zoom: Double? = userZoomed && fitScale > 0 ? Double(pdfView.scaleFactor / fitScale) : nil
         var visible = visiblePages
         if !visible.contains(currentIndex) { visible.insert(currentIndex, at: 0) }
-        model.pageChanged(to: visible.first ?? currentIndex, visible: visible, zoom: abs(zoom - 1) > 0.05 ? zoom : nil)
+        model.pageChanged(to: visible.first ?? currentIndex, visible: visible, zoom: zoom)
         view.window?.subtitle = state.chapter
     }
 
@@ -441,12 +503,6 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
         let current = hits.firstIndex { $0.id == state.currentHitID }
         let next = current.map { ($0 + step + hits.count) % hits.count } ?? (step > 0 ? 0 : hits.count - 1)
         goToHit(hits[next])
-    }
-
-    private func openInPreview() {
-        guard let url = document.fileURL,
-              let preview = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Preview") else { return }
-        NSWorkspace.shared.open([url], withApplicationAt: preview, configuration: NSWorkspace.OpenConfiguration())
     }
 
     // MARK: - Menu actions (the same commands as the book window)

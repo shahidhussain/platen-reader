@@ -15,9 +15,6 @@ struct OverlayActions {
     /// iOS: opens the settings sheet (a gear button in the bar). The Mac
     /// has Platen Reader > Settings… instead, so leaves this out.
     var openSettings: (() -> Void)? = nil
-    /// Mac PDFs: opens the file in Preview, for editing, signing or
-    /// annotating (Platen only shows PDFs).
-    var openInPreview: (() -> Void)? = nil
 }
 
 extension View {
@@ -105,7 +102,6 @@ struct OverlayBar: View {
                     bookmarkButton
                     if showsLayoutButton { layoutButton }
                     typographyButton
-                    if actions.openInPreview != nil { previewButton }
                     if actions.openSettings != nil { settingsButton }
                 }
                 .frame(minHeight: 32)
@@ -264,15 +260,6 @@ struct OverlayBar: View {
         #else
         true
         #endif
-    }
-
-    private var previewButton: some View {
-        Button {
-            actions.openInPreview?()
-        } label: {
-            Label(String(localized: "Open in Preview"), systemImage: "arrow.up.forward.app")
-        }
-        .help(String(localized: "Open in Preview, to edit, sign or annotate"))
     }
 
     private var settingsButton: some View {
