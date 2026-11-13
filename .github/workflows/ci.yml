@@ -31,3 +31,21 @@ jobs:
 
       - name: Generate the robustness corpus
         run: python3 scripts/make-fixtures.py
+
+      # Opens every book in the corpus in the Debug build and checks what
+      # happened (see scripts/check-corpus.sh). CI machines are slower than
+      # a desk Mac, so each book gets longer to open.
+      - name: Check the robustness corpus
+        env:
+          PLATEN_WAIT: "10"
+        run: scripts/check-corpus.sh
+
+      - name: Keep the snapshots and log if the corpus check failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-snapshots
+          path: |
+            build/snaps
+            build/app.log
+          if-no-files-found: ignore
