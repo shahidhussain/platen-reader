@@ -65,10 +65,16 @@
     "Bookmarks" : {
 
     },
+    "Books added to this folder in Files appear here." : {
+
+    },
     "Books will open at the beginning. This cannot be undone." : {
 
     },
     "Bring All to Front" : {
+
+    },
+    "Choose Folder…" : {
 
     },
     "Clear" : {
@@ -119,6 +125,9 @@
     "Default Text Size" : {
 
     },
+    "Downloading" : {
+
+    },
     "Edit" : {
 
     },
@@ -164,6 +173,9 @@
     "Fixed-layout books are always paginated." : {
 
     },
+    "Folder: %@" : {
+
+    },
     "Font" : {
 
     },
@@ -189,6 +201,9 @@
 
     },
     "Hyphenate text in paginated mode" : {
+
+    },
+    "In iCloud" : {
 
     },
     "Larger Text" : {
@@ -230,6 +245,9 @@
     "Minimise" : {
 
     },
+    "More" : {
+
+    },
     "Narrow" : {
 
     },
@@ -243,6 +261,9 @@
 
     },
     "No bookmarks yet. Tap the top-right corner of a page, or the bookmark button." : {
+
+    },
+    "No Books Here" : {
 
     },
     "No results for “%@”" : {

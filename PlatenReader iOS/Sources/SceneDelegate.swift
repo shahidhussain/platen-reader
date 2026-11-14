@@ -41,6 +41,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             home.openBook(at: context.url)
         }
         #if DEBUG
+        // Testing: PLATEN_FOLDER_PATH chooses the folder for the folder view
+        // without the picker (see DebugHooks.swift).
+        if let folder = env["PLATEN_FOLDER_PATH"] {
+            LibraryFolder.shared.choose(URL(fileURLWithPath: folder, isDirectory: true))
+        }
         // Testing: PLATEN_OPEN_PATH opens a book straight away (see
         // DebugHooks.swift).
         if let path = env["PLATEN_OPEN_PATH"] {
