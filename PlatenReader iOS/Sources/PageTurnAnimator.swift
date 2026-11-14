@@ -1,23 +1,6 @@
 import QuartzCore
 import UIKit
 
-/// The page turns that taps, swipes, the overlay's ‹ › buttons and the
-/// keyboard ask for. "left" and "right" are sides of the screen (they turn
-/// the right way in right-to-left books); "next" and "prev" are reading order.
-enum PageTurnRequest: String {
-    case left, right, next, prev
-
-    /// The turn that undoes this one.
-    var opposite: PageTurnRequest {
-        switch self {
-        case .left: .right
-        case .right: .left
-        case .next: .prev
-        case .prev: .next
-        }
-    }
-}
-
 /// Draws page turns natively, over a reader's live page view (the book
 /// reader's web view, or the PDF reader's PDFView), for both readers.
 ///
@@ -39,7 +22,7 @@ final class PageTurnAnimator {
     typealias Snapshot = (@escaping (UIImage?) -> Void) -> Void
     /// Turns the page underneath with no animation, then reports whether it
     /// moved (false at the start or end), once the new page is drawn.
-    typealias TurnUnderneath = (PageTurnRequest, @escaping (Bool) -> Void) -> Void
+    typealias TurnUnderneath = (PageTurn, @escaping (Bool) -> Void) -> Void
 
     private unowned let host: UIViewController
     private let pageView: UIView
@@ -70,7 +53,7 @@ final class PageTurnAnimator {
 
     /// Turns a page in the given style. `leafMovesLeft`: the old page leaves
     /// towards the left (a forward turn in a left-to-right book).
-    func turn(_ request: PageTurnRequest, leafMovesLeft: Bool, style: Style) {
+    func turn(_ request: PageTurn, leafMovesLeft: Bool, style: Style) {
         // A turn asked for while another is drawn (fast taps, a held arrow
         // key) skips the rest of that one and turns at once.
         if isBusy {
@@ -84,7 +67,7 @@ final class PageTurnAnimator {
         }
     }
 
-    private func slide(_ request: PageTurnRequest, leafMovesLeft: Bool) {
+    private func slide(_ request: PageTurn, leafMovesLeft: Bool) {
         generation += 1
         let turn = generation
         let width = pageView.bounds.width
@@ -113,7 +96,7 @@ final class PageTurnAnimator {
         }
     }
 
-    private func curl(_ request: PageTurnRequest, leafMovesLeft: Bool) {
+    private func curl(_ request: PageTurn, leafMovesLeft: Bool) {
         generation += 1
         let turn = generation
         let pager = UIPageViewController(transitionStyle: .pageCurl, navigationOrientation: .horizontal,
@@ -154,7 +137,7 @@ final class PageTurnAnimator {
 
     /// The swipe under way.
     private struct Swipe {
-        var request: PageTurnRequest
+        var request: PageTurn
         /// −1 when the old page leaves towards the left, +1 towards the right.
         var sign: CGFloat
         /// How far the finger has moved along that direction, in points.
@@ -173,7 +156,7 @@ final class PageTurnAnimator {
 
     /// A finger has started moving the page sideways. `leafMovesLeft` says
     /// which way it moves.
-    func beginSwipe(_ request: PageTurnRequest, leafMovesLeft: Bool) {
+    func beginSwipe(_ request: PageTurn, leafMovesLeft: Bool) {
         finishNow()
         generation += 1
         let turn = generation

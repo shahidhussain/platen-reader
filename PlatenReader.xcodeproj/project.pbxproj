@@ -11,6 +11,7 @@
 		A1B2C3D4E5F600000000000F /* PlatenCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6000000000010 /* PlatenCore */; };
 		A1B2C3D4E5F6000000000029 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000006 /* Web */; };
 		A1B2C3D4E5F600000000002A /* PlatenCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000002B /* PlatenCore */; };
+		A1B2C3D4E5F600000000004C /* PlatenCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000004B /* PlatenCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +33,7 @@
 		A1B2C3D4E5F6000000000024 /* Platen Reader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Platen Reader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F600000000002F /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Shared.xcconfig; path = Config/Shared.xcconfig; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000000000030 /* PlatenReaderUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PlatenReaderUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F6000000000040 /* PlatenReaderTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PlatenReaderTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -53,6 +55,11 @@
 		A1B2C3D4E5F6000000000031 /* PlatenReaderUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = PlatenReaderUITests;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F6000000000041 /* PlatenReaderTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PlatenReaderTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -81,6 +88,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1B2C3D4E5F6000000000044 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F600000000004C /* PlatenCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -91,6 +106,7 @@
 				A1B2C3D4E5F6000000000004 /* PlatenReader */,
 				A1B2C3D4E5F6000000000022 /* PlatenReader iOS */,
 				A1B2C3D4E5F6000000000031 /* PlatenReaderUITests */,
+				A1B2C3D4E5F6000000000041 /* PlatenReaderTests */,
 				A1B2C3D4E5F600000000002F /* Shared.xcconfig */,
 				A1B2C3D4E5F6000000000003 /* Products */,
 			);
@@ -102,6 +118,7 @@
 				A1B2C3D4E5F6000000000009 /* Platen Reader.app */,
 				A1B2C3D4E5F6000000000024 /* Platen Reader.app */,
 				A1B2C3D4E5F6000000000030 /* PlatenReaderUITests.xctest */,
+				A1B2C3D4E5F6000000000040 /* PlatenReaderTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -198,6 +215,30 @@
 			productReference = A1B2C3D4E5F6000000000030 /* PlatenReaderUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		A1B2C3D4E5F6000000000042 /* PlatenReaderTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F6000000000048 /* Build configuration list for PBXNativeTarget "PlatenReaderTests" */;
+			buildPhases = (
+				A1B2C3D4E5F6000000000043 /* Sources */,
+				A1B2C3D4E5F6000000000044 /* Frameworks */,
+				A1B2C3D4E5F6000000000045 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D4E5F6000000000020 /* Shared */,
+				A1B2C3D4E5F6000000000041 /* PlatenReaderTests */,
+			);
+			name = PlatenReaderTests;
+			packageProductDependencies = (
+				A1B2C3D4E5F600000000004B /* PlatenCore */,
+			);
+			productName = PlatenReaderTests;
+			productReference = A1B2C3D4E5F6000000000040 /* PlatenReaderTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -229,6 +270,7 @@
 				A1B2C3D4E5F600000000000A /* PlatenReader */,
 				A1B2C3D4E5F6000000000025 /* PlatenReader iOS */,
 				A1B2C3D4E5F6000000000032 /* PlatenReaderUITests */,
+				A1B2C3D4E5F6000000000042 /* PlatenReaderTests */,
 			);
 		};
 /* End PBXProject section */
@@ -257,6 +299,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1B2C3D4E5F6000000000045 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -275,6 +324,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A1B2C3D4E5F6000000000033 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F6000000000043 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -437,6 +493,38 @@
 			};
 			name = Release;
 		};
+		A1B2C3D4E5F6000000000049 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.platenreader.PlatenReaderTests;
+				PRODUCT_MODULE_NAME = PlatenReaderTests;
+				PRODUCT_NAME = PlatenReaderTests;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F600000000004A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.platenreader.PlatenReaderTests;
+				PRODUCT_MODULE_NAME = PlatenReaderTests;
+				PRODUCT_NAME = PlatenReaderTests;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -476,6 +564,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A1B2C3D4E5F6000000000048 /* Build configuration list for PBXNativeTarget "PlatenReaderTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F6000000000049 /* Debug */,
+				A1B2C3D4E5F600000000004A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -491,6 +588,10 @@
 			productName = PlatenCore;
 		};
 		A1B2C3D4E5F600000000002B /* PlatenCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PlatenCore;
+		};
+		A1B2C3D4E5F600000000004B /* PlatenCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PlatenCore;
 		};

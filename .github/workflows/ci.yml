@@ -17,6 +17,14 @@ jobs:
       - name: Core unit and timing tests
         run: swift test --package-path PlatenCore
 
+      # The code the Mac and iOS apps share (PlatenReader/Shared): the
+      # bridge to reader.js, reader state and commands.
+      - name: Shared-code unit tests
+        run: |
+          xcodebuild test -project PlatenReader.xcodeproj -scheme PlatenReader \
+            -destination "platform=macOS" -derivedDataPath build/DerivedData \
+            -only-testing:PlatenReaderTests
+
       - name: Build the app
         run: |
           xcodebuild -project PlatenReader.xcodeproj -scheme PlatenReader \

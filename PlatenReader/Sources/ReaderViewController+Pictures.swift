@@ -10,25 +10,22 @@ import os
 extension ReaderViewController {
     /// A click on a picture in the book: show it full size, zooming from
     /// where it sits on the page.
-    func showImage(from body: [String: Any]) {
-        guard imageZoom == nil,
-              let base64 = body["data"] as? String, let data = Data(base64Encoded: base64),
-              let image = NSImage(data: data) else { return }
-        log.debug("Showing picture (\(data.count) bytes)")
-        let rect = body["rect"] as? [String: Any] ?? [:]
-        func number(_ key: String) -> CGFloat { CGFloat((rect[key] as? NSNumber)?.doubleValue ?? 0) }
+    func showImage(_ picture: ReaderMessage.Picture) {
+        guard imageZoom == nil, let image = NSImage(data: picture.data) else { return }
+        log.debug("Showing picture (\(picture.data.count) bytes)")
         // Web coordinates have their origin at the top left; AppKit's at the
         // bottom left.
-        let source = NSRect(x: number("x"), y: view.bounds.height - number("y") - number("height"),
-                            width: number("width"), height: number("height"))
-        let zoom = ImageZoomView(image: image, data: data, type: body["mimeType"] as? String ?? "",
-                                 name: body["alt"] as? String ?? "", background: currentTheme.nsBackground)
+        let rect = picture.rect
+        let source = NSRect(x: rect.minX, y: view.bounds.height - rect.minY - rect.height,
+                            width: rect.width, height: rect.height)
+        let zoom = ImageZoomView(image: image, data: picture.data, type: picture.mimeType,
+                                 name: picture.alt, background: currentTheme.nsBackground)
         zoom.onClose = { [weak self] in self?.closeImage() }
         zoom.frame = view.bounds
         zoom.autoresizingMask = [.width, .height]
-        view.addSubview(zoom, positioned: .below, relativeTo: titleBacking)
+        view.addSubview(zoom, positioned: .below, relativeTo: chrome.titleBackingView)
         imageZoom = zoom
-        if overlayVisible { setOverlay(visible: false) }
+        if chrome.isVisible { chrome.setVisible(false) }
         zoom.present(from: source, animated: !reducedMotion)
         view.window?.makeFirstResponder(zoom)
     }

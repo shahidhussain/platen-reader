@@ -15,6 +15,10 @@
             </BuildableReference>
          </TestableReference>
          <TestableReference skipped = "NO">
+            <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "A1B2C3D4E5F6000000000042" BuildableName = "PlatenReaderTests.xctest" BlueprintName = "PlatenReaderTests" ReferencedContainer = "container:PlatenReader.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference skipped = "NO">
             <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "A1B2C3D4E5F6000000000032" BuildableName = "PlatenReaderUITests.xctest" BlueprintName = "PlatenReaderUITests" ReferencedContainer = "container:PlatenReader.xcodeproj">
             </BuildableReference>
          </TestableReference>

@@ -22,3 +22,10 @@ MACOSX_DEPLOYMENT_TARGET = 14.0
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
 
 SWIFT_VERSION = 5.0
+
+// Your own signing team, for running the iOS app on a real iPhone or iPad.
+// It is personal, so it is kept out of the repository: create
+// Config/Local.xcconfig (git-ignored) containing one line,
+//   DEVELOPMENT_TEAM[sdk=iphone*] = <your team ID>
+// The "?" means the file may be missing (CI and the Simulator need no team).
+#include? "Local.xcconfig"

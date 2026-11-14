@@ -114,20 +114,3 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.window?.makeKeyAndOrderFront(sender)
     }
 }
-
-/// Keeps one off-screen web view alive with the reader shell loaded, so the
-/// WebKit content process and the shell's scripts are already warm. (All
-/// web views in an app share one process pool, so later windows benefit.)
-enum WebViewWarmer {
-    private static var warmView: WKWebView?
-    private static let handler = ReaderSchemeHandler()
-
-    static func warm() {
-        let config = WKWebViewConfiguration()
-        config.setURLSchemeHandler(handler, forURLScheme: ReaderSchemeHandler.scheme)
-        let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 400), configuration: config)
-        view.load(URLRequest(url: ReaderSchemeHandler.shellURL))
-        warmView = view
-        RemoteContentBlocker.load { _ in } // compile the rule list early too
-    }
-}

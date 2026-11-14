@@ -48,7 +48,7 @@ To run the core tests: `swift test --package-path PlatenCore`. To check the robu
 - Contents, bookmarks and search open in a popover from the Contents button. A bookmark button sits in the controls.
 - A welcome window with an Open Book… button at launch; one running copy of the app; ⌘W closes the front window whatever has focus.
 - The click-zone explainer shows for the first five books opened. A note explains when Two Pages shows one page because the window is narrow.
-- `scripts/check-corpus.sh` opens every fixture and checks the result (21 of 21 pass). CI runs it on every pull request, along with the core unit and timing tests, both app builds, and UI tests (`PlatenReaderUITests`: opening a book, turning pages, one versus two pages, and a bookmark and position surviving reopening). UI tests use a throwaway settings and positions folder (`PLATEN_TEST_HOME`), never your own.
+- `scripts/check-corpus.sh` opens every fixture and checks the result (21 of 21 pass). CI runs it on every pull request, along with the core unit and timing tests, unit tests of the code the two apps share (`PlatenReaderTests`), both app builds, and UI tests (`PlatenReaderUITests`: opening a book, turning pages, one versus two pages, and a bookmark and position surviving reopening). UI tests use a throwaway settings and positions folder (`PLATEN_TEST_HOME`), never your own.
 
 Measured here with a Release build and a 2 MB novel (`scripts/measure-performance.py`), against the spec's targets: cold launch plus open, median 780 ms (under 1 s); warm open, 158 ms (under 400 ms); memory with the book open, 111 MB including WebKit (under 250 MB); re-layout after a window resize, 33–90 ms (under 150 ms; Debug build's `@resize:` step). Page-turn smoothness (needs Instruments) and opening from an SMB share are not yet measured.
 
@@ -69,7 +69,7 @@ Measured here with a Release build and a 2 MB novel (`scripts/measure-performanc
 
 The iOS and iPadOS app ships on the App Store at launch, alongside the direct-download Mac app; the Mac App Store build joins the same listing later. The decisions (opening books in place, touch controls, layout, settings, test devices, what is still needed for submission) are in the spec, under "iOS and iPadOS (M3)"; the implementation plan is in [docs/m3-ios-plan.md](docs/m3-ios-plan.md).
 
-Phase 1 is done: the **PlatenReader iOS** scheme builds an iPhone and iPad app whose home screen is the system document browser. It opens books in place, turns pages on side taps and remembers the position, using the same core, web shell, scheme handler and content blocking as the Mac. Run it from Xcode on a Simulator, or with `scripts/run-ios-debug.sh <book>`. To run it on your own iPhone or iPad, choose your team under Signing & Capabilities first.
+Phases 1 and 2 are done (the shared reader session; the two apps now run the same book logic), with much of the overlay, page turns and settings from later phases: the **PlatenReader iOS** scheme builds an iPhone and iPad app whose home screen is the system document browser. It opens books in place, turns pages on side taps and remembers the position, using the same core, web shell, scheme handler and content blocking as the Mac. Run it from Xcode on a Simulator, or with `scripts/run-ios-debug.sh <book>`. To run it on your own iPhone or iPad, choose your team under Signing & Capabilities first.
 
 ## Releasing
 

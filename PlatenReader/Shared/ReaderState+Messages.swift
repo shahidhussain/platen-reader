@@ -1,84 +1,72 @@
 import Foundation
 import PlatenCore
 
-// Messages from reader.js that only update what the overlay and contents
-// panel show, decoded once for both apps. Each app's view controller passes
-// every message here first, then does its own platform work (window titles,
-// VoiceOver announcements, saving the position and so on).
+// How messages from reader.js change what the overlay and contents panel
+// show. `BookSession` passes every message here first, then does the rest
+// (saving the position, telling the app's reader view).
 
 extension ReaderState {
-    /// Updates the published state from one message posted by reader.js
-    /// (`post(type, body)` in bridge.js).
-    func apply(message type: String, body: [String: Any]) {
-        switch type {
-        case "opened":
-            if let title = body["title"] as? String, !title.isEmpty { self.title = title }
-            author = body["author"] as? String ?? ""
-            isFixedLayout = body["fixedLayout"] as? Bool ?? false
-            isRightToLeft = (body["dir"] as? String) == "rtl"
-            sectionFractions = (body["sectionFractions"] as? [NSNumber])?.map(\.doubleValue) ?? []
+    /// Updates the published state from one message (see ReaderBridge.swift).
+    func apply(_ message: ReaderMessage) {
+        switch message {
+        case .opened(let book):
+            if !book.title.isEmpty { title = book.title }
+            author = book.author
+            isFixedLayout = book.isFixedLayout
+            isRightToLeft = book.isRightToLeft
+            sectionFractions = book.sectionFractions
 
-        case "contents":
+        case .contents(let contents):
             // Arrives after the first page is on screen (built in the background).
-            toc = ((body["toc"] as? [[String: Any]]) ?? []).enumerated().map { index, item in
-                TOCItem(id: index, label: item["label"] as? String ?? "",
-                        href: item["href"] as? String ?? "", depth: item["depth"] as? Int ?? 0)
-            }
-            sectionLabels = body["sectionLabels"] as? [String] ?? []
+            toc = contents.toc
+            sectionLabels = contents.sectionLabels
 
-        case "back":
-            backLabel = body["label"] as? String
+        case .back(let label):
+            backLabel = label
 
-        case "note":
-            noteOpen = body["open"] as? Bool ?? false
+        case .note(let open):
+            noteOpen = open
 
-        case "pageBookmarked":
-            isPageBookmarked = body["bookmarked"] as? Bool ?? false
+        case .pageBookmarked(let bookmarked):
+            isPageBookmarked = bookmarked
 
-        case "selection":
-            let text = body["text"] as? String ?? ""
-            selection = text.isEmpty ? nil
-                : Selection(text: text, chapter: body["chapter"] as? String ?? "", page: body["page"] as? String)
+        case .selection(let selection):
+            self.selection = selection
 
-        case "searchResults":
+        case .searchResults(let results):
             // Results of an older search are dropped.
-            guard (body["query"] as? String) == activeSearchQuery else { break }
-            let items = body["items"] as? [[String: Any]] ?? []
-            var nextID = allHits.count
-            let hits = items.map { item -> SearchHit in
-                defer { nextID += 1 }
-                return SearchHit(id: nextID, cfi: item["cfi"] as? String ?? "",
-                                 pre: item["pre"] as? String ?? "", match: item["match"] as? String ?? "",
-                                 post: item["post"] as? String ?? "")
+            guard results.query == activeSearchQuery else { break }
+            let firstID = allHits.count
+            let hits = results.hits.enumerated().map { offset, hit in
+                SearchHit(id: firstID + offset, cfi: hit.cfi, pre: hit.pre, match: hit.match, post: hit.post)
             }
-            searchGroups.append(.init(id: searchGroups.count, label: body["label"] as? String ?? "", hits: hits))
+            searchGroups.append(.init(id: searchGroups.count, label: results.label, hits: hits))
 
-        case "searchProgress":
-            if (body["query"] as? String) == activeSearchQuery {
-                searchProgress = (body["progress"] as? NSNumber)?.doubleValue ?? 0
-            }
+        case .searchProgress(let query, let progress):
+            if query == activeSearchQuery { searchProgress = progress }
 
-        case "searchDone":
-            if (body["query"] as? String) == activeSearchQuery {
+        case .searchDone(let query):
+            if query == activeSearchQuery {
                 searchRunning = false
                 searchDoneQuery = activeSearchQuery
             }
 
-        case "relocate":
+        case .relocate(let place):
             // Before a chapter has loaded, foliate can report no fraction.
-            if let f = (body["fraction"] as? NSNumber)?.doubleValue, f.isFinite { fraction = f }
-            chapter = body["chapter"] as? String ?? ""
-            chapterHref = body["chapterHref"] as? String
-            pagesLeftInChapter = (body["pagesLeft"] as? NSNumber)?.intValue
-            columnsOnScreen = (body["columns"] as? NSNumber)?.intValue ?? 1
+            if let fraction = place.fraction { self.fraction = fraction }
+            chapter = place.chapter
+            chapterHref = place.chapterHref
+            pagesLeftInChapter = place.pagesLeft
+            columnsOnScreen = place.columns
 
-        default:
-            break
+        case .ready, .firstRender, .addBookmark, .removeBookmark, .click, .image, .externalLink,
+             .failed, .pageText, .log:
+            break // nothing the overlay shows
         }
     }
 
-    /// Starts a new search: clears the old results. The app then calls
-    /// `platen.search(query)`; results arrive as messages.
+    /// Starts a new search: clears the old results. The reader then runs
+    /// the search; results arrive as messages (books) or from PDFKit (PDFs).
     func beginSearch(_ query: String) {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         activeSearchQuery = query
@@ -88,22 +76,5 @@ extension ReaderState {
         searchDoneQuery = nil
         searchProgress = 0
         searchRunning = !query.isEmpty
-    }
-}
-
-extension BookRecord {
-    /// Adds the bookmark described by an `addBookmark` message (the page's
-    /// first word, its text and where it is), keeping the list in reading
-    /// order. Returns false if there was nothing to add.
-    mutating func addBookmark(from body: [String: Any]) -> Bool {
-        guard let cfi = body["cfi"] as? String, !bookmarks.contains(where: { $0.cfi == cfi }) else { return false }
-        bookmarks.append(Bookmark(
-            cfi: cfi,
-            snippet: body["snippet"] as? String ?? "",
-            chapter: (body["chapter"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-            page: body["page"] as? String,
-            fraction: (body["fraction"] as? NSNumber)?.doubleValue))
-        bookmarks.sort { ($0.fraction ?? 0) < ($1.fraction ?? 0) }
-        return true
     }
 }

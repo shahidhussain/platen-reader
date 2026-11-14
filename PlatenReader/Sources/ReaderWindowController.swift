@@ -2,17 +2,6 @@ import AppKit
 import os
 import UniformTypeIdentifiers
 
-/// What a book window shows: the book reader (EPUB, MOBI, text) or the PDF
-/// reader. The window controller talks to either through this.
-protocol ReaderContent: NSViewController {
-    var bookTitle: String? { get }
-    func savePositionNow()
-    func reportLayoutToSettings()
-    func fullScreenChanged()
-}
-
-extension ReaderViewController: ReaderContent {}
-
 /// The window for one book.
 ///
 /// Chrome is hidden by default: the title bar is transparent, content extends
@@ -20,8 +9,10 @@ extension ReaderViewController: ReaderContent {}
 /// overlay or when the pointer reaches the top edge (as in IINA). The window
 /// stays draggable by its top edge throughout.
 final class ReaderWindowController: NSWindowController, NSWindowDelegate {
-    private var readerViewController: ReaderContent? {
-        contentViewController as? ReaderContent
+    /// What the window shows: the book reader (EPUB, MOBI, text) or the PDF
+    /// reader, both through the class they share.
+    private var readerViewController: ReaderBaseViewController? {
+        contentViewController as? ReaderBaseViewController
     }
 
     init(document: BookDocument) {

@@ -20,10 +20,7 @@ extension ReaderViewController {
             },
             turnUnderneath: { [weak self] request, done in
                 guard let self else { return done(false) }
-                self.webView.callAsyncJavaScript("return await platen.turnInstantly(direction)",
-                                                 arguments: ["direction": request.rawValue], in: nil, in: .page) { result in
-                    done(((try? result.get()) as? [String: Any])?["moved"] as? Bool ?? false)
-                }
+                self.session.turnInstantly(request) { moved, _ in done(moved) }
             })
     }
 
@@ -39,20 +36,10 @@ extension ReaderViewController {
         }
     }
 
-    /// Which way the old page leaves for a turn: towards the left is a
-    /// forward turn in a left-to-right book.
-    private func leafMovesLeft(_ request: PageTurnRequest) -> Bool {
-        switch request {
-        case .right: true
-        case .left: false
-        case .next: !state.isRightToLeft
-        case .prev: state.isRightToLeft
-        }
-    }
-
-    func turn(_ request: PageTurnRequest) {
-        guard bookSentToShell else { return }
-        pageTurner.turn(request, leafMovesLeft: leafMovesLeft(request), style: turnStyle)
+    /// The session asks for a page turn (a tap, a button or a key): drawn
+    /// in the chosen style.
+    func animateTurn(_ turn: PageTurn) {
+        pageTurner.turn(turn, leafMovesLeft: turn.leafMovesLeft(rightToLeft: state.isRightToLeft), style: turnStyle)
     }
 
     // MARK: - Swipes
@@ -69,7 +56,7 @@ extension ReaderViewController {
     /// Whether a pan may start: a sideways one-finger drag on a paginated
     /// page, not one that is selecting text.
     func swipeShouldBegin(_ pan: UIPanGestureRecognizer) -> Bool {
-        guard hasRendered, failureHost == nil, state.flow == .paginated, !hasSelection, !state.noteOpen
+        guard session.hasRendered, failureHost == nil, state.flow == .paginated, !hasSelection, !state.noteOpen
         else { return false }
         // A finger held still first is selecting text, not turning.
         if let down = touchDownTime, CACurrentMediaTime() - down > 0.35 { return false }
@@ -82,7 +69,7 @@ extension ReaderViewController {
         switch pan.state {
         case .began:
             // The finger moving left brings in the page on the right.
-            let request: PageTurnRequest = (dx != 0 ? dx : pan.velocity(in: webView).x) < 0 ? .right : .left
+            let request: PageTurn = (dx != 0 ? dx : pan.velocity(in: webView).x) < 0 ? .right : .left
             pageTurner.beginSwipe(request, leafMovesLeft: request == .right)
             pageTurner.moveSwipe(translation: dx)
         case .changed:

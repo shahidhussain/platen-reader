@@ -10,3 +10,5 @@ Fixtures/generated/
 Fixtures/local/
 # Real books used for hand testing (not ours to redistribute).
 samples/
+# Personal signing settings (see Config/Shared.xcconfig).
+Config/Local.xcconfig

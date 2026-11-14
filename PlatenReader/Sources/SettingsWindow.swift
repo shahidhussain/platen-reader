@@ -39,6 +39,7 @@ final class SettingsWindowController: NSWindowController {
 /// matches the Aa popover; Layout matches the Layout popover.
 private struct AppearanceSettingsView: View {
     @ObservedObject var settings = ReaderSettings.shared
+    @ObservedObject var frontWindow = FrontWindowLayout.shared
 
     var body: some View {
         Form {
@@ -70,7 +71,7 @@ private struct AppearanceSettingsView: View {
                 Picker("Layout", selection: $settings.defaultLayout) {
                     ForEach(ReadingLayout.allCases) { Text("\($0.label) (⌘\($0.shortcut))").tag($0) }
                 }
-                if settings.pageLayout == .two && settings.frontWindowTooNarrowForTwoPages {
+                if settings.pageLayout == .two && frontWindow.tooNarrowForTwoPages {
                     Text("The book window is too narrow for two pages. Make it wider to see them side by side.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

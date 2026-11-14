@@ -16,6 +16,7 @@
 #   PLATEN_SIM     Simulator name or UDID (default: iPhone 18 Pro Max)
 #   PLATEN_BUILD=0 skip building (use the last Debug build)
 #   PLATEN_OPEN_DELAY  seconds to wait after launch before opening the book
+#   PLATEN_WAIT    seconds to wait for the first page before the steps (default 6)
 #
 # The book is copied into the app's own Documents folder first: coordinated
 # reads of files on the Mac's disk stall in the Simulator, while files in the
@@ -52,9 +53,11 @@ started=$(date "+%Y-%m-%d %H:%M:%S")
 SIMCTL_CHILD_PLATEN_OPEN_DELAY=${PLATEN_OPEN_DELAY:-0} SIMCTL_CHILD_PLATEN_OPEN_PATH="$documents/$(basename "$book")" SIMCTL_CHILD_PLATEN_STEPS="$steps" \
   xcrun simctl launch "$sim" $bundle > /dev/null
 
-# First render takes about a second; then one screenshot per step.
+# The first page takes a few seconds in the Simulator (WebKit is slow to
+# load the first chapter there; see docs/m3-ios-plan.md), and the steps only
+# start once it is on screen. Then one screenshot per step.
 count=$(( ${#steps} == 0 ? 0 : $(tr -cd ';' <<< "$steps" | wc -c) + 1 ))
-sleep $(( 2.5 + ${PLATEN_OPEN_DELAY:-0} ))
+sleep $(( ${PLATEN_WAIT:-6} + ${PLATEN_OPEN_DELAY:-0} ))
 xcrun simctl io "$sim" screenshot "$snaps/$name-0.png" > /dev/null 2>&1
 for i in $(seq 1 $count); do
   sleep 1.5
