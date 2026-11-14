@@ -38,6 +38,12 @@ public struct EPUBPackage: Sendable, Equatable {
     public var layout: String = "reflowable"
     /// "ltr", "rtl" or "default".
     public var pageProgressionDirection: String = "default"
+    /// EPUB 2's cover: the manifest id named by `<meta name="cover">`.
+    public var coverItemID: String?
+    /// EPUB 2's guide entry for the cover page (`<reference type="cover">`),
+    /// resolved against the OPF's folder. Usually an XHTML page holding the
+    /// cover picture.
+    public var guideCoverPath: String?
     /// Problems that did not stop parsing.
     public var warnings: [String] = []
 
@@ -130,6 +136,15 @@ enum EPUBPackageParser {
                 package.manifest.append(item)
             case "itemref":
                 if let idref = a["idref"] { spineIDs.append(idref) }
+            case "meta":
+                // EPUB 2: <meta name="cover" content="cover-image-id"/>
+                if a["name"] == "cover", let id = a["content"], !id.isEmpty {
+                    package.coverItemID = id
+                }
+            case "reference":
+                if a["type"]?.lowercased() == "cover", let href = a["href"] {
+                    package.guideCoverPath = PathResolver.join(base: baseFolder, href: href)
+                }
             case "spine":
                 if let direction = a["page-progression-direction"] {
                     package.pageProgressionDirection = direction

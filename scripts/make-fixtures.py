@@ -419,6 +419,17 @@ def main():
     notes = xhtml("Notes", '<h1>Notes</h1><p id="e1">The endnote text.</p>')
     made.append(simple("footnotes.epub", "Footnotes", [("ch1.xhtml", ch), ("notes.xhtml", notes)]))
 
+    # A cover the EPUB 2 way: <meta name="cover"> naming a cover page whose
+    # picture the folder view shows (PlatenCore's BookCover). The cover page
+    # is first in the spine, as in most real books.
+    cover_page = xhtml("Cover", '<div><img src="images/cover.png" alt="Cover"/></div>')
+    made.append(simple("cover-page.epub", "The Painted Cover",
+                       [("cover.xhtml", cover_page),
+                        ("ch1.xhtml", xhtml("One", "<h1>One</h1><p>The book behind the cover.</p>"))],
+                       version="2.0", extra_meta='<meta name="cover" content="c1"/>',
+                       manifest_extra=['<item id="pic" href="images/cover.png" media-type="image/png"/>'],
+                       extra_files=[("OEBPS/images/cover.png", png(400, 600, (176, 64, 48)))]))
+
     for m in made:
         print(f"{os.path.getsize(m):>10,}  {os.path.relpath(m, ROOT)}")
 

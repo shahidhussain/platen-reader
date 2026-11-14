@@ -10,6 +10,9 @@ import Foundation
 ///   Use a path inside the app's container (copy the book into
 ///   `$(xcrun simctl get_app_container booted org.platenreader.PlatenReader data)/Documents`):
 ///   coordinated reads of paths on the Mac itself stall in the Simulator.
+/// - `PLATEN_FOLDER_PATH=<path>` chooses the folder the home screen shows
+///   as covers, as "Choose Folder…" would (a folder inside the app's
+///   container, for the same reason).
 /// - `PLATEN_STEPS="<step>;<step>"` runs steps 1.5 s apart after the first
 ///   page renders. A step is `@tap:<left|centre|right>` (as if that zone
 ///   were tapped), `@turn:<left|right|next|prev>` (a page turn, curled if

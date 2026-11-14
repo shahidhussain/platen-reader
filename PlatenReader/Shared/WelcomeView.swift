@@ -7,13 +7,18 @@ import SwiftUI
 /// - Mac: in its own window (WelcomeWindowController), where a book can also
 ///   be dropped onto it.
 /// - iOS: full screen, as the home screen when no book is open
-///   (HomeViewController); "Open Book…" shows the system's document picker.
+///   (HomeViewController) until a folder is chosen; "Open Book…" shows the
+///   system's document picker, and "Choose Folder…" picks the folder whose
+///   books the home screen then shows as covers.
 ///   Dropping books is not supported there, so the drop hint and the drop
 ///   target are left out.
 struct WelcomeView: View {
     let open: () -> Void
     /// Books dropped onto the screen (the Mac only); nil turns dropping off.
     var openURLs: (([URL]) -> Void)?
+    /// "Choose Folder…", for the folder view (iOS, until a folder is
+    /// chosen); nil leaves the button out.
+    var chooseFolder: (() -> Void)?
     @State private var dropTargeted = false
 
     var body: some View {
@@ -34,6 +39,15 @@ struct WelcomeView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .keyboardShortcut(.defaultAction)
+            if let chooseFolder {
+                Button(action: chooseFolder) {
+                    Text("Choose Folder…")
+                        .font(.body.weight(.medium))
+                        .padding(.horizontal, 12)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+            }
             Text(openURLs == nil ? "EPUB, KEPUB, MOBI, AZW3, PDF or plain text."
                                  : "EPUB, KEPUB, MOBI, AZW3, PDF or plain text. You can also drop a book here.")
                 .font(.callout)

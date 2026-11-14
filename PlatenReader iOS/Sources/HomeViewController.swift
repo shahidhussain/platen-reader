@@ -1,3 +1,4 @@
+import Combine
 import PlatenCore
 import SwiftUI
 import UIKit
@@ -7,17 +8,29 @@ import UniformTypeIdentifiers
 /// sees when nothing is being read, and it presents the readers.
 ///
 /// - At launch it goes back to the book that was open when Platen was last
-///   left (`LastOpenBook`); otherwise it shows the welcome screen (the Mac's,
-///   full screen): the app's name and one "Open Book…" button.
+///   left (`LastOpenBook`).
+/// - Otherwise, once the reader has chosen a folder, it shows the folder the
+///   last book came from as a grid of covers (`FolderBrowserView`). Until
+///   then it shows the welcome screen (the Mac's, full screen): the app's
+///   name, "Open Book…" and "Choose Folder…".
 /// - "Open Book…" shows the system's document picker, which opens the book
 ///   where it is (Files, iCloud Drive, SMB shares, any file provider) through
 ///   a security-scoped URL. Nothing is ever copied into the app.
+///   "Choose Folder…" picks a folder the same way, kept as a bookmark
+///   (`LibraryFolder`): opening one book gives no access to its folder.
 /// - Books opened from other apps go straight to the reader (SceneDelegate
 ///   calls `openBook(at:)`).
 ///
-/// Platen has no library of its own; folders are the library. (A view of the
-/// folder the last book came from is planned to replace the welcome here.)
+/// Platen has no library of its own; folders are the library.
 final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
+    private let library = LibraryFolder.shared
+    /// The welcome or the folder view, whichever is showing.
+    private var content: UIViewController?
+    private var showsFolder = false
+    private var cancellables: Set<AnyCancellable> = []
+    /// The picker on screen is choosing a folder, not a book.
+    private var pickingFolder = false
+
     /// The book or PDF on screen, if any.
     private(set) var reader: ReaderBaseViewController?
 
@@ -41,13 +54,48 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        let welcome = UIHostingController(rootView: WelcomeView(open: { [weak self] in self?.chooseBook() }))
-        addChild(welcome)
-        welcome.view.frame = view.bounds
-        welcome.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        welcome.view.backgroundColor = .clear
-        view.addSubview(welcome.view)
-        welcome.didMove(toParent: self)
+        showContent()
+        // A folder chosen (or lost): the welcome gives way to the folder view.
+        library.$root
+            .map { $0 != nil }
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.showContent() }
+            .store(in: &cancellables)
+    }
+
+    /// The folder view if a folder has been chosen, else the welcome.
+    private func showContent() {
+        let wantsFolder = library.root != nil
+        guard content == nil || wantsFolder != showsFolder else { return }
+        showsFolder = wantsFolder
+        let next: UIViewController
+        if wantsFolder {
+            next = UIHostingController(rootView: FolderBrowserView(
+                library: library,
+                openBook: { [weak self] in self?.openBook(at: $0) },
+                chooseBook: { [weak self] in self?.chooseBook() },
+                chooseFolder: { [weak self] in self?.chooseFolder() }
+            ))
+        } else {
+            let welcome = WelcomeView(open: { [weak self] in self?.chooseBook() },
+                                      chooseFolder: { [weak self] in self?.chooseFolder() })
+            next = UIHostingController(rootView: welcome)
+            next.view.backgroundColor = .clear
+        }
+        if let content {
+            content.willMove(toParent: nil)
+            content.view.removeFromSuperview()
+            content.removeFromParent()
+        }
+        addChild(next)
+        next.view.frame = view.bounds
+        next.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // Below the launch cover, if it is up.
+        if let launchCover { view.insertSubview(next.view, belowSubview: launchCover) } else { view.addSubview(next.view) }
+        next.didMove(toParent: self)
+        content = next
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -64,6 +112,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
     /// "Open Book…": the system's document picker, opening in place (not
     /// `asCopy`), so the book stays where it is and its URL is the original.
     func chooseBook() {
+        pickingFolder = false
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: Self.contentTypes, asCopy: false)
         picker.delegate = self
         picker.allowsMultipleSelection = false
@@ -71,9 +120,24 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
         present(picker, animated: true)
     }
 
+    /// "Choose Folder…": the folder whose books the home screen shows.
+    func chooseFolder() {
+        pickingFolder = true
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: false)
+        picker.delegate = self
+        picker.allowsMultipleSelection = false
+        picker.directoryURL = library.root
+        present(picker, animated: true)
+    }
+
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        // The picker dismisses itself; the reader is presented once it has.
-        if let url = urls.first { present(book: url) }
+        guard let url = urls.first else { return }
+        if pickingFolder {
+            library.choose(url)
+        } else {
+            // The picker dismisses itself; the reader is presented once it has.
+            present(book: url)
+        }
     }
 
     // MARK: - Opening
@@ -108,11 +172,14 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
                 || url.pathExtension.lowercased() == "pdf"
             let reader: ReaderBaseViewController = isPDF ? PDFReaderViewController(url: url) : ReaderViewController(url: url)
             reader.onClose = { [weak self, weak reader] in
-                LastOpenBook.forget() // closed on purpose: next launch, the welcome
+                LastOpenBook.forget() // closed on purpose: next launch, the home screen
                 reader?.dismiss(animated: true)
                 self?.reader = nil
+                NotificationCenter.default.post(name: .platenFolderShouldRefresh, object: nil)
             }
             LastOpenBook.remember(url)
+            // Its folder is the one the folder view shows from now on.
+            self.library.bookOpened(url)
             reader.modalPresentationStyle = .fullScreen
             self.reader = reader
             self.present(reader, animated: animated) { [weak self] in
@@ -137,7 +204,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
 /// The book that was open when Platen was last left, kept as a bookmark (a
 /// reference that survives the file moving, and keeps permission to read
 /// it). Launching goes back to it; Close forgets it, so the next launch
-/// shows the welcome screen instead.
+/// shows the home screen instead.
 enum LastOpenBook {
     private static let key = "lastOpenBook"
 
