@@ -56,6 +56,16 @@ final class PageTurnAnimator {
         self.turnUnderneath = turnUnderneath
     }
 
+    /// The part of the page view that curls, in its own coordinates (the
+    /// PDF reader: just the page, not the background around it). Nil: the
+    /// whole view.
+    var curlRegion: (() -> CGRect?)?
+
+    /// The colour of the back of the curling leaf. The system's own back is
+    /// a see-through white, which flashes on a dark page: books use their
+    /// theme's background, PDFs paper white. Nil: the reader's background.
+    var curlBackColour: (() -> UIColor?)?
+
     /// Called when a turn finds nowhere to go: the reader is at the start
     /// or end of the book. The reader says so (ReaderChrome.showNotice).
     var onEdge: ((PageTurnRequest) -> Void)?
@@ -128,17 +138,28 @@ final class PageTurnAnimator {
     private func curl(_ request: PageTurnRequest, leafMovesLeft: Bool) {
         generation += 1
         let turn = generation
+        // Double-sided, so the back of the leaf is a page of our own (a
+        // plain colour) rather than the system's see-through white.
         let pager = UIPageViewController(transitionStyle: .pageCurl, navigationOrientation: .horizontal,
                                          options: [.spineLocation: UIPageViewController.SpineLocation.min.rawValue])
-        pager.isDoubleSided = false
+        pager.isDoubleSided = true
+        // The pages either side of a picture are its back: a plain colour.
+        let backs = CurlBacks(colour: curlBackColour?() ?? host.view.backgroundColor ?? .systemBackground)
+        pager.dataSource = backs
+        curlBacks = backs
         pager.view.isUserInteractionEnabled = false
         pager.view.backgroundColor = .clear
-        pager.view.frame = pageView.frame
+        // Only the region that curls (the whole view, or a PDF's page).
+        let region = curlRegion?()?.intersection(pageView.bounds).nonEmpty ?? pageView.bounds
+        pager.view.frame = region.offsetBy(dx: pageView.frame.minX, dy: pageView.frame.minY)
         self.pager = pager
 
-        snapshot { [weak self] before in
+        snapshot { [weak self] full in
             guard let self, self.generation == turn else { return }
-            guard let before else { self.pager = nil; return self.turnOrReportEdge(request) }
+            guard let before = full.flatMap({ self.crop($0, to: region) }) else {
+                self.pager = nil
+                return self.turnOrReportEdge(request)
+            }
             // Cover the live page with the page as it is now.
             pager.setViewControllers([self.picturePage(before)], direction: .forward, animated: false)
             self.host.addChild(pager)
@@ -149,10 +170,16 @@ final class PageTurnAnimator {
             self.turnOrReportEdge(request) { moved in
                 guard self.generation == turn else { return }
                 guard moved else { return self.removePager() } // at the start or end
-                self.snapshot { after in
-                    guard self.generation == turn, let after else { return self.removePager() }
+                self.snapshot { full in
+                    guard self.generation == turn, let after = full.flatMap({ self.crop($0, to: region) }) else {
+                        return self.removePager()
+                    }
                     let started = CACurrentMediaTime()
-                    pager.setViewControllers([self.picturePage(after)],
+                    // A double-sided turn names both sides of the leaf
+                    // that ends up on show: the new page, and its back.
+                    let back = backs.back()
+                    let new = self.picturePage(after)
+                    pager.setViewControllers([new, back],
                                              direction: leafMovesLeft ? .forward : .reverse, animated: true) { _ in
                         log.info("page curl took \(Int((CACurrentMediaTime() - started) * 1000)) ms")
                         if self.generation == turn { self.removePager() }
@@ -161,6 +188,20 @@ final class PageTurnAnimator {
             }
         }
     }
+
+    /// The part of a picture of the whole page view that shows `region`.
+    private func crop(_ image: UIImage, to region: CGRect) -> UIImage? {
+        guard region != pageView.bounds else { return image }
+        let scale = image.scale
+        let pixels = CGRect(x: region.minX * scale, y: region.minY * scale,
+                            width: region.width * scale, height: region.height * scale).integral
+        guard let cg = image.cgImage?.cropping(to: pixels) else { return nil }
+        return UIImage(cgImage: cg, scale: scale, orientation: image.imageOrientation)
+    }
+
+    /// Holds the curl's data source while it runs (the page view
+    /// controller keeps only a weak reference).
+    private var curlBacks: CurlBacks?
 
     // MARK: - Swipes that follow the finger (book reader)
 
@@ -372,6 +413,7 @@ final class PageTurnAnimator {
     }
 
     private func picturePage(_ image: UIImage) -> UIViewController {
+        // (Its background shows only if the picture is smaller than the leaf.)
         let page = UIViewController()
         page.view.backgroundColor = host.view.backgroundColor
         let imageView = UIImageView(image: image)
@@ -381,4 +423,25 @@ final class PageTurnAnimator {
         page.view.addSubview(imageView)
         return page
     }
+}
+
+/// Gives a double-sided page curl the back of each leaf: a plain colour,
+/// instead of the system's see-through white.
+private final class CurlBacks: NSObject, UIPageViewControllerDataSource {
+    let colour: UIColor
+    init(colour: UIColor) { self.colour = colour }
+
+    func back() -> UIViewController {
+        let page = UIViewController()
+        page.view.backgroundColor = colour
+        return page
+    }
+
+    func pageViewController(_ pager: UIPageViewController, viewControllerBefore page: UIViewController) -> UIViewController? { back() }
+    func pageViewController(_ pager: UIPageViewController, viewControllerAfter page: UIViewController) -> UIViewController? { back() }
+}
+
+private extension CGRect {
+    /// Nil for an empty rectangle (an intersection that missed).
+    var nonEmpty: CGRect? { isEmpty || isNull ? nil : self }
 }

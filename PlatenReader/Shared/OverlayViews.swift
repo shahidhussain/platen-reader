@@ -85,7 +85,8 @@ struct OverlayBar: View {
     private var buttonGroup: some View {
         HStack(spacing: 0) {
             contentsButton.frame(width: 44, height: 44)
-            bookmarkButton.frame(width: 44, height: 44)
+            // The system's bookmark symbol is narrow beside the others.
+            bookmarkButton.scaleEffect(x: 1.2, y: 1).frame(width: 44, height: 44)
             layoutButton.frame(width: 44, height: 44)
             typographyButton.frame(width: 44, height: 44)
             if actions.settingsContent != nil { settingsButton.frame(width: 44, height: 44) }
@@ -460,17 +461,39 @@ struct TypographyPopover: View {
         .platenPopover()
     }
 
+    /// The smaller and larger text buttons: on a touch screen each gets a
+    /// finger-sized target (44 points), not just the glyph.
+    private func textSizeIcon(_ name: String) -> some View {
+        #if os(iOS)
+        Image(systemName: name)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        #else
+        Image(systemName: name)
+        #endif
+    }
+
+    #if os(iOS)
+    private let textSizeSpacing: CGFloat = 0
+    #else
+    private let textSizeSpacing: CGFloat = 8
+    #endif
+
     @ViewBuilder private var textControls: some View {
         LabeledContent("Text Size") {
-            HStack(spacing: 8) {
-                Button { settings.smallerText() } label: { Image(systemName: "textformat.size.smaller") }
+            HStack(spacing: textSizeSpacing) {
+                Button { settings.smallerText() } label: { textSizeIcon("textformat.size.smaller") }
                     .disabled(settings.fontSizeIndex == 0)
                     .accessibilityLabel(Text("Smaller Text"))
                 Text("\(Int(settings.fontSize)) pt").monospacedDigit().frame(minWidth: 44)
-                Button { settings.biggerText() } label: { Image(systemName: "textformat.size.larger") }
+                Button { settings.biggerText() } label: { textSizeIcon("textformat.size.larger") }
                     .disabled(settings.fontSizeIndex == ReaderSettings.fontSizes.count - 1)
                     .accessibilityLabel(Text("Larger Text"))
             }
+            // Each button takes only its own taps. In an iOS form, a row's
+            // plain buttons all fire on any tap in the row, so Smaller and
+            // Larger cancelled each other out.
+            .buttonStyle(.borderless)
         }
         .disabled(state.isFixedLayout)
 

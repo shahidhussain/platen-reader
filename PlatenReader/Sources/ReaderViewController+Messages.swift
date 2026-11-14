@@ -70,7 +70,6 @@ extension ReaderViewController {
             view.window?.subtitle = state.chapter
             if let cfi = body["cfi"] as? String, var record {
                 record.lastCFI = cfi
-                record.readingMode = state.flow.rawValue
                 self.record = record
                 PositionStore.shared.scheduleSave(record) // debounced
             }

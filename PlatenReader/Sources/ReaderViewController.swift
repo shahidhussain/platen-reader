@@ -193,6 +193,12 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.pushSettings() }
             .store(in: &cancellables)
+        // Scroll or pages, chosen in any window, applies to every book.
+        settings.$defaultFlow
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] flow in self?.followFlowSetting(flow) }
+            .store(in: &cancellables)
 
         state.$sidebarVisible
             .dropFirst()
@@ -278,11 +284,9 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         record.lastOpened = Date()
         self.record = record
         state.bookmarks = record.bookmarks
-        if book.isFixedLayout {
-            state.flow = .paginated
-        } else if let mode = record.readingMode.flatMap(ReadingFlow.init) {
-            state.flow = mode
-        }
+        // The reading mode is the same for every book (the setting, applied
+        // in viewDidLoad); fixed-layout books always show pages.
+        if book.isFixedLayout { state.flow = .paginated }
     }
 
     func sendBookIfReady() {
@@ -439,10 +443,12 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
         setFlow(layout.flow)
     }
 
+    /// Scroll or pages, chosen by the reader. There is one reading mode for
+    /// every book (spec, "Reading modes and layout"): this changes the
+    /// setting, and every open book follows it (`followFlowSetting`).
     func setFlow(_ flow: ReadingFlow) {
         guard !state.isFixedLayout, flow != state.flow else { return }
-        state.flow = flow
-        pushSettings()
+        settings.defaultFlow = flow
         // Briefly show the click zones for the new mode, for the first three
         // switches only.
         let count = AppDefaults.store.integer(forKey: ReadingControlsExplainer.switchCountKey)
@@ -450,6 +456,14 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
             AppDefaults.store.set(count + 1, forKey: ReadingControlsExplainer.switchCountKey)
             showExplainer(flash: true)
         }
+    }
+
+    /// Applies the reading-mode setting to this book (fixed-layout books
+    /// always show pages).
+    private func followFlowSetting(_ flow: ReadingFlow) {
+        guard !state.isFixedLayout, flow != state.flow else { return }
+        state.flow = flow
+        pushSettings()
     }
 
     // MARK: - Click-zone explainer
@@ -506,8 +520,7 @@ final class ReaderViewController: NSViewController, WKScriptMessageHandler, WKNa
     // MARK: - Saving
 
     func savePositionNow() {
-        guard var record else { return }
-        record.readingMode = state.flow.rawValue
+        guard let record else { return }
         PositionStore.shared.saveNow(record)
     }
 

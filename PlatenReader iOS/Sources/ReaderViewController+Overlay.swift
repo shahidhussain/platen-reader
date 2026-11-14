@@ -64,11 +64,12 @@ extension ReaderViewController {
         callPlaten("jumpTo", target, keepOrigin)
     }
 
+    /// Changes the settings: one reading mode for every book, which this
+    /// book (and any other open one) follows; see viewDidLoad.
     func setLayout(_ layout: ReadingLayout) {
         if let pages = layout.pages, pages != settings.pageLayout { settings.pageLayout = pages }
-        guard !state.isFixedLayout, layout.flow != state.flow else { return }
-        state.flow = layout.flow
-        pushSettings()
+        guard !state.isFixedLayout else { return }
+        settings.defaultFlow = layout.flow
     }
 
     func startSearch(_ query: String) {

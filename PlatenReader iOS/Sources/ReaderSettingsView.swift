@@ -17,7 +17,9 @@ struct ReaderSettingsView: View {
     var body: some View {
         Form {
             Section("Layout") {
-                Picker("New Books Open In", selection: Binding(
+                // Scroll or pages, for every book (the Layout button changes
+                // the same setting).
+                Picker("Layout", selection: Binding(
                     get: {
                         let layout = settings.defaultLayout
                         return layout == .twoPages && UIDevice.current.userInterfaceIdiom == .phone ? .onePage : layout

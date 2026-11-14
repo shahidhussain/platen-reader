@@ -69,7 +69,7 @@ The user double-clicks a book anywhere (local disk, iCloud Drive, SMB share) and
 
 ## Reading modes and layout
 
-Reflowable books have two modes, paginated (the default) and continuous scroll; fixed-layout books are always paginated.
+Reflowable books have two modes, paginated (the default) and continuous scroll; fixed-layout books are always paginated. The mode is one setting for every book and PDF: choosing Scroll or pages in any book changes it, books already open follow, and every book opens in it (decided 14 Nov 2026; it was remembered per book before).
 
 **Paginated (default)**
 
@@ -247,7 +247,7 @@ All settings are global and live in Platen Reader > Settings… (⌘,), a standa
 **Per-book data**
 
 - Stored in one JSON file per book in `~/Library/Application Support/Platen Reader/books/<book-key>.json`, where the key is derived from the OPF identifier and file fingerprint.
-- Contents: schema version, book identifiers, last known file path (informational only), last CFI, reading mode at close, bookmarks (CFI, created date, text snippet), and last-opened date.
+- Contents: schema version, book identifiers, last known file path (informational only), last CFI, bookmarks (CFI, created date, text snippet), and last-opened date.
 - The format is human-readable and documented in the repository, but portability between apps is not a goal.
 
 ## iOS and iPadOS (M3)
@@ -313,9 +313,11 @@ PDFs open in the same window and overlay as books, rendered by PDFKit (`PDFView`
 - **Position:** reopens at the last page and zoom, stored in the per-book data. A PDF is identified by the same fingerprint as a book (file size plus a hash of the first and last 64 KB), with the PDF's document ID in place of the OPF identifier.
 - **Contents:** the PDF outline in the Contents tab; bookmarks and search work as for books, anchored to page numbers instead of CFIs.
 - **Layout on the Mac:** the Layout setting maps to PDFKit's display modes. One Page is single page, Two Pages is two-up, Scroll is continuous.
-- **Layout on iPhone and iPad:** the Layout button offers Pages and Scroll (remembered per PDF, as for books). Scroll is one continuous column of pages. Pages follows orientation: portrait shows one page at a time. Landscape shows the current page and the next one side by side, touching, so a scanned two-page spread reads as one. This applies to iPhone as well as iPad, unlike EPUB, where iPhone always shows one page.
+- **Layout on iPhone and iPad:** the Layout button offers Pages and Scroll (the same setting as for books). Scroll is one continuous column of pages. Pages follows orientation: portrait shows one page at a time. Landscape shows the current page and the next one side by side, touching, so a scanned two-page spread reads as one. This applies to iPhone as well as iPad, unlike EPUB, where iPhone always shows one page.
 - **Spread pairing is the reader's choice, by rotating.** PDFs of books pair their pages inconsistently: some have the cover alone and then left-right spreads, and some have a second cover page first, which shifts every pair by one. Platen does not guess. Rotating to landscape shows the page the reader was on plus the next one, and that pairing holds: each turn in landscape moves two pages. If the pairs look wrong, the reader rotates back to portrait, turns one page and rotates again. Rotating back to portrait shows the left page of the pair.
 - **Controls:** EPUB-only controls (font, text size, line spacing, line width) are hidden for PDFs. Themes colour only the background around the page; an optional inverted-colour night mode may follow.
+- **Ambient background (iOS; the Mac may follow):** the background around the pages takes their colours, softened and blurred, as an Ambilight television lights the wall behind it. Each colour keeps its hue but is brought towards the theme's brightness, so white paper stays close to the theme and only coloured pages glow. It is made from a tiny drawing of the pages on screen, off the main thread, and fades over when the page changes, so it never slows reading.
+- **Page Curl:** only the page (or spread) curls, not the background around it; the back of the leaf is paper white.
 - **File association:** `com.adobe.pdf` is listed in File Types, but Platen is never made the default for PDFs unless the user chooses it.
 
 ## Format support and robustness
