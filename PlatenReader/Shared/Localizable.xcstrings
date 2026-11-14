@@ -20,9 +20,6 @@
     "%lld results" : {
 
     },
-    "Plain text is left out, since most text files are not books. Use its own button to open all text files in Platen." : {
-
-    },
     "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
 
     },
@@ -83,10 +80,16 @@
     "Clear Menu" : {
 
     },
+    "Clear Reading Positions and Bookmarks…" : {
+
+    },
     "Clear…" : {
 
     },
     "Close" : {
+
+    },
+    "Close Book" : {
 
     },
     "Contents" : {
@@ -119,10 +122,19 @@
     "Edit" : {
 
     },
+    "End of book" : {
+
+    },
+    "End of document" : {
+
+    },
     "Enter Full Screen" : {
 
     },
-    "EPUB, KEPUB, MOBI, AZW3 or plain text. You can also drop a book here." : {
+    "EPUB, KEPUB, MOBI, AZW3, PDF or plain text." : {
+
+    },
+    "EPUB, KEPUB, MOBI, AZW3, PDF or plain text. You can also drop a book here." : {
 
     },
     "File" : {
@@ -171,6 +183,9 @@
 
     },
     "Hide Others" : {
+
+    },
+    "Hyphenate Text" : {
 
     },
     "Hyphenate text in paginated mode" : {
@@ -227,6 +242,9 @@
     "No bookmarks yet. Click the top-right corner of a page, or press ⌘D." : {
 
     },
+    "No bookmarks yet. Tap the top-right corner of a page, or the bookmark button." : {
+
+    },
     "No results for “%@”" : {
 
     },
@@ -257,19 +275,44 @@
     "p. %@" : {
 
     },
+    "p. %@ of %lld" : {
+      "localizations" : {
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "p. %1$@ of %2$lld"
+          }
+        }
+      }
+    },
     "page" : {
 
     },
     "Page Curl" : {
 
     },
+    "Page Turn" : {
+
+    },
     "Page turn animation" : {
+
+    },
+    "Pages" : {
 
     },
     "Paginated" : {
 
     },
     "Picture" : {
+
+    },
+    "Plain text is left out, since most text files are not books. Use its own button to open all text files in Platen." : {
+
+    },
+    "Platen does not open password-protected PDFs. Open it in another app." : {
+
+    },
+    "Platen keeps only where you are in each book and your bookmarks, on this device." : {
 
     },
     "Platen Reader" : {
@@ -326,6 +369,9 @@
     "Services" : {
 
     },
+    "Settings" : {
+
+    },
     "Settings…" : {
 
     },
@@ -353,6 +399,9 @@
     "Show pages left in chapter" : {
 
     },
+    "Show Pages Left in Chapter" : {
+
+    },
     "Show Reading Controls" : {
 
     },
@@ -363,6 +412,12 @@
 
     },
     "Smaller Text" : {
+
+    },
+    "Start of book" : {
+
+    },
+    "Start of document" : {
 
     },
     "Text" : {
@@ -380,6 +435,9 @@
     "The book window is too narrow for two pages. Make it wider to see them side by side." : {
 
     },
+    "The file may be damaged, or not a PDF." : {
+
+    },
     "The window is too narrow for two pages. Make it wider to see them side by side." : {
 
     },
@@ -387,6 +445,15 @@
 
     },
     "This book has no table of contents." : {
+
+    },
+    "This cannot be undone." : {
+
+    },
+    "This PDF could not be opened." : {
+
+    },
+    "This PDF is protected by a password." : {
 
     },
     "Two Pages" : {

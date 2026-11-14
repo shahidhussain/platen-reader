@@ -31,7 +31,9 @@ extension ReaderViewController {
             setLayout: { [weak self] layout in self?.setLayout(layout) },
             toggleBookmark: { [weak self] in self?.js("platen.toggleBookmark()") },
             interacted: { [weak self] in self?.restartHideTimer() },
-            openSettings: { [weak self] in self?.showSettings() }
+            settingsContent: { [weak self] in
+                AnyView(ReaderSettingsView(isFixedLayout: self?.state.isFixedLayout ?? false))
+            }
         )
 
         let chrome = ReaderChrome(owner: self, state: state, actions: actions, sidebarActions: sidebarActions,
@@ -44,9 +46,9 @@ extension ReaderViewController {
                                           self.js("platen.clearSearch()")
                                       }
                                   })
-        // The bookmark corner shows a faint ribbon while the controls are up
-        // (there is no hover on touch screens).
-        chrome.onVisibilityChanged = { [weak self] visible in self?.callPlaten("setCornerHints", visible) }
+        // While the controls are up, the page number steps aside for their
+        // location line, which sits in the same place.
+        chrome.onVisibilityChanged = { [weak self] visible in self?.callPlaten("setControlsVisible", visible) }
         chrome.install(in: root)
         self.chrome = chrome
     }
@@ -62,11 +64,12 @@ extension ReaderViewController {
         callPlaten("jumpTo", target, keepOrigin)
     }
 
+    /// Changes the settings: one reading mode for every book, which this
+    /// book (and any other open one) follows; see viewDidLoad.
     func setLayout(_ layout: ReadingLayout) {
         if let pages = layout.pages, pages != settings.pageLayout { settings.pageLayout = pages }
-        guard !state.isFixedLayout, layout.flow != state.flow else { return }
-        state.flow = layout.flow
-        pushSettings()
+        guard !state.isFixedLayout else { return }
+        settings.defaultFlow = layout.flow
     }
 
     func startSearch(_ query: String) {
@@ -101,9 +104,5 @@ extension ReaderViewController {
 
     func sendBookmarksToPage() {
         callPlaten("setBookmarks", state.bookmarks.map { ["cfi": $0.cfi] })
-    }
-
-    func showSettings() {
-        presentReaderSettings(isFixedLayout: state.isFixedLayout, chrome: chrome)
     }
 }

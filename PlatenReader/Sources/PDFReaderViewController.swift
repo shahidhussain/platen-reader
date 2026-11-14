@@ -147,6 +147,12 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
             .receive(on: RunLoop.main)
             .sink { [weak self] in DispatchQueue.main.async { self?.applySettings() } }
             .store(in: &cancellables)
+        // Scroll or pages, chosen in any window, applies to every book and PDF.
+        settings.$defaultFlow
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] flow in self?.followFlowSetting(flow) }
+            .store(in: &cancellables)
         state.$sidebarVisible
             .dropFirst()
             .removeDuplicates()
@@ -219,9 +225,8 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
                 case .success(let loaded):
                     let model = PDFReaderModel(loaded: loaded, url: url, state: self.state)
                     self.model = model
-                    if let mode = model.record.readingMode.flatMap(ReadingFlow.init), mode == .scrolled {
-                        self.state.flow = .scrolled
-                    }
+                    // One reading mode for every book and PDF (the setting).
+                    self.state.flow = self.settings.defaultFlow
                     self.pdfView.document = loaded.document
                     self.applySettings()
                     self.view.window?.windowController?.synchronizeWindowTitleWithDocumentName()
@@ -335,9 +340,16 @@ final class PDFReaderViewController: NSViewController, NSMenuItemValidation {
         scrollView.hasHorizontalScroller = userZoomed
     }
 
+    /// The Layout choice changes the settings (one reading mode for every
+    /// book and PDF); every open reader follows (`followFlowSetting`).
     private func setLayout(_ layout: ReadingLayout) {
         if let pages = layout.pages, pages != settings.pageLayout { settings.pageLayout = pages }
-        state.flow = layout.flow
+        settings.defaultFlow = layout.flow
+    }
+
+    private func followFlowSetting(_ flow: ReadingFlow) {
+        guard flow != state.flow else { return }
+        state.flow = flow
         applySettings()
         reportPage()
     }

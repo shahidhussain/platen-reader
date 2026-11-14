@@ -151,6 +151,18 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.pushSettings() }
             .store(in: &cancellables)
+        // Scroll or pages is one setting for every book (spec, "Reading
+        // modes and layout"): the Layout button changes it, and this book
+        // follows (fixed-layout books always show pages).
+        settings.$defaultFlow
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] flow in
+                guard let self, !self.state.isFixedLayout, flow != self.state.flow else { return }
+                self.state.flow = flow
+                self.pushSettings()
+            }
+            .store(in: &cancellables)
 
         // Follow the system's Light and Dark switch (Automatic appearance).
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
@@ -221,11 +233,9 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         self.record = record
         state.bookmarks = record.bookmarks
         if state.title.isEmpty { state.title = url.deletingPathExtension().lastPathComponent }
-        if book.isFixedLayout {
-            state.flow = .paginated
-        } else if let mode = record.readingMode.flatMap(ReadingFlow.init) {
-            state.flow = mode
-        }
+        // The reading mode is the same for every book (the setting, applied
+        // in viewDidLoad); fixed-layout books always show pages.
+        if book.isFixedLayout { state.flow = .paginated }
     }
 
     private func sendBookIfReady() {
@@ -416,8 +426,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     // MARK: - Saving
 
     func savePositionNow() {
-        guard var record else { return }
-        record.readingMode = state.flow.rawValue
+        guard let record else { return }
         PositionStore.shared.saveNow(record)
     }
 
@@ -457,7 +466,6 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         case "relocate":
             if let cfi = body["cfi"] as? String, var record {
                 record.lastCFI = cfi
-                record.readingMode = state.flow.rawValue
                 self.record = record
                 PositionStore.shared.scheduleSave(record) // debounced
                 log.info("relocate \(cfi, privacy: .public)")

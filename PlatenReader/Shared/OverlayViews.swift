@@ -12,9 +12,9 @@ struct OverlayActions {
     /// Called whenever the user interacts, so the overlay does not auto-hide
     /// while it is being used.
     var interacted: () -> Void
-    /// iOS: opens the settings sheet (a gear button in the bar). The Mac
+    /// iOS: what the gear button's popover shows (the settings). The Mac
     /// has Platen Reader > Settings… instead, so leaves this out.
-    var openSettings: (() -> Void)? = nil
+    var settingsContent: (() -> AnyView)? = nil
 }
 
 extension View {
@@ -29,32 +29,35 @@ extension View {
     }
 }
 
-/// The bottom part of the overlay: location line, progress slider with
-/// chapter ticks, page buttons, Contents, Back and the Aa (typography)
-/// button. On the Mac the top part is the real window title bar, faded in by
-/// the view controller; on iOS it is a floating Close button and the title.
-///
-/// On a narrow screen (an iPhone, or a narrow iPad window) the controls do
-/// not fit in one row, so they stack: the location line, the slider between
-/// the page buttons, then a row of buttons.
+/// The overlay's controls: location line, progress slider with chapter
+/// ticks, page buttons, Contents, Back and the Aa (typography) button. On the
+/// Mac they are one bar at the bottom, and the top part is the real window
+/// title bar, faded in by the view controller. On iOS they are split (see
+/// `Part`), beside a floating Close button and the title (ReaderChrome).
 struct OverlayBar: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
     let actions: OverlayActions
     let sidebarActions: ContentsActions
+    /// Which part of the overlay this view draws (see `Part`).
+    var part: Part = .whole
+
+    /// The Mac draws the whole bar as one panel at the bottom of the window.
+    /// iOS splits it, in the way of Apple's own iOS 26 apps: the buttons are
+    /// a small glass group at the bottom right, just above the slider, which
+    /// floats at the bottom with ‹ and › at its ends.
+    enum Part { case whole, buttons, scrubber }
 
     @State private var dragFraction: Double?
-    @State private var showTypography = false
-    @State private var showLayout = false
+    /// The popover that is open, if any: one at a time.
+    @State private var openPopover: Popover?
+    private enum Popover { case typography, layout, settings }
     /// The bar is slightly see-through, and solid while the pointer is on it.
     @State private var hovering = false
     #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    private var isCompact: Bool { sizeClass == .compact }
     /// Touch screens have no hover, so the bar is always solid there.
     private let isTouch = true
     #else
-    private let isCompact = false
     private let isTouch = false
     #endif
 
@@ -68,44 +71,102 @@ struct OverlayBar: View {
     }
 
     var body: some View {
+        switch part {
+        case .whole: wholeBar
+        case .buttons: buttonGroup
+        case .scrubber: scrubber
+        }
+    }
+
+    // MARK: - iOS: the buttons, and the floating slider
+
+    /// Contents, bookmark, layout, Aa and settings, side by side on one
+    /// piece of glass.
+    private var buttonGroup: some View {
+        HStack(spacing: 0) {
+            contentsButton.frame(width: 44, height: 44)
+            // The system's bookmark symbol is narrow beside the others.
+            bookmarkButton.scaleEffect(x: 1.2, y: 1).frame(width: 44, height: 44)
+            layoutButton.frame(width: 44, height: 44)
+            typographyButton.frame(width: 44, height: 44)
+            if actions.settingsContent != nil { settingsButton.frame(width: 44, height: 44) }
+        }
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .font(.body.weight(.medium))
+        .imageScale(.large)
+        .padding(.horizontal, 4)
+        .overlaySurface(Capsule())
+        .tint(.primary)
+        .popoverBookkeeping(state: state, actions: actions, openPopover: $openPopover)
+    }
+
+    /// The slider between round ‹ › buttons, with where the reader is in
+    /// small text below. Only the buttons are on glass: the slider and the
+    /// text sit straight on the page.
+    private var scrubber: some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 8) {
+                previousButton
+                    .frame(width: 44, height: 44)
+                    .overlaySurface(Circle())
+                slider
+                    .padding(.horizontal, 4)
+                    .frame(height: 44)
+                nextButton
+                    .frame(width: 44, height: 44)
+                    .overlaySurface(Circle())
+            }
+            HStack(spacing: 8) {
+                // Shown only after a jump, until the reader moves on.
+                if let back = state.backLabel {
+                    Button {
+                        actions.goBack()
+                    } label: {
+                        Label(String(localized: "Back to \(back)"), systemImage: "arrow.uturn.backward")
+                            .labelStyle(.titleAndIcon)
+                            .font(.footnote)
+                            .lineLimit(1)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 28)
+                            .overlaySurface(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text(locationText)
+                    .font(.footnote)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(minHeight: 28)
+                    .accessibilityLabel(Text("Location"))
+                    .accessibilityValue(Text(locationText))
+            }
+        }
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .font(.body.weight(.semibold))
+        .tint(.primary)
+        .glassGroup(spacing: 8)
+    }
+
+    // MARK: - The Mac's bar
+
+    private var wholeBar: some View {
         VStack(spacing: 10) {
             locationRow
-            if isCompact {
-                HStack(spacing: 14) {
-                    previousButton
-                    slider
-                    nextButton
-                }
-                .frame(minHeight: 32)
-                HStack {
-                    contentsButton
-                    Spacer()
-                    bookmarkButton
-                    if showsLayoutButton {
-                        Spacer()
-                        layoutButton
-                    }
-                    Spacer()
-                    typographyButton
-                    if actions.openSettings != nil {
-                        Spacer()
-                        settingsButton
-                    }
-                }
-                .frame(minHeight: 32)
-            } else {
-                HStack(spacing: 18) {
-                    contentsButton
-                    previousButton
-                    slider
-                    nextButton
-                    bookmarkButton
-                    if showsLayoutButton { layoutButton }
-                    typographyButton
-                    if actions.openSettings != nil { settingsButton }
-                }
-                .frame(minHeight: 32)
+            HStack(spacing: 18) {
+                contentsButton
+                previousButton
+                slider
+                nextButton
+                bookmarkButton
+                layoutButton
+                typographyButton
+                if actions.settingsContent != nil { settingsButton }
             }
+            .frame(minHeight: 32)
         }
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
@@ -126,15 +187,7 @@ struct OverlayBar: View {
             withAnimation(.easeOut(duration: 0.15)) { hovering = inside }
         }
         .frame(maxWidth: 760)
-        // The overlay must stay while its popover is open.
-        .onChange(of: showTypography || showLayout) { _, open in
-            state.overlayPopoverOpen = open
-            actions.interacted()
-        }
-        // One popover at a time.
-        .onChange(of: state.sidebarVisible) { _, open in if open { showTypography = false; showLayout = false } }
-        .onChange(of: showTypography) { _, open in if open { showLayout = false } }
-        .onChange(of: showLayout) { _, open in if open { showTypography = false } }
+        .popoverBookkeeping(state: state, actions: actions, openPopover: $openPopover)
     }
 
     private var locationRow: some View {
@@ -226,58 +279,81 @@ struct OverlayBar: View {
     /// Layout: one page, two pages or scroll, and line width.
     private var layoutButton: some View {
         Button {
-            showLayout.toggle()
-            actions.interacted()
+            toggle(.layout)
         } label: {
-            Label(String(localized: "Layout"), systemImage: state.flow == .scrolled ? "scroll"
-                  : settings.pageLayout == .two ? "book" : "doc.plaintext")
+            // The layout in use (an iPhone shows one page whatever the
+            // Two Pages setting says).
+            Label(String(localized: "Layout"), systemImage: state.currentLayout == .scroll ? "scroll"
+                  : state.currentLayout == .twoPages ? "book" : "doc.plaintext")
         }
         .help(String(localized: "Layout"))
-        .popover(isPresented: $showLayout, arrowEdge: popoverEdge) {
+        .popover(isPresented: isOpen(.layout), arrowEdge: popoverEdge) {
             LayoutPopover(state: state, actions: actions)
         }
     }
 
     private var typographyButton: some View {
         Button {
-            showTypography.toggle()
-            actions.interacted()
+            toggle(.typography)
         } label: {
             // "textformat" is the system's "Aa" symbol.
             Label(String(localized: "Text and Appearance"), systemImage: "textformat")
         }
         .help("Text and Appearance")
-        .popover(isPresented: $showTypography, arrowEdge: popoverEdge) {
+        .popover(isPresented: isOpen(.typography), arrowEdge: popoverEdge) {
             TypographyPopover(state: state, actions: actions)
         }
     }
 
-    /// On iOS a PDF's layout follows the orientation (one page in portrait,
-    /// two in landscape), so there is nothing to choose.
-    private var showsLayoutButton: Bool {
-        #if os(iOS)
-        !state.isPDF
-        #else
-        true
-        #endif
-    }
-
+    /// iOS: the settings, in a popover like the others.
     private var settingsButton: some View {
         Button {
-            actions.openSettings?()
+            toggle(.settings)
         } label: {
             Label(String(localized: "Settings"), systemImage: "gearshape")
         }
+        .popover(isPresented: isOpen(.settings), arrowEdge: popoverEdge) {
+            actions.settingsContent?()
+                .platenPopover()
+        }
     }
 
-    /// Popovers hang above the bar (it sits at the bottom of the screen).
-    /// The two platforms read the edge differently: the Mac needs .top for a
+    private func toggle(_ popover: Popover) {
+        openPopover = openPopover == popover ? nil : popover
+        if openPopover != nil { state.sidebarVisible = false } // one popover at a time
+        actions.interacted()
+    }
+
+    /// Whether one popover is open, as a binding (the system closes a
+    /// popover by setting it to false).
+    private func isOpen(_ popover: Popover) -> Binding<Bool> {
+        Binding(get: { openPopover == popover },
+                set: { open in
+                    if open { openPopover = popover } else if openPopover == popover { openPopover = nil }
+                })
+    }
+
+    /// Popovers hang above the controls at the bottom of the screen. The
+    /// two platforms read the edge differently: the Mac needs .top for a
     /// popover above the button, iOS needs .bottom.
     #if os(iOS)
     private var popoverEdge: Edge { .bottom }
     #else
     private var popoverEdge: Edge { .top }
     #endif
+}
+
+private extension View {
+    /// Keeps the overlay up while one of its popovers is open, and closes
+    /// it when the contents popover opens (one popover at a time).
+    func popoverBookkeeping<P: Equatable>(state: ReaderState, actions: OverlayActions,
+                                          openPopover: Binding<P?>) -> some View {
+        onChange(of: openPopover.wrappedValue != nil) { _, open in
+            state.overlayPopoverOpen = open
+            actions.interacted()
+        }
+        .onChange(of: state.sidebarVisible) { _, open in if open { openPopover.wrappedValue = nil } }
+    }
 }
 
 /// The progress slider: a thin track with tick marks at chapter starts and
@@ -385,17 +461,39 @@ struct TypographyPopover: View {
         .platenPopover()
     }
 
+    /// The smaller and larger text buttons: on a touch screen each gets a
+    /// finger-sized target (44 points), not just the glyph.
+    private func textSizeIcon(_ name: String) -> some View {
+        #if os(iOS)
+        Image(systemName: name)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        #else
+        Image(systemName: name)
+        #endif
+    }
+
+    #if os(iOS)
+    private let textSizeSpacing: CGFloat = 0
+    #else
+    private let textSizeSpacing: CGFloat = 8
+    #endif
+
     @ViewBuilder private var textControls: some View {
         LabeledContent("Text Size") {
-            HStack(spacing: 8) {
-                Button { settings.smallerText() } label: { Image(systemName: "textformat.size.smaller") }
+            HStack(spacing: textSizeSpacing) {
+                Button { settings.smallerText() } label: { textSizeIcon("textformat.size.smaller") }
                     .disabled(settings.fontSizeIndex == 0)
                     .accessibilityLabel(Text("Smaller Text"))
                 Text("\(Int(settings.fontSize)) pt").monospacedDigit().frame(minWidth: 44)
-                Button { settings.biggerText() } label: { Image(systemName: "textformat.size.larger") }
+                Button { settings.biggerText() } label: { textSizeIcon("textformat.size.larger") }
                     .disabled(settings.fontSizeIndex == ReaderSettings.fontSizes.count - 1)
                     .accessibilityLabel(Text("Larger Text"))
             }
+            // Each button takes only its own taps. In an iOS form, a row's
+            // plain buttons all fire on any tap in the row, so Smaller and
+            // Larger cancelled each other out.
+            .buttonStyle(.borderless)
         }
         .disabled(state.isFixedLayout)
 
@@ -424,7 +522,7 @@ struct LayoutPopover: View {
     var body: some View {
         Form {
             Picker("Layout", selection: Binding(get: { state.currentLayout }, set: actions.setLayout)) {
-                ForEach(state.availableLayouts) { Text($0.label).tag($0) }
+                ForEach(state.availableLayouts) { Text(label(for: $0)).tag($0) }
             }
             .pickerStyle(.segmented)
             .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
@@ -446,7 +544,8 @@ struct LayoutPopover: View {
         }
         .formStyle(.grouped)
         #if os(iOS)
-        .frame(width: 340, height: state.twoPagesTooNarrow ? 230 : 180)
+        // PDFs have only the layout picker (no line width).
+        .frame(width: 340, height: state.isPDF ? 90 : state.twoPagesTooNarrow ? 230 : 180)
         #else
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
@@ -454,5 +553,14 @@ struct LayoutPopover: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Layout"))
         .platenPopover()
+    }
+
+    /// On iOS a PDF in pages shows one page in portrait and two in landscape
+    /// (spec, "PDF"), so that choice is called Pages rather than One Page.
+    private func label(for layout: ReadingLayout) -> String {
+        #if os(iOS)
+        if state.isPDF, layout == .onePage { return String(localized: "Pages") }
+        #endif
+        return layout.label
     }
 }

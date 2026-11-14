@@ -219,6 +219,13 @@ window.platen = {
     async turnInstantly(direction) {
         if (!reader.view) return { moved: false, columns: 1 }
         const r = reader.view.renderer
+        // At the very start or end there is nowhere to go: say so at once,
+        // rather than waiting for a page change that will not come.
+        const rtl = reader.view.book.dir === 'rtl'
+        // Forward in reading order: next, or the side the book reads towards.
+        const forward = direction === 'next'
+            || (direction === 'right' && !rtl) || (direction === 'left' && rtl)
+        if (forward ? r.atEnd : r.atStart) return { moved: false, columns: 1 }
         const before = reader.view.lastLocation?.cfi
         const animated = r.hasAttribute('animated')
         r.removeAttribute('animated')
@@ -245,9 +252,9 @@ window.platen = {
     tapTarget,
     // Esc closes an open note pop-up; says whether there was one.
     closeNote,
-    // iOS: show the faint bookmark outline in each page corner (while the
-    // controls are up; touch screens have no hover to reveal it).
-    setCornerHints: on => document.getElementById('ribbons')?.classList.toggle('hints', !!on),
+    // iOS: the controls are up (or not). Their location line covers the
+    // page number, so the page number steps aside meanwhile.
+    setControlsVisible: on => document.getElementById('page-numbers')?.classList.toggle('under-controls', !!on),
     // For debugging and automated checks (scripts/run-debug.sh steps).
     get view() { return reader.view },
     clearSearch,

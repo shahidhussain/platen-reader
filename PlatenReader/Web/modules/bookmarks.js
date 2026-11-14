@@ -23,8 +23,8 @@ const ribbons = document.createElement('div')
 ribbons.id = 'ribbons'
 document.body.append(ribbons)
 
-const ribbonSVG = `<svg viewBox="0 0 14 24" width="14" height="24" aria-hidden="true">
-    <path d="M1 0h12v23l-6-5-6 5z"/></svg>`
+const ribbonSVG = `<svg viewBox="0 0 18 24" width="18" height="24" aria-hidden="true">
+    <path d="M1 0h16v23l-8-5-8 5z"/></svg>`
 
 // The pages on screen, each with its bounds (window coordinates), the CFI
 // and text of its first word, and its chapter and printed page.

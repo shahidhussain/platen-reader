@@ -24,6 +24,9 @@ final class DocumentBrowserViewController: UIDocumentBrowserViewController, UIDo
     /// it waits for `viewDidAppear`.
     private var pendingBook: URL?
     private var hasAppeared = false
+    /// While a book opens at launch: a plain page in the theme's colour over
+    /// the browser, so the empty browser does not flash up first.
+    private var launchCover: UIView?
 
     /// The book types Platen opens, as declared in Info.plist. Plain text
     /// is shown as a book too (see PlatenCore's TextBook).
@@ -49,7 +52,7 @@ final class DocumentBrowserViewController: UIDocumentBrowserViewController, UIDo
         hasAppeared = true
         if let url = pendingBook {
             pendingBook = nil
-            present(book: url)
+            present(book: url, animated: false)
         }
     }
 
@@ -71,8 +74,50 @@ final class DocumentBrowserViewController: UIDocumentBrowserViewController, UIDo
         }
     }
 
-    private func present(book url: URL) {
-        guard hasAppeared else { pendingBook = url; return }
+    private func coverUntilBookOpens() {
+        guard launchCover == nil else { return }
+        let cover = UIView(frame: view.bounds)
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        cover.backgroundColor = ReaderSettings.shared.theme(for: traitCollection).uiBackground
+        view.addSubview(cover)
+        launchCover = cover
+    }
+
+    // MARK: - The book to reopen at launch
+
+    /// The book that was open when Platen was last left, kept as a bookmark
+    /// (a reference that survives the file moving, and keeps permission to
+    /// read it). Launching goes back to it; Close forgets it, so the next
+    /// launch shows the welcome screen instead (SceneDelegate).
+    private static let lastBookKey = "lastOpenBook"
+
+    static var bookToReopen: URL? {
+        guard let data = AppDefaults.store.data(forKey: lastBookKey) else { return nil }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
+            forgetOpenBook() // deleted, or no longer reachable
+            return nil
+        }
+        if stale { remember(url) }
+        return url
+    }
+
+    private static func remember(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        if let data = try? url.bookmarkData() { AppDefaults.store.set(data, forKey: lastBookKey) }
+    }
+
+    private static func forgetOpenBook() {
+        AppDefaults.store.removeObject(forKey: lastBookKey)
+    }
+
+    private func present(book url: URL, animated: Bool = true) {
+        guard hasAppeared else {
+            pendingBook = url
+            coverUntilBookOpens()
+            return
+        }
         let show = { [weak self] in
             guard let self else { return }
             // PDFs are shown by PDFKit; everything else by the book reader.
@@ -80,12 +125,17 @@ final class DocumentBrowserViewController: UIDocumentBrowserViewController, UIDo
                 || url.pathExtension.lowercased() == "pdf"
             let reader: OpenReader = isPDF ? PDFReaderViewController(url: url) : ReaderViewController(url: url)
             reader.onClose = { [weak self, weak reader] in
+                Self.forgetOpenBook() // closed on purpose: next launch, the welcome
                 reader?.dismiss(animated: true)
                 self?.reader = nil
             }
+            Self.remember(url)
             reader.modalPresentationStyle = .fullScreen
             self.reader = reader
-            self.present(reader, animated: true)
+            self.present(reader, animated: animated) { [weak self] in
+                self?.launchCover?.removeFromSuperview()
+                self?.launchCover = nil
+            }
         }
         // Replace a book that is already open.
         if let reader {
