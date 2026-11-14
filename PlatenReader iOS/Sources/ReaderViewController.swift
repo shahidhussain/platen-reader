@@ -44,8 +44,12 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     /// Whether text was selected just before the latest tap (reported by
     /// reader.js). A tap then only dismisses the selection.
     var hasSelection = false
-    /// The page curl on screen, if one is running (ReaderViewController+PageCurl).
-    var curlInProgress: UIPageViewController?
+    /// Draws page turns and swipes (ReaderViewController+PageTurn).
+    lazy var pageTurner = makePageTurnAnimator()
+    var swipeRecogniser: UIPanGestureRecognizer?
+    /// When the latest finger touched down (a swipe after a long hold is
+    /// text selection, not a page turn).
+    var touchDownTime: CFTimeInterval?
     /// The last settings sent to the page, so unchanged ones are not resent.
     var lastPayload: [String: Any]?
     /// See `webPayload`.
@@ -113,6 +117,7 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         tap.delaysTouchesEnded = false
         tap.delegate = self
         webView.addGestureRecognizer(tap)
+        installSwipeRecogniser()
 
         installOverlay(in: root)
 
@@ -299,9 +304,19 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         }
     }
 
-    // Recognise taps alongside WebKit's own gesture recognisers.
+    // Recognise taps and swipes alongside WebKit's own gesture recognisers.
     func gestureRecognizer(_ recogniser: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+    func gestureRecognizer(_ recogniser: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if recogniser === swipeRecogniser { touchDownTime = CACurrentMediaTime() }
+        return true
+    }
+
+    func gestureRecognizerShouldBegin(_ recogniser: UIGestureRecognizer) -> Bool {
+        if let pan = recogniser as? UIPanGestureRecognizer, pan === swipeRecogniser { return swipeShouldBegin(pan) }
+        return true
+    }
 
     /// What a tap in each zone does (spec, "Touch"): in paginated mode the
     /// sides turn the page and the centre shows the controls; in scroll mode
@@ -340,8 +355,9 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
     /// The settings for reader.js, with what differs on iOS:
     /// - `touch`: taps are recognised here (see `pageTapped`), so the page
     ///   reports no click zones of its own;
-    /// - `animated`: page turns slide unless the setting is None (Page Curl
-    ///   is not drawn on iOS yet, so it slides too) or Reduce Motion is on;
+    /// - `animated` is off and `nativeSwipe` on: slides, curls and swipes
+    ///   are all drawn natively (ReaderViewController+PageTurn), so the page
+    ///   itself only ever turns instantly;
     /// - `sideMargin` and `verticalMargin`, in points: room at the sides (see
     ///   `sideMargin(compact:)`), and
     ///   above and below the text so it stays clear of the Dynamic Island,
@@ -353,9 +369,8 @@ final class ReaderViewController: UIViewController, WKScriptMessageHandler, WKNa
         // iPad: the Two Pages rule decides by width, as on the Mac, so two
         // pages appear in landscape and in wide Split View windows.
         if UIDevice.current.userInterfaceIdiom == .phone { payload["pageLayout"] = PageLayout.one.rawValue }
-        // Slide and Page Curl both slide here: taps curl through their own
-        // path (turnInstantly), and swipes slide with the finger.
-        payload["animated"] = settings.pageTurnStyle != .none && !UIAccessibility.isReduceMotionEnabled
+        payload["animated"] = false
+        payload["nativeSwipe"] = true
         let insets = view.safeAreaInsets
         let compact = traitCollection.horizontalSizeClass == .compact
         payload["sideMargin"] = max(insets.left, insets.right) + sideMargin(compact: compact)

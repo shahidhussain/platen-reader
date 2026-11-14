@@ -88,6 +88,9 @@ const applyLayout = () => {
     document.documentElement.style.setProperty('--platen-fg', reader.settings.theme.foreground)
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
     r.toggleAttribute('animated', reader.settings.animated && !reduceMotion)
+    // iOS draws swipes natively (PageTurnAnimator in the iOS app), so
+    // foliate must not also drag the page with the finger.
+    r.toggleAttribute('native-swipe', !!reader.settings.nativeSwipe)
     if (reader.isFixedLayout) return
 
     const columns = columnCount(reader.settings)

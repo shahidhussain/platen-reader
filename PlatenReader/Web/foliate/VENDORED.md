@@ -31,6 +31,12 @@ If you patch a file, list it here with the reason, so updates can re-apply it.
   turn the tap asked for (iOS page curl, which turns the page instantly
   underneath). Marked `// Platen:`.
 
+- `paginator.js`, `#onTouchMove`: does nothing when the renderer has the
+  `native-swipe` attribute. The iOS app moves the page with the finger
+  itself (as a picture, drawn by Core Animation at the screen's full rate),
+  because dragging in JavaScript was limited to 60 frames a second and
+  stuttered. Marked `// Platen:`.
+
 ## How to update
 
 1. `git clone https://github.com/johnfactotum/foliate-js && cd foliate-js && git checkout <commit>`
