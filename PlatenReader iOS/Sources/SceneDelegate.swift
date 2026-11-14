@@ -5,9 +5,10 @@ import UIKit
 /// from there, from Files ("Open in Platen Reader") or from other apps'
 /// share sheets, always in place (see `DocumentBrowserViewController`).
 ///
-/// The first time Platen is opened, a welcome screen comes first (the same
-/// as the Mac's, full screen): the app's name and one "Open Book…" button,
-/// so the reader knows where they are before the browser appears.
+/// Launching never lands in the browser: it goes back to the book that was
+/// open when Platen was last left, or, if that book was closed (or there is
+/// none), shows the welcome screen (the Mac's, full screen): the app's name
+/// and one "Open Book…" button, which leads to the browser.
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
     private var browser: DocumentBrowserViewController?
@@ -32,7 +33,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let debugBook = false
         #endif
         window.makeKeyAndVisible()
-        if !Self.hasWelcomed, !launchedWithBook, !debugBook {
+        // Back to the book that was open, if there was one.
+        let reopen = launchedWithBook || debugBook ? nil : DocumentBrowserViewController.bookToReopen
+        if let reopen {
+            browser.openBook(at: reopen, revealFirst: false)
+        } else if !launchedWithBook, !debugBook {
             // Laid over the browser rather than in its place, so the browser
             // (slow to start) is ready behind it when the welcome fades.
             let welcome = UIHostingController(rootView: WelcomeView(open: { [weak self] in self?.leaveWelcome() }))
@@ -65,17 +70,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     // MARK: - Welcome
 
-    /// Whether the welcome screen has been seen (and left), in this or an
-    /// earlier launch. It shows only until then.
-    private static var hasWelcomed: Bool {
-        get { AppDefaults.store.bool(forKey: "hasSeenWelcome") }
-        set { AppDefaults.store.set(newValue, forKey: "hasSeenWelcome") }
-    }
-
     /// Open Book… (or a book arriving from elsewhere): the welcome fades,
     /// showing the document browser behind it.
     private func leaveWelcome() {
-        Self.hasWelcomed = true
         guard let welcome else { return }
         self.welcome = nil
         UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.3) {
