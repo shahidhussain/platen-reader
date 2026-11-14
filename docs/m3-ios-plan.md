@@ -23,7 +23,7 @@ PlatenReader iOS/Info.plist
 ```
 
 - New target **PlatenReader iOS**: product "Platen Reader.app", bundle ID `org.platenreader.PlatenReader` (as the Mac app, per the spec), iOS 17.0, iPhone and iPad, module name `PlatenReader`. Its own shared scheme `PlatenReader iOS`.
-- Info.plist: the same document types and imported UTIs as the Mac, plus `LSSupportsOpeningDocumentsInPlace`, `UISupportsDocumentBrowser`, a scene manifest (several windows on iPad), and `UIFileSharingEnabled` so the app's own folder shows in Files (handy for testing; books still open in place wherever they are).
+- Info.plist: the same document types and imported UTIs as the Mac, plus `LSSupportsOpeningDocumentsInPlace`, a scene manifest (several windows on iPad), and `UIFileSharingEnabled` so the app's own folder shows in Files (handy for testing; books still open in place wherever they are).
 - A shared `Config/Shared.xcconfig` holds what must match on both platforms (version, build number, bundle ID, deployment targets), so the two targets cannot drift apart.
 - The String Catalog moves to `Shared/` so both targets extract into one catalog (en-GB).
 - The app icon: an iOS asset catalog with the 1024 px Honey icon from `design/icon/`.
@@ -42,7 +42,7 @@ PlatenReader iOS/Info.plist
 | Overlay bar, contents popover, explainer, Aa and Layout popovers | Shared SwiftUI | Moved, with `#if os(macOS)` only where a modifier differs |
 | Copy with Citation text | Shared | Building the quote and citation is shared; writing to `NSPasteboard` or `UIPasteboard` is per platform |
 | Window, chrome, menus, key and scroll monitors, Settings window, welcome window, `NSDocument` | Mac | Unchanged |
-| Document browser, scenes, security-scoped access, status bar and home indicator, touch swipe, `UIKeyCommand`s, edit menu, settings sheet | iOS | New |
+| Home screen and document picker, scenes, security-scoped access, status bar and home indicator, touch swipe, `UIKeyCommand`s, edit menu, settings sheet | iOS | New |
 | Native page turn (Curl, Slide) | Per platform, shared maths | The curl's strip geometry is plain maths and can be shared; the drawing is `NSView` versus `UIView` |
 | Picture zoom | Per platform | `UIScrollView` zoom on iOS |
 
@@ -72,6 +72,7 @@ At the user's request, parts of phases 2 to 4 came forward:
 - **From testing on an iPhone 16 Pro Max (14 Nov):** text size works again (Smaller and Larger shared one form row, so on iOS both fired at once; they now have their own 44-point targets); Scroll or pages is one setting for every book and PDF on both platforms (no longer per book); the curl's leaf has a plain back in the theme's colour (paper white for PDFs) instead of the system's see-through white, and in PDFs only the page curls; PDFs sit on an ambient background made from their own colours (`PDFAmbientBackground`, iOS only so far: a 12 by 16 pixel drawing per page, off the main thread, blurred and stretched); both bookmark icons are a little wider.
 - **Footnote pop-ups** on both platforms (shared web code, `modules/footnotes.js`).
 - **Text and margins:** the default size follows Dynamic Type (20 pt at the standard size) until the reader picks one; 24-point side margins on iPhone; top and bottom margins clear of the Dynamic Island and home indicator, steady when the status bar comes and goes.
+- **Home screen of Platen's own (14 Nov):** `HomeViewController` replaced `UIDocumentBrowserViewController` as the window's root. It reopens the last book (the `lastOpenBook` bookmark), else shows the welcome; "Open Book…" is `UIDocumentPickerViewController`, opening in place; books from other apps go straight to the reader. Next on it: a grid of covers from the folder the last book came from.
 
 ### Phase 2: shared reader session (done)
 
@@ -95,7 +96,7 @@ Once the shared layer has settled, consider turning `Shared/` and `Web/` into a 
 
 ### Phase 3: overlay and touch
 
-- Move the SwiftUI overlay, contents popover and explainer to `Shared/`; host them in `UIHostingController`. The title strip becomes a top bar with the title, chapter and a Close (back to browser) button.
+- Move the SwiftUI overlay, contents popover and explainer to `Shared/`; host them in `UIHostingController`. The title strip becomes a top bar with the title, chapter and a Close (back to the home screen) button.
 - The touch table: side taps turn, centre tap toggles, corner tap bookmarks, link taps follow, picture tap zooms (native `UIScrollView`), long press selects (WebKit's own). The ribbon outline shows while the overlay is up.
 - Horizontal swipe that tracks the finger, finishing with the chosen animation (Page Curl, Slide or None), built on the native page-turn view ported to UIKit with shared geometry. No override on touch.
 - The status bar and home indicator hide with the overlay. The first-run explainer, as on the Mac.

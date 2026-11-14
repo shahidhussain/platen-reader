@@ -34,9 +34,6 @@
 	     through security-scoped URLs, and are never copied into the app. -->
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
-	<!-- The home screen is the system document browser. -->
-	<key>UISupportsDocumentBrowser</key>
-	<true/>
 	<!-- The app's own Documents folder shows in Files ("On My iPhone"). -->
 	<key>UIFileSharingEnabled</key>
 	<true/>

@@ -242,7 +242,7 @@ All settings are global and live in Platen Reader > Settings… (⌘,), a standa
 
 - Declare document types in the app's Info.plist: `.epub`, `.kepub.epub` (and `.kepub`), `.mobi`, `.azw`, `.azw3`. Use system UTIs where they exist (`org.idpf.epub-container`) and declare imported types for the rest.
 - Set the default handler with `NSWorkspace.setDefaultApplication(at:toOpen:)` per content type. Read the current default with `NSWorkspace.urlForApplication(toOpen:)` to display it.
-- iOS has no default-app mechanism for file types. There, Platen declares the same types so it appears in "Open in" and the share sheet, and its home screen is the system document browser (see "iOS and iPadOS").
+- iOS has no default-app mechanism for file types. There, Platen declares the same types so it appears in "Open in" and the share sheet, and its home screen is Platen's own (see "iOS and iPadOS").
 
 **Per-book data**
 
@@ -256,8 +256,8 @@ The iOS app is the Mac reader on a touch screen: the same core, the same web she
 
 **Opening books**
 
-- Launching never lands in the document browser. If a book was open when the app was last left, it reopens at the same place. Otherwise (the book was closed with its Close button, or none was open) the Mac's welcome screen shows, full screen: the app's name, one "Open Book…" button and the formats it reads; the button leads to the document browser. A book opened from another app goes straight to that book.
-- The home screen is the system document browser. Books are opened in place (`LSSupportsOpeningDocumentsInPlace`), from Files, iCloud Drive, SMB shares or any file provider, through security-scoped URLs. They are never copied into the app; "Open in Platen" from another app also opens in place where the provider allows it.
+- Launching never lands in a file browser. If a book was open when the app was last left, it reopens at the same place. Otherwise (the book was closed with its Close button, or none was open) the home screen shows the Mac's welcome screen, full screen: the app's name, one "Open Book…" button and the formats it reads; the button shows the system's document picker. A book opened from another app goes straight to that book.
+- The home screen is Platen's own view controller, not the system document browser; it decides what launch shows and presents the readers. (A view of the folder the last book came from is planned for it.) Books are opened in place (`LSSupportsOpeningDocumentsInPlace`), from Files, iCloud Drive, SMB shares or any file provider, through security-scoped URLs. They are never copied into the app; "Open in Platen" from another app also opens in place where the provider allows it.
 - Book identity does not depend on the path, so positions and bookmarks work as on the Mac.
 - All Mac formats are supported from 1.0: EPUB 2 and 3, KEPUB, MOBI, AZW, AZW3.
 
@@ -428,7 +428,7 @@ Five milestones, each with a clear exit test; the first is a short technical spi
    - Includes: paginated and scroll modes, automatic one or two pages, overlay, click zones, keyboard, first-run explainer, bookmarks, contents and search, Copy with Citation, typography, themes with system-appearance switching, Settings with file associations, MOBI/AZW3/KEPUB, robustness corpus green, VoiceOver.
    - Exit: all performance targets met; full corpus passes; notarised DMG on GitHub releases, updating through Sparkle, with a Homebrew cask.
 3. **M2: Mac refinements.** A visual typography control (live preview instead of numeric steps), custom themes with a contrast warning, a Quick Look extension so the space bar previews EPUBs in Finder. After launch.
-4. **M3: Platen Reader for iOS and iPadOS.** Same core package; touch interaction (tap zones identical to Mac, swipe page turns), Dynamic Type default size, system document browser as the home screen, iPad split view and hardware keyboard support, all formats including PDF. Ships on the App Store at launch; the Mac App Store build joins the same listing later. Details in "iOS and iPadOS (M3)".
+4. **M3: Platen Reader for iOS and iPadOS.** Same core package; touch interaction (tap zones identical to Mac, swipe page turns), Dynamic Type default size, a home screen of its own with the system document picker, iPad split view and hardware keyboard support, all formats including PDF. Ships on the App Store at launch; the Mac App Store build joins the same listing later. Details in "iOS and iPadOS (M3)".
 5. **M4: PDF (in the launch scope).** PDFKit-backed view inside the same window and overlay on both platforms. Details in "PDF".
 
 ## Out of scope and parked ideas
