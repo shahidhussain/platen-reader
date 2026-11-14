@@ -131,6 +131,9 @@
     "Enter Full Screen" : {
 
     },
+    "EPUB, KEPUB, MOBI, AZW3, PDF or plain text." : {
+
+    },
     "EPUB, KEPUB, MOBI, AZW3, PDF or plain text. You can also drop a book here." : {
 
     },
@@ -228,9 +231,6 @@
 
     },
     "Narrow" : {
-
-    },
-    "New Books Open In" : {
 
     },
     "Next Chapter" : {

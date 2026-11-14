@@ -256,6 +256,7 @@ The iOS app is the Mac reader on a touch screen: the same core, the same web she
 
 **Opening books**
 
+- The first time the app opens, the Mac's welcome screen comes first, full screen: the app's name, one "Open Book…" button and the formats it reads. The button leads to the document browser; the welcome does not come back after that, and a book opened from another app skips it.
 - The home screen is the system document browser. Books are opened in place (`LSSupportsOpeningDocumentsInPlace`), from Files, iCloud Drive, SMB shares or any file provider, through security-scoped URLs. They are never copied into the app; "Open in Platen" from another app also opens in place where the provider allows it.
 - Book identity does not depend on the path, so positions and bookmarks work as on the Mac.
 - All Mac formats are supported from 1.0: EPUB 2 and 3, KEPUB, MOBI, AZW, AZW3.
