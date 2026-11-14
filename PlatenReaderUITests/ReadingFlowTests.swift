@@ -64,14 +64,22 @@ final class ReadingFlowTests: XCTestCase {
     }
 
     /// Waits until the text on screen satisfies a condition, and returns it.
+    ///
+    /// The page may not exist yet (just after a launch, the window is still
+    /// opening): reading a missing element's value fails the test outright,
+    /// so it is read only once it exists. Without this check the reopening
+    /// test failed whenever the window was slower to appear than the first
+    /// look, which on CI machines was some runs and not others.
     @discardableResult
     private func waitForPage(_ description: String, timeout: TimeInterval = 10,
                              until condition: (String) -> Bool) -> String {
         let deadline = Date().addingTimeInterval(timeout)
         var text = ""
         while Date() < deadline {
-            text = (page.value as? String) ?? ""
-            if !text.isEmpty, condition(text) { return text }
+            if page.exists {
+                text = (page.value as? String) ?? ""
+                if !text.isEmpty, condition(text) { return text }
+            }
             Thread.sleep(forTimeInterval: 0.2)
         }
         XCTFail("Timed out waiting for the page: \(description)")
