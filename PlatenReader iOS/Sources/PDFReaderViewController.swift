@@ -8,29 +8,36 @@ import UIKit
 /// pages; the overlay, contents, bookmarks and search are the same as for
 /// books (ReaderChrome, and the shared PDFReaderModel).
 ///
-/// Two layouts, chosen with the overlay's Layout button (and remembered per
-/// PDF): **Pages** and **Scroll** (one long column of pages, scrolled up and
-/// down). In Pages, the number of pages follows the orientation, on iPhone
-/// and iPad alike:
-/// - **Portrait:** one page at a time; a swipe follows the finger.
-/// - **Landscape:** two pages side by side, touching, so a scanned spread
-///   reads as one. The pairing starts at the page the reader was on when they
-///   rotated, and holds: each turn moves two pages. If the pairs look wrong
-///   (some PDFs have an extra cover page), rotating back, turning one page
-///   and rotating again fixes them. Rotating back shows the pair's left page.
+/// Three layouts, chosen with the overlay's Layout button (the same settings
+/// as for books, on iPhone and iPad alike):
+/// - **One Page:** one page at a time in either orientation, fitted to the
+///   screen, for PDFs whose pages are pictures in landscape (or portrait); a
+///   swipe follows the finger.
+/// - **Two Pages:** one page in portrait, as above; in landscape, two pages
+///   side by side, touching, so a scanned spread reads as one. The pairing
+///   starts at the page the reader was on when they rotated, and holds: each
+///   turn moves two pages. If the pairs look wrong (some PDFs have an extra
+///   cover page), rotating back, turning one page and rotating again fixes
+///   them. Rotating back shows the pair's left page.
+/// - **Scroll:** one long column of pages, scrolled up and down.
 final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, UIGestureRecognizerDelegate {
-    private var pdfView: PDFView!
+    private(set) var pdfView: PDFView!
     /// Behind the pages: their own colours, softened (PDFAmbientBackground).
     private var ambient: UIImageView!
     /// What the ambient background was last made for (pages and theme), so
     /// it is only remade when that changes.
     private var ambientKey: String?
-    private var ribbon: UIImageView!
+    private var ribbon: BookmarkRibbonView!
+    /// Watches the PDF view's scrolling (Scroll layout, zoom), so the ribbon
+    /// moves with its page.
+    private var scrollObservation: NSKeyValueObservation?
     private var model: PDFReaderModel?
     /// Landscape: whether the pairs start at an odd page (see the type's
     /// notes). Decided when the reader rotates to landscape.
     private var spreadsStartOdd = false
     private var isLandscape = false
+    /// Two pages side by side on screen now (Two Pages, in landscape).
+    private var isSpread = false
     /// Text was selected before the latest tap; that tap only clears it.
     private var hadSelection = false
     private var swipes: [UISwipeGestureRecognizer] = []
@@ -99,6 +106,13 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         tap.delegate = self
         pdfView.addGestureRecognizer(tap)
 
+        // A long press on a picture offers to save or share it
+        // (PDFReaderViewController+Pictures). Elsewhere it selects text, as
+        // PDFKit does.
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(pressed(_:)))
+        press.delegate = self
+        pdfView.addGestureRecognizer(press)
+
         // Landscape spreads are not paged by PDFKit's page view controller,
         // so swipes there turn the spread.
         for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
@@ -110,25 +124,20 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             swipes.append(swipe)
         }
 
-        // The bookmark ribbon in the top-right corner of a bookmarked page;
-        // a faint outline while the controls are up.
-        ribbon = UIImageView(image: UIImage(systemName: "bookmark.fill"))
-        ribbon.translatesAutoresizingMaskIntoConstraints = false
-        // Stretched to the frame: a little wider than the symbol's own shape.
-        ribbon.contentMode = .scaleToFill
+        // The bookmark ribbon over the top edge of a bookmarked page, near
+        // its right corner (placed by placeRibbon, as the page moves).
+        ribbon = BookmarkRibbonView(frame: CGRect(origin: .zero, size: BookmarkRibbonView.size))
         ribbon.isHidden = true
-        ribbon.isAccessibilityElement = false
         root.addSubview(ribbon)
 
-        // Pages (one or a spread, by orientation) or Scroll; never "Two
-        // Pages" as a choice of its own.
-        state.allowsTwoPages = false
+        // One Page, Two Pages (a spread in landscape only) or Scroll, on
+        // iPhone too (books there always show one page).
+        state.allowsTwoPages = true
         installChrome(in: root)
         chrome.onVisibilityChanged = { [weak self] _ in self?.updateRibbon() }
         chrome.setInterfaceStyle(.light)
         configurePageTurner()
 
-        let safe = root.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             ambient.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             ambient.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -138,10 +147,6 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             pdfView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             pdfView.topAnchor.constraint(equalTo: root.topAnchor),
             pdfView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            ribbon.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
-            ribbon.topAnchor.constraint(equalTo: safe.topAnchor, constant: 2),
-            ribbon.widthAnchor.constraint(equalToConstant: 22),
-            ribbon.heightAnchor.constraint(equalToConstant: 26),
         ])
         view = root
     }
@@ -165,6 +170,25 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                 // selection still knows there was one.
                 let has = !(self.pdfView.currentSelection?.string ?? "").isEmpty
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.hadSelection = has }
+            }
+            .store(in: &cancellables)
+        // The page moved or was zoomed: the ribbon goes with it.
+        for name in [Notification.Name.PDFViewScaleChanged, .PDFViewVisiblePagesChanged] {
+            NotificationCenter.default.publisher(for: name)
+                .sink { [weak self] note in
+                    guard let self, note.object as? PDFView === self.pdfView else { return }
+                    self.placeRibbon()
+                }
+                .store(in: &cancellables)
+        }
+        // One Page or Two Pages changed (here or in another reader).
+        settings.$pageLayout
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, self.model != nil else { return }
+                self.layoutForOrientation(force: true, keepPage: self.currentIndex)
             }
             .store(in: &cancellables)
 
@@ -211,19 +235,24 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         }
     }
 
-    // MARK: - Layout (Scroll; or pages: one in portrait, a spread in landscape)
+    // MARK: - Layout (Scroll; or pages: one, or a spread in landscape)
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         layoutForOrientation(force: false, keepPage: nil)
+        placeRibbon()
     }
 
     private func layoutForOrientation(force: Bool, keepPage: Int?) {
         guard let document = pdfView.document else { return }
         let landscape = view.bounds.width > view.bounds.height
         guard force || landscape != isLandscape else { return }
-        let wasLandscape = isLandscape
+        let wasSpread = isSpread
         isLandscape = landscape
+        // pageLayout is read when the setting has already changed (the
+        // observer runs after the change), so this is the new choice.
+        let spread = landscape && state.flow == .paginated && settings.pageLayout == .two
+        isSpread = spread
         // The page to keep in view: the one being read (in a spread, its
         // left page, which PDFKit reports as the current page).
         let current = keepPage ?? pdfView.currentPage.map { document.index(for: $0) } ?? 0
@@ -235,9 +264,9 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             pdfView.displayDirection = .vertical
             pdfView.displaysAsBook = false
             pdfView.displaysPageBreaks = true
-        } else if landscape {
+        } else if spread {
             pdfView.displayDirection = .horizontal
-            if !wasLandscape || force { spreadsStartOdd = current % 2 == 1 }
+            if !wasSpread || force { spreadsStartOdd = current % 2 == 1 }
             pdfView.usePageViewController(false)
             pdfView.displayMode = .twoUp
             // displaysAsBook puts the first page on its own, so pairs start
@@ -254,19 +283,26 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             // finger, as for books.
             pdfView.usePageViewController(true, withViewOptions: [UIPageViewController.OptionsKey.interPageSpacing: 12])
         }
-        swipes.forEach { $0.isEnabled = landscape && state.flow == .paginated }
+        swipes.forEach { $0.isEnabled = spread }
+        state.columnsOnScreen = spread ? 2 : 1
         pdfView.autoScales = true
         if let page = document.page(at: current) { pdfView.go(to: page) }
         // Switching modes gives PDFKit's inner views their own (grey)
-        // background and scroll bars; the theme colour goes back on.
-        DispatchQueue.main.async { self.applyTheme() }
+        // background and scroll bars; the theme colour goes back on. They
+        // are new views, so the ribbon watches the new scroll view.
+        DispatchQueue.main.async {
+            self.applyTheme()
+            self.watchScrolling()
+            self.placeRibbon()
+        }
         reportPage()
     }
 
-    /// Pages or Scroll, from the overlay's Layout button. It changes the
-    /// setting (one reading mode for every book and PDF); this reader, and
-    /// any other open one, follows (`followFlowSetting`).
+    /// One Page, Two Pages or Scroll, from the overlay's Layout button. Both
+    /// parts are settings for every book and PDF; this reader, and any other
+    /// open one, follows (`followFlowSetting` and the page layout observer).
     func setLayout(_ layout: ReadingLayout) {
+        if let pages = layout.pages, pages != settings.pageLayout { settings.pageLayout = pages }
         settings.defaultFlow = layout.flow
     }
 
@@ -287,8 +323,10 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         if let page = pdfView.page(for: point, nearest: false),
            page.annotation(at: pdfView.convert(point, to: page))?.type == "Link" { return }
         let width = pdfView.bounds.width
-        // The top-right corner bookmarks the page, as for books.
-        if point.x > width - 64, point.y < view.safeAreaInsets.top + 48 {
+        // The ribbon's place (the page's top-right corner), or the screen's
+        // top-right corner, bookmarks the page, as for books.
+        let ribbonTarget = ribbonFrame().map { view.convert($0, to: pdfView).insetBy(dx: -16, dy: -12) }
+        if ribbonTarget?.contains(point) == true || (point.x > width - 64 && point.y < view.safeAreaInsets.top + 48) {
             toggleBookmark()
         } else if state.flow == .scrolled {
             chrome.toggle() // in Scroll, any tap shows or hides the controls
@@ -347,17 +385,21 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     private var visiblePages: [Int] {
         guard let document = pdfView.document else { return [] }
+        // One page unless it is a spread: the current one. (PDFKit's page
+        // view keeps the neighbouring pages loaded, and lists them as
+        // visible, so the first visible page may not be the one on screen.)
+        guard isSpread else { return pdfView.currentPage.map { [document.index(for: $0)] } ?? [] }
         let pages = pdfView.visiblePages.map { document.index(for: $0) }.sorted()
         if pages.isEmpty, let current = pdfView.currentPage { return [document.index(for: current)] }
-        return isLandscape && state.flow == .paginated ? Array(pages.prefix(2)) : Array(pages.prefix(1))
+        return Array(pages.prefix(2))
     }
 
     private func reportPage() {
         guard !restoring, let model, let document = pdfView.document, let current = pdfView.currentPage else { return }
         let fit = pdfView.scaleFactorForSizeToFit
         let zoom = fit > 0 ? Double(pdfView.scaleFactor / fit) : 1
-        var visible = visiblePages
         let index = document.index(for: current)
+        var visible = visiblePages
         if !visible.contains(index) { visible.insert(index, at: 0) }
         model.pageChanged(to: visible.first ?? index, visible: visible, zoom: zoom > 1.05 ? zoom : nil)
         updateRibbon()
@@ -368,8 +410,45 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         // Only on a bookmarked page. (No faint outline while the controls
         // are up: their Bookmark button does that job.)
         ribbon.isHidden = model == nil || !state.isPageBookmarked
-        ribbon.image = UIImage(systemName: "bookmark.fill")
-        ribbon.tintColor = UIColor(red: 0.82, green: 0.2, blue: 0.17, alpha: 1)
+        placeRibbon()
+    }
+
+    /// Where the ribbon goes, in this view's coordinates: over the top edge
+    /// of the bookmarked page (in a spread, the right-hand page if both are,
+    /// or neither yet), a little in from its right corner, starting just
+    /// above the edge as if it came from the binding. Kept on screen when
+    /// the page is zoomed or scrolled past.
+    private func ribbonFrame() -> CGRect? {
+        let visible = visiblePages
+        let index = visible.last { model?.isBookmarked(page: $0) == true } ?? visible.last
+        guard let document = pdfView.document, let page = index.flatMap({ document.page(at: $0) }) else { return nil }
+        let pageRect = view.convert(pdfView.convert(page.bounds(for: pdfView.displayBox), from: page), from: pdfView)
+        let size = BookmarkRibbonView.size
+        let safe = view.bounds.inset(by: view.safeAreaInsets)
+        let x = min(pageRect.maxX - 18 - size.width, safe.maxX - 12 - size.width)
+        var y = max(pageRect.minY - 4, 0)
+        if state.flow == .scrolled { y = max(y, safe.minY) }
+        return CGRect(x: x, y: y, width: size.width, height: size.height)
+    }
+
+    private func placeRibbon() {
+        guard !ribbon.isHidden, let frame = ribbonFrame() else { return }
+        if ribbon.frame != frame { ribbon.frame = frame }
+    }
+
+    /// Follows the PDF view's scroll view (found inside it), so the ribbon
+    /// moves with the page while scrolling or zooming.
+    private func watchScrolling() {
+        func firstScrollView(in view: UIView) -> UIScrollView? {
+            for sub in view.subviews {
+                if let scroll = sub as? UIScrollView { return scroll }
+                if let found = firstScrollView(in: sub) { return found }
+            }
+            return nil
+        }
+        scrollObservation = firstScrollView(in: pdfView)?.observe(\.contentOffset, options: []) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.placeRibbon() }
+        }
     }
 
     // MARK: - Overlay actions

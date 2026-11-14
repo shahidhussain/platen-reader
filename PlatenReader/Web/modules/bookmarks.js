@@ -23,8 +23,16 @@ const ribbons = document.createElement('div')
 ribbons.id = 'ribbons'
 document.body.append(ribbons)
 
-const ribbonSVG = `<svg viewBox="0 0 18 24" width="18" height="24" aria-hidden="true">
-    <path d="M1 0h16v23l-8-5-8 5z"/></svg>`
+// A ribbon of cloth: a gradient across it (darker at the edges, as if
+// rounded), a fine darker edge down the sides and along the notched end,
+// and the top left open, as if it came from the binding. Unmarked corners
+// show only the faint outline of its shape (on hover, on the Mac).
+const ribbonSVG = `<svg viewBox="0 0 22 30" width="22" height="30" aria-hidden="true">
+    <defs><linearGradient id="platen-ribbon" x1="0" x2="1" y1="0" y2="0">
+        <stop offset="0" stop-color="#a92219"/><stop offset=".45" stop-color="#df4a3e"/>
+        <stop offset="1" stop-color="#b8281f"/></linearGradient></defs>
+    <path class="cloth" d="M1 0h20v29l-10-6.5-10 6.5z"/>
+    <path class="edge" d="M1.5 0v28l9.5-6.2 9.5 6.2V0"/></svg>`
 
 // The pages on screen, each with its bounds (window coordinates), the CFI
 // and text of its first word, and its chapter and printed page.
@@ -156,7 +164,7 @@ function refreshRibbons() {
         const corner = (marked, top, cfi) => {
             const el = document.createElement('button')
             el.className = 'corner' + (marked ? ' marked' : '')
-            el.style.left = `${Math.round(page.right - 30)}px`
+            el.style.left = `${Math.round(page.right - 36)}px`
             el.style.top = `${Math.round(top)}px`
             el.innerHTML = ribbonSVG
             el.setAttribute('aria-label', marked ? 'Remove Bookmark' : 'Bookmark This Page')
@@ -169,8 +177,8 @@ function refreshRibbons() {
             ribbons.append(el)
         }
         // Just below the title bar; on iOS, just above the text, below the
-        // Dynamic Island (the corner is 34 pixels high).
-        const topEdge = reader.settings?.verticalMargin ? Math.max(28, reader.settings.verticalMargin - 38) : 28
+        // Dynamic Island (the corner is 38 pixels high).
+        const topEdge = reader.settings?.verticalMargin ? Math.max(28, reader.settings.verticalMargin - 42) : 28
         if (marks.length) {
             anyMarked ||= page === leadingPage(pages)
             for (const { b, rect } of marks)

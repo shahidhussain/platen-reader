@@ -34,6 +34,10 @@
 	     through security-scoped URLs, and are never copied into the app. -->
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- Saving a picture from a PDF to Photos (a long press on it). Asked
+	     only when the reader chooses Save to Photos; add-only access. -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Platen Reader saves the pictures you choose to your photo library.</string>
 	<!-- The app's own Documents folder shows in Files ("On My iPhone"). -->
 	<key>UIFileSharingEnabled</key>
 	<true/>

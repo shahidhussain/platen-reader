@@ -283,8 +283,7 @@ struct OverlayBar: View {
         } label: {
             // The layout in use (an iPhone shows one page whatever the
             // Two Pages setting says).
-            Label(String(localized: "Layout"), systemImage: state.currentLayout == .scroll ? "scroll"
-                  : state.currentLayout == .twoPages ? "book" : "doc.plaintext")
+            Label(String(localized: "Layout"), systemImage: state.currentLayout.symbol)
         }
         .help(String(localized: "Layout"))
         .popover(isPresented: isOpen(.layout), arrowEdge: popoverEdge) {
@@ -521,17 +520,12 @@ struct LayoutPopover: View {
 
     var body: some View {
         Form {
-            Picker("Layout", selection: Binding(get: { state.currentLayout }, set: actions.setLayout)) {
-                ForEach(state.availableLayouts) { Text(label(for: $0)).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
+            layoutPicker
 
-            if state.twoPagesTooNarrow {
-                Text("The window is too narrow for two pages. Make it wider to see them side by side.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if state.isPDF, landscapeHint {
+                note("Two pages show side by side when you turn to landscape.")
+            } else if state.twoPagesTooNarrow {
+                note("The window is too narrow for two pages. Make it wider to see them side by side.")
             }
 
             if !state.isPDF {
@@ -544,8 +538,7 @@ struct LayoutPopover: View {
         }
         .formStyle(.grouped)
         #if os(iOS)
-        // PDFs have only the layout picker (no line width).
-        .frame(width: 340, height: state.isPDF ? 90 : state.twoPagesTooNarrow ? 230 : 180)
+        .frame(width: 320, height: height)
         #else
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
@@ -555,12 +548,53 @@ struct LayoutPopover: View {
         .platenPopover()
     }
 
-    /// On iOS a PDF in pages shows one page in portrait and two in landscape
-    /// (spec, "PDF"), so that choice is called Pages rather than One Page.
-    private func label(for layout: ReadingLayout) -> String {
-        #if os(iOS)
-        if state.isPDF, layout == .onePage { return String(localized: "Pages") }
-        #endif
-        return layout.label
+    private var selection: Binding<ReadingLayout> {
+        Binding(get: { state.currentLayout }, set: actions.setLayout)
     }
+
+    /// iOS: a list of the layouts with a tick by the one in use, as in the
+    /// system's own settings (a segmented control looked like tabs there).
+    /// The Mac keeps the segmented control, with its shortcuts.
+    @ViewBuilder private var layoutPicker: some View {
+        #if os(iOS)
+        Picker("Layout", selection: selection) {
+            ForEach(state.availableLayouts) { layout in
+                Label(layout.label, systemImage: layout.symbol).tag(layout)
+            }
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
+        #else
+        Picker("Layout", selection: selection) {
+            ForEach(state.availableLayouts) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
+        #endif
+    }
+
+    /// A PDF in Two Pages, held in portrait: one page shows until the
+    /// device is turned.
+    private var landscapeHint: Bool {
+        state.flow == .paginated && settings.pageLayout == .two && state.columnsOnScreen < 2
+    }
+
+    private func note(_ text: LocalizedStringKey) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    #if os(iOS)
+    /// A form in a popover has no height of its own on iOS: rows of about
+    /// 52 points (with the system's text sizes and the icons), the form's
+    /// margins, and a section for each note and the line width.
+    private var height: CGFloat {
+        var height = CGFloat(state.availableLayouts.count) * 52 + 34
+        if (state.isPDF && landscapeHint) || state.twoPagesTooNarrow { height += 92 }
+        if !state.isPDF { height += 52 + 20 }
+        return height
+    }
+    #endif
 }

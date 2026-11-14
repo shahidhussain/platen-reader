@@ -171,11 +171,15 @@ def simple(name, title, chapter_files, extra_files=(), version="3.0", extra_meta
     return write_epub(name, files)
 
 
-def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7D659A2FEAA0C55AD015"):
+def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7D659A2FEAA0C55AD015",
+               pictures=False):
     """A small PDF written by hand (no PDF library needed): text pages in
     Helvetica, an outline with one entry per chapter, a title in the
     document information, and a document ID in the trailer, which Platen
-    uses to recognise the file again (PDFIdentity)."""
+    uses to recognise the file again (PDFIdentity). With pictures, every
+    page has a picture (an image XObject) in its lower half, and the last
+    page is landscape, filled by a picture (for long-press save and share,
+    and the One Page layout)."""
     objects = []  # bodies, numbered from 1
 
     def add(body):
@@ -188,6 +192,14 @@ def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7
     catalog = add(None)        # filled in below
     pages_obj = add(None)
     font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    image = None
+    if pictures:
+        # 64 × 48 pixels of raw RGB: a blue-to-orange gradient.
+        w, h = 64, 48
+        pixels = bytes(v for y in range(h) for x in range(w)
+                       for v in (40 + x * 3, 90 + y, 200 - x * 2))
+        image = add(f"<< /Type /XObject /Subtype /Image /Width {w} /Height {h} /ColorSpace /DeviceRGB "
+                    f"/BitsPerComponent 8 /Length {len(pixels)} >>\nstream\n" + pixels.decode("latin-1") + "\nendstream")
     page_ids = []
     for c, name in enumerate(chapters):
         for p in range(pages_per_chapter):
@@ -195,9 +207,17 @@ def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7
             lines += [f"Page {len(page_ids) + 1} of the {title.lower()}. Line {i + 1} of the text."
                       for i in range(20)]
             text = "BT /F1 12 Tf 72 720 Td 16 TL " + " ".join(f"({esc(l)}) '" for l in lines) + " ET"
+            box, xobjects = "0 0 612 792", ""
+            if image:
+                last = c == len(chapters) - 1 and p == pages_per_chapter - 1
+                if last:  # landscape, filled by the picture
+                    box, text = "0 0 792 612", "q 792 0 0 612 0 0 cm /Im1 Do Q"
+                else:
+                    text += " q 300 0 0 225 156 60 cm /Im1 Do Q"
+                xobjects = f" /XObject << /Im1 {image} 0 R >>"
             stream = add(f"<< /Length {len(text)} >>\nstream\n{text}\nendstream")
-            page_ids.append(add(f"<< /Type /Page /Parent {pages_obj} 0 R /MediaBox [0 0 612 792] "
-                                f"/Contents {stream} 0 R /Resources << /Font << /F1 {font} 0 R >> >> >>"))
+            page_ids.append(add(f"<< /Type /Page /Parent {pages_obj} 0 R /MediaBox [{box}] "
+                                f"/Contents {stream} 0 R /Resources << /Font << /F1 {font} 0 R >>{xobjects} >> >>"))
     # The outline: one entry per chapter, pointing at its first page.
     outline = add(None)
     items = []
@@ -406,6 +426,13 @@ def main():
     # A PDF with an outline (Contents) and a document ID (spec, "PDF").
     p = os.path.join(OUT, "outline.pdf")
     simple_pdf(p, "Sample Report", ["Introduction", "Methods", "Results"])
+    made.append(p)
+
+    # A PDF with pictures (long press: save and share) and a landscape last
+    # page (One Page layout).
+    p = os.path.join(OUT, "pictures.pdf")
+    simple_pdf(p, "Picture Book", ["Plates", "Panorama"], pictures=True,
+               doc_id="5E884898DA28047151D0E56F8DC62927")
     made.append(p)
 
     # Footnotes: a marked footnote (epub:type="noteref" to an aside in the
