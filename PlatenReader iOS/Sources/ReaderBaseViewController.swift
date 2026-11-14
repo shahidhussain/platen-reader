@@ -54,7 +54,7 @@ class ReaderBaseViewController: UIViewController {
     var hasShownPage: Bool { false }
     /// The title when nothing could be opened and no better one is known.
     var failureFallbackTitle: String { String(localized: "This book could not be opened.") }
-    /// Whether the settings sheet leaves out the text controls.
+    /// Whether the settings popover leaves out what only applies to text.
     var hidesTextSettings: Bool { state.isFixedLayout }
 
     /// A setting or the system's appearance changed: re-style.
@@ -73,9 +73,9 @@ class ReaderBaseViewController: UIViewController {
                 self?.chrome.restartHideTimer()
             },
             interacted: { [weak self] in self?.chrome.restartHideTimer() },
-            openSettings: { [weak self] in
-                guard let self else { return }
-                self.presentReaderSettings(isFixedLayout: self.hidesTextSettings, chrome: self.chrome)
+            // The gear button's popover: the settings.
+            settingsContent: { [weak self] in
+                AnyView(ReaderSettingsView(isFixedLayout: self?.hidesTextSettings ?? false))
             })
         let chrome = ReaderChrome(owner: self, state: state, actions: actions,
                                   sidebarActions: ContentsActions(commands: commands),
@@ -111,6 +111,15 @@ class ReaderBaseViewController: UIViewController {
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (reader: ReaderBaseViewController, _) in
             reader.applySettings()
         }
+
+        // Scroll or pages is one setting for every book and PDF (spec,
+        // "Reading modes and layout"): the Layout button changes it, and
+        // this reader follows.
+        settings.$defaultFlow
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] flow in self?.commands.followFlowSetting(flow) }
+            .store(in: &cancellables)
 
         // Save when the app leaves the screen; it may be ended after that.
         NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)

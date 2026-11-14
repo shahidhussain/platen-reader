@@ -49,8 +49,9 @@ const attachPointerHandlers = (doc, index) => {
         const scale = frame.offsetWidth ? rect.width / frame.offsetWidth : 1
 
         // A click on a picture opens it full size (not in fixed layout, where
-        // the whole page is usually one picture).
-        const img = !reader.isFixedLayout && e.target.closest?.('img')
+        // the whole page is usually one picture). Not on iOS yet, which has
+        // no picture view: there a tap on a picture is a tap on the page.
+        const img = !reader.isFixedLayout && !reader.settings?.touch && e.target.closest?.('img')
         if (img) {
             const r = img.getBoundingClientRect()
             if (r.width * scale >= minZoomableSize && r.height * scale >= minZoomableSize) {
@@ -86,7 +87,8 @@ const attachPointerHandlers = (doc, index) => {
 // (see the `touch` setting above). Swift turns a page or shows the controls
 // only for 'page'; links, media, pictures and the bookmark ribbons handle
 // their own taps through WebKit's click, and a tap on a selection dismisses
-// it. Returns 'page', 'control', 'link', 'image' or 'selection'.
+// it. Returns 'page', 'control', 'link' or 'selection'. Pictures count as
+// the page for now: iOS has no picture view yet (the Mac's is native).
 const tapTarget = (x, y) => {
     // A tap while a note is open only closes it (unless it is on the note).
     if (isNoteOpen()) {
@@ -108,11 +110,6 @@ const tapTarget = (x, y) => {
         const scale = frame.offsetWidth ? rect.width / frame.offsetWidth : 1
         const target = doc.elementFromPoint((x - rect.left) / scale, (y - rect.top) / scale)
         if (target?.closest?.('a[href], audio, video, button, input, select, textarea, label')) return 'link'
-        const img = !reader.isFixedLayout && target?.closest?.('img')
-        if (img) {
-            const r = img.getBoundingClientRect()
-            if (r.width * scale >= minZoomableSize && r.height * scale >= minZoomableSize) return 'image'
-        }
         return 'page'
     }
     return 'page'

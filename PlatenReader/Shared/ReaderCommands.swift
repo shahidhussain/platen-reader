@@ -1,5 +1,6 @@
 import Foundation
 import PlatenCore
+import SwiftUI
 
 /// What a reader can be asked to do, whatever it is showing: a book (through
 /// `BookSession` and reader.js) or a PDF (through PDFKit). The overlay, the
@@ -26,7 +27,13 @@ protocol ReaderCommands: AnyObject {
     func goToHit(_ hit: ReaderState.SearchHit)
     /// The contents panel closed: search highlights are temporary and go.
     func searchPanelClosed()
+    /// The Layout choice. Scroll or pages is one setting for every book and
+    /// PDF (spec, "Reading modes and layout"), so this changes the setting;
+    /// every open reader then follows it (`followFlowSetting`).
     func setLayout(_ layout: ReadingLayout)
+    /// The reading-mode setting changed (in this reader or another): show
+    /// this book or PDF that way.
+    func followFlowSetting(_ flow: ReadingFlow)
 }
 
 extension ReaderCommands {
@@ -47,9 +54,10 @@ extension ReaderCommands {
 extension OverlayActions {
     /// The overlay's buttons and slider, wired to a reader. Showing the
     /// contents panel and keeping the overlay up are the app's own business
-    /// (they differ between the Mac and iOS), so they are passed in.
+    /// (they differ between the Mac and iOS), so they are passed in, as is
+    /// what the gear button's popover shows (iOS only).
     init(commands: ReaderCommands, toggleContents: @escaping () -> Void, interacted: @escaping () -> Void,
-         openSettings: (() -> Void)? = nil) {
+         settingsContent: (() -> AnyView)? = nil) {
         self.init(
             previousPage: { [weak commands] in commands?.turn(.prev) },
             nextPage: { [weak commands] in commands?.turn(.next) },
@@ -59,7 +67,7 @@ extension OverlayActions {
             setLayout: { [weak commands] layout in commands?.setLayout(layout) },
             toggleBookmark: { [weak commands] in commands?.toggleBookmark() },
             interacted: interacted,
-            openSettings: openSettings)
+            settingsContent: settingsContent)
     }
 }
 

@@ -96,6 +96,13 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
             .sink { [weak self] in DispatchQueue.main.async { self?.applySettings() } }
             .store(in: &cancellables)
 
+        // Scroll or pages, chosen in any window, applies to every book and PDF.
+        settings.$defaultFlow
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] flow in self?.commands.followFlowSetting(flow) }
+            .store(in: &cancellables)
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self, !self.hasShownPage, self.failureHost == nil else { return }
             self.spinner.startAnimation(nil)

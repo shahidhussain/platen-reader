@@ -42,7 +42,8 @@ public struct BookRecord: Codable, Equatable, Sendable {
     /// Informational only; books are found by key, never by path.
     public var lastKnownPath: String?
     public var lastCFI: String?
-    /// "paginated" or "scrolled".
+    /// "paginated" or "scrolled". No longer written or read: the reading
+    /// mode is one setting for every book. Kept so older files still load.
     public var readingMode: String?
     public var bookmarks: [Bookmark] = []
     public var lastOpened: Date?

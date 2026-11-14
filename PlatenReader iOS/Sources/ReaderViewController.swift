@@ -84,10 +84,10 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
             webView.topAnchor.constraint(equalTo: root.topAnchor),
             webView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
-        // No faint ribbon in the bookmark corner while the controls are up
-        // (as on the Mac): the buttons sit over that corner, and include a
-        // Bookmark button of their own.
         installChrome(in: root)
+        // While the controls are up, the page number steps aside for their
+        // location line, which sits in the same place.
+        chrome.onVisibilityChanged = { [weak self] visible in self?.session.setControlsVisible(visible) }
         view = root
     }
 

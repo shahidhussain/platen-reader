@@ -219,6 +219,7 @@ private final class RecordingReader: ReaderCommands {
     }
     func searchPanelClosed() { log.append("search closed") }
     func setLayout(_ layout: ReadingLayout) { log.append("layout \(layout.rawValue)") }
+    func followFlowSetting(_ flow: ReadingFlow) { log.append("flow \(flow.rawValue)") }
 }
 
 final class ReaderCommandsTests: XCTestCase {

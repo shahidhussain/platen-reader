@@ -156,11 +156,9 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
         record.lastOpened = Date()
         self.record = record
         state.bookmarks = record.bookmarks
-        if book.isFixedLayout {
-            state.flow = .paginated
-        } else if let mode = record.readingMode.flatMap(ReadingFlow.init) {
-            state.flow = mode
-        }
+        // The reading mode is the same for every book (the setting, taken
+        // in init); fixed-layout books always show pages.
+        if book.isFixedLayout { state.flow = .paginated }
     }
 
     private func sendBookIfReady() {
@@ -206,23 +204,32 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
         call("setSettings", settings.payload)
     }
 
-    /// One page, two pages or scroll (⌘1, ⌘2, ⌘3). The page count is a
-    /// global setting; paginated or scroll is remembered for this book.
+    /// One page, two pages or scroll (⌘1, ⌘2, ⌘3), chosen by the reader.
+    /// Both parts are settings for every book: this changes them, and every
+    /// open book follows (`followFlowSetting`, and the settings observer in
+    /// each reader).
     func setLayout(_ layout: ReadingLayout) {
         if let pages = layout.pages, pages != settings.pageLayout {
             settings.pageLayout = pages // re-styles every open book
         }
         guard !state.isFixedLayout, layout.flow != state.flow else { return }
-        state.flow = layout.flow
-        pushSettings()
+        settings.defaultFlow = layout.flow
+        followFlowSetting(layout.flow) // at once, here; other books follow
         host?.sessionDidChangeFlow()
+    }
+
+    /// Applies the reading-mode setting to this book (fixed-layout books
+    /// always show pages).
+    func followFlowSetting(_ flow: ReadingFlow) {
+        guard !state.isFixedLayout, flow != state.flow else { return }
+        state.flow = flow
+        pushSettings()
     }
 
     // MARK: - Saving
 
     func savePositionNow() {
-        guard var record else { return }
-        record.readingMode = state.flow.rawValue
+        guard let record else { return }
         PositionStore.shared.saveNow(record)
     }
 
@@ -254,7 +261,6 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
         case .relocate(let place):
             if let cfi = place.cfi, var record {
                 record.lastCFI = cfi
-                record.readingMode = state.flow.rawValue
                 self.record = record
                 PositionStore.shared.scheduleSave(record) // debounced
             }
@@ -385,6 +391,9 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
     func closeNote() { call("closeNote") }
     /// VoiceOver: read the page on screen again.
     func readPage() { call("readPage") }
+    /// iOS: the controls are up (or not). Their location line covers the
+    /// page number, so the page number steps aside meanwhile.
+    func setControlsVisible(_ visible: Bool) { call("setControlsVisible", visible) }
     /// Tells the page whether VoiceOver is on (it then follows page turns).
     func setVoiceOver(_ on: Bool) { call("setVoiceOver", on) }
     /// Mac trackpad swipes: the page follows the fingers, then settles

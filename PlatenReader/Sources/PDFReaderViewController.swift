@@ -102,9 +102,8 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
                 case .success(let loaded):
                     let model = PDFReaderModel(loaded: loaded, url: url, state: self.state)
                     self.model = model
-                    if let mode = model.record.readingMode.flatMap(ReadingFlow.init), mode == .scrolled {
-                        self.state.flow = .scrolled
-                    }
+                    // One reading mode for every book and PDF (the setting).
+                    self.state.flow = self.settings.defaultFlow
                     self.pdfView.document = loaded.document
                     self.applySettings()
                     self.view.window?.windowController?.synchronizeWindowTitleWithDocumentName()
@@ -199,9 +198,16 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         scrollView.hasHorizontalScroller = userZoomed
     }
 
+    /// The Layout choice changes the settings (one reading mode for every
+    /// book and PDF); every open reader follows (`followFlowSetting`).
     func setLayout(_ layout: ReadingLayout) {
         if let pages = layout.pages, pages != settings.pageLayout { settings.pageLayout = pages }
-        state.flow = layout.flow
+        settings.defaultFlow = layout.flow
+    }
+
+    func followFlowSetting(_ flow: ReadingFlow) {
+        guard flow != state.flow else { return }
+        state.flow = flow
         applySettings()
         reportPage()
     }

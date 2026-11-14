@@ -5,8 +5,9 @@ import UIKit
 /// The overlay on iOS, shared by the book reader and the PDF reader. Three
 /// small pieces of glass float over the page, with no panel behind them:
 /// - top left: a round Close button, and the title and chapter;
-/// - top right: Contents, Bookmark, Layout, Aa and Settings in one group;
-/// - bottom: where the reader is, and the slider between ‹ and ›.
+/// - bottom right, just above the slider: Contents, Bookmark, Layout, Aa and
+///   Settings in one group, within reach of a thumb;
+/// - bottom: the slider between ‹ and ›, and where the reader is below it.
 /// The buttons and the slider are the Mac bar's own (Shared/OverlayViews.swift,
 /// drawn in parts). A centre tap shows and hides them all; they also hide
 /// after 4 seconds unless they are in use.
@@ -20,7 +21,7 @@ final class ReaderChrome {
     let bottom: UIHostingController<OverlayBar>
     /// Close, and the title.
     let top: UIHostingController<ReaderTopControls>
-    /// The group of buttons at the top right.
+    /// The group of buttons at the bottom right, above the slider.
     let buttons: UIHostingController<OverlayBar>
     private var pieces: [UIView] { [bottom.view, top.view, buttons.view] }
     private(set) var isVisible = false
@@ -82,18 +83,20 @@ final class ReaderChrome {
             bottom.view.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 10),
             bottom.view.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -10),
             bottom.view.widthAnchor.constraint(equalTo: safe.widthAnchor, constant: -20).withPriority(.defaultHigh),
-            bottom.view.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -6),
+            // Not too wide on an iPad, so the buttons stay near the slider.
+            bottom.view.widthAnchor.constraint(lessThanOrEqualToConstant: 760),
+            bottom.view.bottomAnchor.constraint(equalTo: safe.bottomAnchor),
 
             top.view.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 12),
+            top.view.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -12),
             top.view.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4),
-            // The title gives way (it truncates) before the buttons do.
-            top.view.trailingAnchor.constraint(lessThanOrEqualTo: buttons.view.leadingAnchor, constant: -8),
 
-            buttons.view.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -12),
-            buttons.view.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4),
+            // Right-aligned with the › button, just above it.
+            buttons.view.trailingAnchor.constraint(equalTo: bottom.view.trailingAnchor),
+            buttons.view.bottomAnchor.constraint(equalTo: bottom.view.topAnchor, constant: -8),
         ])
+        // A long title truncates rather than running off the screen.
         top.view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        buttons.view.setContentCompressionResistancePriority(.required, for: .horizontal)
     }
 
     /// Light or dark controls, whatever the reader's own style is. The PDF
@@ -105,6 +108,41 @@ final class ReaderChrome {
     }
 
     func toggle() { setVisible(!isVisible) }
+
+    // MARK: - Notices
+
+    private var notice: UIView?
+    private var noticeTimer: Timer?
+
+    /// A short message in the middle of the page that fades away, such as
+    /// "End of book" when a turn finds nowhere to go. VoiceOver reads it.
+    func showNotice(_ text: String) {
+        guard let owner, let root = owner.view else { return }
+        noticeTimer?.invalidate()
+        notice?.removeFromSuperview()
+        let host = UIHostingController(rootView: NoticeView(text: text))
+        host.view.backgroundColor = .clear
+        host.view.isUserInteractionEnabled = false
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.sizingOptions = [.intrinsicContentSize]
+        host.overrideUserInterfaceStyle = top.overrideUserInterfaceStyle
+        root.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            host.view.centerYAnchor.constraint(equalTo: root.centerYAnchor),
+        ])
+        notice = host.view
+        let fade = UIAccessibility.isReduceMotionEnabled ? 0 : 0.2
+        host.view.alpha = 0
+        UIView.animate(withDuration: fade) { host.view.alpha = 1 }
+        UIAccessibility.post(notification: .announcement, argument: text)
+        noticeTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            UIView.animate(withDuration: fade, animations: { host.view.alpha = 0 }) { _ in
+                host.view.removeFromSuperview()
+                if self?.notice === host.view { self?.notice = nil }
+            }
+        }
+    }
 
     func setVisible(_ visible: Bool) {
         // Popovers hang from the overlay, so they go with it.
@@ -203,23 +241,22 @@ struct ReaderTopControls: View {
     }
 }
 
+/// The notice's look: a capsule of glass with one line of text.
+struct NoticeView: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 18)
+            .frame(minHeight: 40)
+            .overlaySurface(Capsule())
+    }
+}
+
 extension NSLayoutConstraint {
     func withPriority(_ priority: UILayoutPriority) -> NSLayoutConstraint {
         self.priority = priority
         return self
-    }
-}
-
-extension UIViewController {
-    /// The settings sheet (gear button), shared by both readers.
-    func presentReaderSettings(isFixedLayout: Bool, chrome: ReaderChrome?) {
-        chrome?.stopHideTimer()
-        let sheet = UIHostingController(rootView: ReaderSettingsView(isFixedLayout: isFixedLayout) { [weak self, weak chrome] in
-            self?.dismiss(animated: true) { chrome?.restartHideTimer() }
-        })
-        sheet.modalPresentationStyle = .pageSheet
-        sheet.sheetPresentationController?.detents = [.medium(), .large()]
-        sheet.sheetPresentationController?.prefersGrabberVisible = true
-        present(sheet, animated: true)
     }
 }
