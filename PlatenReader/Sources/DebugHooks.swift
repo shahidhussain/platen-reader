@@ -61,10 +61,10 @@ enum DebugHooks {
 extension ReaderViewController {
     func runDebugStep(_ step: String) {
         if step.hasPrefix("@tab:"), let tab = ReaderState.SidebarTab(rawValue: String(step.dropFirst(5))) {
-            self.setSidebar(visible: true, tab: tab)
+            self.chrome.setSidebar(visible: true, tab: tab)
         } else if step.hasPrefix("@search:") {
-            self.setSidebar(visible: true, tab: .search)
-            self.startSearch(String(step.dropFirst("@search:".count)))
+            self.chrome.setSidebar(visible: true, tab: .search)
+            self.session.search(String(step.dropFirst("@search:".count)))
         } else if step.hasPrefix("@resize:") {
             // "@resize:900x700": resize the window (content size, in points)
             // and log how long until the text has been laid out again.

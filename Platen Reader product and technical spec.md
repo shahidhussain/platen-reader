@@ -74,9 +74,9 @@ Reflowable books have two modes, paginated (the default) and continuous scroll; 
 **Paginated (default)**
 
 - Text is laid out in pages that turn left and right, like a book.
-- Page or spread count is decided by window width, as in Apple Books. In Automatic mode, Platen shows two pages side by side whenever each column can hold a comfortable line length (roughly 50 or more characters at the current font size), otherwise one. The user can force one or two pages from the View menu.
+- One Layout setting chooses One Page, Two Pages or Scroll (⌘1, ⌘2, ⌘3). Two Pages shows two pages side by side whenever each column can hold a comfortable line length (roughly 50 or more characters at the current font size), otherwise one, as in Apple Books; Settings and the Layout popover say so when the window is too narrow.
 - In full screen on a typical Mac display this nearly always produces a two-page spread.
-- Page turns animate with a short horizontal slide of 150 to 200 ms. No animation when the system Reduce Motion setting is on. No page-curl effect.
+- Page turns animate in one of three styles, chosen in Settings: Page Curl (the default; with two pages the leaf bends like paper), Slide (a short horizontal slide of 150 to 200 ms) or None. No animation when the system Reduce Motion setting is on.
 - A two-finger trackpad swipe tracks the fingers interactively: the page follows the gesture and completes or springs back on release.
 
 **Continuous scroll**
@@ -198,7 +198,7 @@ Bookmarks are the only annotation feature; highlights and notes are deliberately
 
 ## Typography and themes
 
-The publisher's design is the default; the reader can override body font, size, line spacing and line width, and choose one of three themes that can follow the system's light and dark appearance.
+The publisher's design is the default; the reader can override body font, size, line spacing and line width, and choose one Appearance: Automatic (following the system's light and dark appearance) or one of four themes.
 
 **Typography controls**
 
@@ -221,8 +221,9 @@ The publisher's design is the default; the reader can override body font, size, 
 | Light | White | Near-black |
 | Sepia | Warm cream | Dark brown |
 | Dark | Near-black (not pure black) | Light grey |
+| Black | True black, for OLED screens | A slightly dimmer grey |
 
-- Setting "Follow system appearance" (on by default): choose one theme for Light appearance and one for Dark. With macOS appearance set to Auto, this switches at sunset without Platen needing location access.
+- One Appearance setting: Automatic (the default), Light, Sepia, Dark or Black. Automatic uses Light in the system's Light appearance and Dark in its Dark appearance; with macOS appearance set to Auto, this switches at sunset without Platen needing location access.
 - Themes recolour backgrounds and text, and leave images untouched. Images that are dark line art on transparent backgrounds get a light backing in the Dark theme so they stay legible.
 - Publisher colours on text are preserved in Light, and softened in Sepia and Dark only where they would fail contrast.
 - No in-app colour-temperature filter: Night Shift already provides it system-wide.
@@ -233,10 +234,9 @@ All settings are global and live in Platen Reader > Settings… (⌘,), a standa
 
 | Tab | Contents |
 | --- | --- |
-| General | Default reading mode (paginated or scroll); page layout (automatic, one page, two pages); page-turn animation on or off; reset first-run tips |
-| Appearance | Follow system appearance, with a theme for Light and one for Dark; default font, text size, line spacing, line width (the same controls as the Aa popover) |
+| Appearance | Text: font, text size, line spacing, hyphenation and Appearance (the Aa popover's controls). Layout: the layout new books open in, line width, page-turn animation (Page Curl, Slide or None), pages left in chapter (the Layout popover's controls) |
 | File Types | One row per supported type with its current default app and a "Make Platen the default" button, plus "Make Platen the default for all" |
-| Advanced | Clear reading positions and bookmarks; reveal the data folder in Finder |
+| Advanced | Clear reading positions and bookmarks; reveal the data folder in Finder; show the first-run tips again |
 
 **File associations**
 
@@ -425,7 +425,7 @@ Five milestones, each with a clear exit test; the first is a short technical spi
 1. **M0: Spike (risk retirement).** A bare document-based Mac app that opens an EPUB from disk and from an SMB share, renders it through foliate-js in WKWebView via a custom scheme handler, and turns pages.
    - Exit: warm open under 400 ms for a typical novel; malformed XHTML falls back to HTML parsing; two-finger swipe tracks the finger in a prototype; obfuscated fonts render.
 2. **M1: Platen Reader for Mac 1.0.** Everything in this spec for macOS except the items listed under later milestones. PDF is M4, which also ships in 1.0.
-   - Includes: paginated and scroll modes, automatic one or two pages, overlay, click zones, keyboard, first-run explainer, bookmarks, contents and search, Copy with Citation, typography, three themes with system-appearance switching, Settings with file associations, MOBI/AZW3/KEPUB, robustness corpus green, VoiceOver.
+   - Includes: paginated and scroll modes, automatic one or two pages, overlay, click zones, keyboard, first-run explainer, bookmarks, contents and search, Copy with Citation, typography, themes with system-appearance switching, Settings with file associations, MOBI/AZW3/KEPUB, robustness corpus green, VoiceOver.
    - Exit: all performance targets met; full corpus passes; notarised DMG on GitHub releases, updating through Sparkle, with a Homebrew cask.
 3. **M2: Mac refinements.** A visual typography control (live preview instead of numeric steps), custom themes with a contrast warning, a Quick Look extension so the space bar previews EPUBs in Finder. After launch.
 4. **M3: Platen Reader for iOS and iPadOS.** Same core package; touch interaction (tap zones identical to Mac, swipe page turns), Dynamic Type default size, system document browser as the home screen, iPad split view and hardware keyboard support, all formats including PDF. Ships on the App Store at launch; the Mac App Store build joins the same listing later. Details in "iOS and iPadOS (M3)".

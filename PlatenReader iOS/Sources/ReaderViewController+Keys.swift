@@ -11,7 +11,7 @@ extension ReaderViewController {
         // While a popover or sheet is up (search field, settings), keys
         // belong to it: only Esc is ours.
         let escape = UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(escapePressed))
-        guard bookSentToShell, !state.sidebarVisible, presentedViewController == nil else { return [escape] }
+        guard session.isOpenInPage, !state.sidebarVisible, presentedViewController == nil else { return [escape] }
 
         func command(_ title: String, _ input: String, _ flags: UIKeyModifierFlags = .command,
                      _ action: Selector, discoverable: Bool = true) -> UIKeyCommand {
@@ -48,39 +48,39 @@ extension ReaderViewController {
         return commands
     }
 
-    @objc private func keyLeft() { turn(.left) }
-    @objc private func keyRight() { turn(.right) }
-    @objc private func keyNext() { turn(.next) }
-    @objc private func keyPrevious() { turn(.prev) }
-    @objc private func keyPreviousChapter() { js("platen.prevSection()") }
-    @objc private func keyNextChapter() { js("platen.nextSection()") }
-    @objc private func keyBack() { js("platen.goBack()") }
-    @objc private func keyBookmark() { js("platen.toggleBookmark()") }
+    @objc private func keyLeft() { session.turn(.left) }
+    @objc private func keyRight() { session.turn(.right) }
+    @objc private func keyNext() { session.turn(.next) }
+    @objc private func keyPrevious() { session.turn(.prev) }
+    @objc private func keyPreviousChapter() { session.previousChapter() }
+    @objc private func keyNextChapter() { session.nextChapter() }
+    @objc private func keyBack() { session.goBack() }
+    @objc private func keyBookmark() { session.toggleBookmark() }
     @objc private func keyContents() { showSidebar(tab: .contents) }
     @objc private func keyFind() {
         showSidebar(tab: .search)
         state.searchFocusRequest += 1
     }
-    @objc private func keyFindNext() { stepThroughHits(by: 1) }
-    @objc private func keyFindPrevious() { stepThroughHits(by: -1) }
+    @objc private func keyFindNext() { if !session.stepThroughHits(by: 1) { keyFind() } }
+    @objc private func keyFindPrevious() { if !session.stepThroughHits(by: -1) { keyFind() } }
     @objc private func keyBigger() { settings.biggerText() }
     @objc private func keySmaller() { settings.smallerText() }
     @objc private func keyDefaultSize() { settings.defaultTextSize() }
-    @objc private func keyControls() { setOverlay(visible: !overlayVisible) }
-    @objc private func keyLayoutOne() { setLayout(.onePage) }
-    @objc private func keyLayoutTwo() { setLayout(.twoPages) }
-    @objc private func keyLayoutScroll() { setLayout(.scroll) }
+    @objc private func keyControls() { chrome.toggle() }
+    @objc private func keyLayoutOne() { session.setLayout(.onePage) }
+    @objc private func keyLayoutTwo() { session.setLayout(.twoPages) }
+    @objc private func keyLayoutScroll() { session.setLayout(.scroll) }
 
     /// Esc closes the panel, then the controls.
     @objc private func escapePressed() {
         if state.noteOpen {
-            js("platen.closeNote()")
+            session.closeNote()
         } else if presentedViewController != nil, !state.sidebarVisible {
             dismiss(animated: true)
         } else if state.sidebarVisible {
             state.sidebarVisible = false
-        } else if overlayVisible {
-            setOverlay(visible: false)
+        } else if chrome.isVisible {
+            chrome.setVisible(false)
         }
     }
 
@@ -88,19 +88,10 @@ extension ReaderViewController {
     /// is shown first.
     private func showSidebar(tab: ReaderState.SidebarTab) {
         state.sidebarTab = tab
-        let wasHidden = !overlayVisible
-        setOverlay(visible: true)
+        let wasHidden = !chrome.isVisible
+        chrome.setVisible(true)
         DispatchQueue.main.asyncAfter(deadline: .now() + (wasHidden ? 0.2 : 0)) { [weak self] in
             self?.state.sidebarVisible = true
         }
-    }
-
-    /// Find Next / Previous: step through the search results.
-    private func stepThroughHits(by step: Int) {
-        let hits = state.allHits
-        guard !hits.isEmpty else { return keyFind() }
-        let current = hits.firstIndex { $0.id == state.currentHitID }
-        let next = current.map { ($0 + step + hits.count) % hits.count } ?? (step > 0 ? 0 : hits.count - 1)
-        goToHit(hits[next])
     }
 }

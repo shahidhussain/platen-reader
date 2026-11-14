@@ -86,7 +86,18 @@ const metadataString = x => {
 // ---------------------------------------------------------------------------
 // Location reporting
 
-let firstRelocate = true
+// "The first page is visible" is told to Swift once both of these have
+// happened: the first chapter's frame has loaded, and foliate has reported
+// where the reader is. (foliate's first report can come before the frame
+// has loaded, while the page is still blank; on iOS the gap can be seconds.)
+let hasRelocated = false
+let hasLoadedSection = false
+let firstRenderSent = false
+const sendFirstRender = force => {
+    if (firstRenderSent || !(force || (hasRelocated && hasLoadedSection))) return
+    firstRenderSent = true
+    post('firstRender')
+}
 let lastReason = null
 const onRelocate = ({ detail }) => {
     const { cfi, fraction, tocItem, pageItem, location, section } = detail
@@ -119,9 +130,12 @@ const onRelocate = ({ detail }) => {
         location: location?.current ?? null,
         totalLocations: location?.total ?? null,
     })
-    if (firstRelocate) {
-        firstRelocate = false
-        post('firstRender')
+    if (!hasRelocated) {
+        hasRelocated = true
+        sendFirstRender()
+        // A section that cannot be loaded (a damaged book) never reports a
+        // load; do not wait for it for ever.
+        setTimeout(() => sendFirstRender(true), 3000)
     }
 }
 
@@ -155,6 +169,8 @@ window.platen = {
                 }
                 attachPointerHandlers(doc, index)
                 nameSection(doc, reader.view.getProgressOf?.(index)?.tocItem?.label?.trim())
+                hasLoadedSection = true
+                sendFirstRender()
             })
             reader.view.renderer.addEventListener('relocate', e => { lastReason = e.detail.reason })
             reader.view.renderer.addEventListener('scroll', followScroll)

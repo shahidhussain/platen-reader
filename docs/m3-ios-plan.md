@@ -73,7 +73,21 @@ At the user's request, parts of phases 2 to 4 came forward:
 - **Footnote pop-ups** on both platforms (shared web code, `modules/footnotes.js`).
 - **Text and margins:** the default size follows Dynamic Type (20 pt at the standard size) until the reader picks one; 24-point side margins on iPhone; top and bottom margins clear of the Dynamic Island and home indicator, steady when the status bar comes and goes.
 
-### Phase 2: shared reader session
+### Phase 2: shared reader session (done)
+
+Done on 14 Nov 2026, with more than was planned here:
+
+- **`Shared/BookSession`** holds everything about an open book for both apps: loading, the record, the bridge, bookmarks, search, jumps, saving, the navigation policy and recovery when WebKit's process ends. Each app's `ReaderViewController` is its host (`BookSessionHost`) and keeps only platform work.
+- **`Shared/ReaderBridge`** types the bridge: `ReaderMessage` (decoded once), `WebSettings`, `PageTurn`, `ClickZone`. No script strings or `[String: Any]` decoding remain in the view controllers.
+- **`Shared/ReaderCommands`** is the one set of commands for books and PDFs; the overlay's and contents panel's actions are built from it once, for all four readers.
+- **A base reader class on each platform** (`ReaderBaseViewController`) owns the chrome, spinner, failure message and theme; on the Mac also the keys, click zones and menu actions, which the book and PDF windows used to duplicate. The Mac has a `ReaderChrome` of its own, like iOS.
+- **`firstRender` waits for the first chapter to load** (reader.js), so "First page visible" is honest and taps and swipes are ignored until then.
+- **WebKit is warmed at launch on iOS** too (`Shared/WebViewWarmer`). Still to measure on a real iPhone; the first-chapter stall in the Simulator remains (about 4 s).
+- **Unit tests for the shared code** (`PlatenReaderTests`, run in CI): the test bundle compiles `Shared/` on its own, which also proves it needs nothing from either app. This replaces the `PlatenReaderKit` package idea below: it gives the tests and the isolation without making every shared type public or moving the String Catalog.
+
+Still open from this phase: picture zoom, Copy with Citation (the text is shared, in `Citation`), the click-zone explainer and VoiceOver's page text on iOS. The session already delivers what each needs.
+
+The original plan:
 
 Extract `ReaderSession` from the Mac `ReaderViewController` (book loading, record, bridge, message decoding into `ReaderState`, bookmarks, search, jumps, saving), with the Mac view controller as its host. Verify the Mac with `check-corpus.sh` and `run-debug.sh` snapshots before and after. The iOS reader then uses it, so contents, bookmarks, search, the Back button and page numbers arrive on iOS with no new logic.
 

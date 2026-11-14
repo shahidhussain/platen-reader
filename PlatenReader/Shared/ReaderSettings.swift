@@ -183,9 +183,6 @@ final class ReaderSettings: ObservableObject {
     @Published var hyphenate: Bool { didSet { save("hyphenate", hyphenate) } }
     /// Optional "N pages left in chapter" in the location line (paginated).
     @Published var showPagesLeftInChapter: Bool { didSet { save("showPagesLeftInChapter", showPagesLeftInChapter) } }
-    /// Not saved: whether the front book window shows one page although Two
-    /// Pages is chosen (it is too narrow). Settings explains this.
-    @Published var frontWindowTooNarrowForTwoPages = false
 
     private init() {
         func string(_ key: String) -> String? { AppDefaults.store.string(forKey: key) }
@@ -261,25 +258,10 @@ final class ReaderSettings: ObservableObject {
         defaults.removeObject(forKey: "fontSizeIndex")
     }
 
-    /// The settings object passed to reader.js (`platen.setSettings`).
-    func webPayload(theme: Theme, flow: ReadingFlow) -> [String: Any] {
-        [
-            "flow": flow.rawValue,
-            "pageLayout": pageLayout.rawValue,
-            // foliate-js's own slide animation, for Slide (the curl is drawn
-            // natively, and swipes always slide; see reader.js).
-            "animated": pageTurnStyle == .slide,
-            "fontSize": fontSize,
-            "lineHeight": lineHeight,
-            "lineWidth": lineWidth.rawValue,
-            "fontFamily": fontFamily,
-            "hyphenate": hyphenate,
-            "theme": [
-                "background": theme.background,
-                "foreground": theme.foreground,
-                "link": theme.link,
-                "dark": theme.isDark,
-            ] as [String: Any],
-        ]
+    /// The settings for reader.js (see `WebSettings` in ReaderBridge.swift).
+    func webSettings(theme: Theme, flow: ReadingFlow) -> WebSettings {
+        WebSettings(flow: flow, pageLayout: pageLayout, animated: pageTurnStyle == .slide,
+                    fontSize: fontSize, lineHeight: lineHeight, lineWidth: lineWidth,
+                    fontFamily: fontFamily, hyphenate: hyphenate, theme: theme)
     }
 }

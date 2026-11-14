@@ -5,6 +5,22 @@ struct OpenFailureView: View {
     let title: String
     let detail: String?
 
+    init(title: String, detail: String?) {
+        self.title = title
+        self.detail = detail
+    }
+
+    /// The message for an error from opening a book or PDF. Platen's own
+    /// errors say what went wrong and what to do; for any other, `fallback`
+    /// is the title and the system's description the detail.
+    init(error: Error, fallback: String) {
+        if let error = error as? LocalizedError {
+            self.init(title: error.errorDescription ?? fallback, detail: error.recoverySuggestion)
+        } else {
+            self.init(title: fallback, detail: error.localizedDescription)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "book.closed")

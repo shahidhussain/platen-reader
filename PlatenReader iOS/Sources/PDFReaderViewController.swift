@@ -18,25 +18,15 @@ import UIKit
 ///   rotated, and holds: each turn moves two pages. If the pairs look wrong
 ///   (some PDFs have an extra cover page), rotating back, turning one page
 ///   and rotating again fixes them. Rotating back shows the pair's left page.
-final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelegate {
-    let url: URL
-    let state = ReaderState()
-    let settings = ReaderSettings.shared
-    var onClose: (() -> Void)?
-
+final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, UIGestureRecognizerDelegate {
     private var pdfView: PDFView!
     /// Behind the pages: their own colours, softened (PDFAmbientBackground).
     private var ambient: UIImageView!
     /// What the ambient background was last made for (pages and theme), so
     /// it is only remade when that changes.
     private var ambientKey: String?
-    private var spinner: UIActivityIndicatorView!
     private var ribbon: UIImageView!
-    private var failureHost: UIViewController?
-    private(set) var chrome: ReaderChrome?
     private var model: PDFReaderModel?
-    private var cancellables: Set<AnyCancellable> = []
-    private var accessingSecurityScope = false
     /// Landscape: whether the pairs start at an odd page (see the type's
     /// notes). Decided when the reader rotates to landscape.
     private var spreadsStartOdd = false
@@ -63,7 +53,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         turnUnderneath: { [weak self] request, done in
             guard let self else { return done(false) }
             let before = self.currentIndex
-            let forward = request == .next || request == .right
+            let forward = request.isForward
             if forward { self.pdfView.goToNextPage(nil) } else { self.pdfView.goToPreviousPage(nil) }
             self.pdfView.layoutIfNeeded()
             // PDFKit draws the new page a moment later; wait for it, so the
@@ -72,17 +62,14 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         })
 
     init(url: URL) {
-        self.url = url
-        super.init(nibName: nil, bundle: nil)
-        accessingSecurityScope = url.startAccessingSecurityScopedResource()
+        super.init(url: url, state: ReaderState())
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-
-    deinit {
-        if accessingSecurityScope { url.stopAccessingSecurityScopedResource() }
-    }
+    override var commands: ReaderCommands { self }
+    override var pageView: UIView { pdfView }
+    override var hasShownPage: Bool { model != nil }
+    override var failureFallbackTitle: String { String(localized: "This PDF could not be opened.") }
+    override var hidesTextSettings: Bool { true }
 
     // MARK: - View setup
 
@@ -133,25 +120,12 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         ribbon.isAccessibilityElement = false
         root.addSubview(ribbon)
 
-        spinner = UIActivityIndicatorView(style: .medium)
-        spinner.hidesWhenStopped = true
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(spinner)
-
-        let chrome = ReaderChrome(owner: self, state: state, actions: overlayActions, sidebarActions: contentsActions,
-                                  close: { [weak self] in self?.close() },
-                                  sidebarClosed: { [weak self] in
-                                      // Search highlights are temporary.
-                                      self?.pdfView.highlightedSelections = nil
-                                      self?.model?.cancelSearch()
-                                  })
-        chrome.onVisibilityChanged = { [weak self] _ in self?.updateRibbon() }
         // Pages (one or a spread, by orientation) or Scroll; never "Two
         // Pages" as a choice of its own.
         state.allowsTwoPages = false
-        chrome.install(in: root)
+        installChrome(in: root)
+        chrome.onVisibilityChanged = { [weak self] _ in self?.updateRibbon() }
         chrome.setInterfaceStyle(.light)
-        self.chrome = chrome
         configurePageTurner()
 
         let safe = root.safeAreaLayoutGuide
@@ -168,31 +142,15 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
             ribbon.topAnchor.constraint(equalTo: safe.topAnchor, constant: 2),
             ribbon.widthAnchor.constraint(equalToConstant: 22),
             ribbon.heightAnchor.constraint(equalToConstant: 26),
-            spinner.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: root.centerYAnchor),
         ])
         view = root
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        applyTheme()
-        settings.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] in self?.applyTheme() }
-            .store(in: &cancellables)
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyTheme() }
-        settings.$defaultFlow
-            .dropFirst()
-            .removeDuplicates()
-            .sink { [weak self] flow in self?.followFlowSetting(flow) }
-            .store(in: &cancellables)
         state.$isPageBookmarked
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in DispatchQueue.main.async { self?.updateRibbon() } }
-            .store(in: &cancellables)
-        NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
-            .sink { [weak self] _ in self?.model?.saveNow() }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .PDFViewPageChanged)
             .sink { [weak self] note in
@@ -211,15 +169,7 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
             .store(in: &cancellables)
 
         load()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, self.model == nil, self.failureHost == nil else { return }
-            self.spinner.startAnimating()
-        }
     }
-
-    override var prefersStatusBarHidden: Bool { !(chrome?.isVisible ?? false) }
-    override var prefersHomeIndicatorAutoHidden: Bool { !(chrome?.isVisible ?? false) }
-    override var preferredStatusBarStyle: UIStatusBarStyle { currentTheme.isDark ? .lightContent : .darkContent }
 
     // MARK: - Opening
 
@@ -254,31 +204,11 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
                     log.info("PDF: \(model.pageCount) pages, \(self.state.toc.count) contents entries")
                     log.info("First page visible after \(elapsed, format: .fixed(precision: 0)) ms")
                 case .failure(let error):
+                    log.error("Could not open \(url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
                     self.showFailure(error)
                 }
             }
         }
-    }
-
-    private func showFailure(_ error: Error) {
-        log.error("Could not open \(self.url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
-        spinner.stopAnimating()
-        let title = (error as? LocalizedError)?.errorDescription ?? String(localized: "This PDF could not be opened.")
-        let detail = (error as? LocalizedError)?.recoverySuggestion
-        let host = UIHostingController(rootView: OpenFailureView(title: title, detail: detail))
-        host.view.backgroundColor = .clear
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        addChild(host)
-        view.insertSubview(host.view, belowSubview: chrome?.top.view ?? pdfView)
-        NSLayoutConstraint.activate([
-            host.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            host.view.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            host.view.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor),
-        ])
-        host.didMove(toParent: self)
-        failureHost = host
-        if state.title.isEmpty { state.title = url.deletingPathExtension().lastPathComponent }
-        chrome?.showCloseOnly()
     }
 
     // MARK: - Layout (Scroll; or pages: one in portrait, a spread in landscape)
@@ -336,11 +266,11 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
     /// Pages or Scroll, from the overlay's Layout button. It changes the
     /// setting (one reading mode for every book and PDF); this reader, and
     /// any other open one, follows (`followFlowSetting`).
-    private func setLayout(_ layout: ReadingLayout) {
+    func setLayout(_ layout: ReadingLayout) {
         settings.defaultFlow = layout.flow
     }
 
-    private func followFlowSetting(_ flow: ReadingFlow) {
+    func followFlowSetting(_ flow: ReadingFlow) {
         guard model != nil, flow != state.flow else { return }
         let current = currentIndex
         state.flow = flow
@@ -357,30 +287,29 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         if let page = pdfView.page(for: point, nearest: false),
            page.annotation(at: pdfView.convert(point, to: page))?.type == "Link" { return }
         let width = pdfView.bounds.width
-        let side = width * 0.38
         // The top-right corner bookmarks the page, as for books.
         if point.x > width - 64, point.y < view.safeAreaInsets.top + 48 {
             toggleBookmark()
         } else if state.flow == .scrolled {
-            chrome?.toggle() // in Scroll, any tap shows or hides the controls
-        } else if point.x < side {
-            turn(forward: false)
-        } else if point.x > width - side {
-            turn(forward: true)
+            chrome.toggle() // in Scroll, any tap shows or hides the controls
         } else {
-            chrome?.toggle()
+            switch ClickZone(x: point.x, width: width) {
+            case .left: turn(.left)
+            case .right: turn(.right)
+            case .centre: chrome.toggle()
+            }
         }
     }
 
     @objc private func swiped(_ recogniser: UISwipeGestureRecognizer) {
-        turn(forward: recogniser.direction == .left)
+        turn(recogniser.direction == .left ? .right : .left)
     }
 
     private func configurePageTurner() {
         // A turn past the first or last page says so, rather than just not
         // moving.
         pageTurner.onEdge = { [weak self] request in
-            self?.chrome?.showNotice(request == .next ? String(localized: "End of document")
+            self?.chrome.showNotice(request == .next ? String(localized: "End of document")
                                                       : String(localized: "Start of document"))
         }
         // Only the page curls (or the spread, in landscape), not the
@@ -399,7 +328,8 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
 
     /// Turns a page (PDFs are always left to right), drawn in the Page Turn
     /// style: none in Scroll layout or under Reduce Motion.
-    private func turn(forward: Bool) {
+    func turn(_ turn: PageTurn) {
+        let forward = turn.isForward
         var style: PageTurnAnimator.Style
         switch settings.pageTurnStyle {
         case .none: style = .none
@@ -449,6 +379,8 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         return document.index(for: page)
     }
 
+    // MARK: - Commands (ReaderCommands)
+
     /// A jump (contents, bookmark, search result, slider): remembered, so the
     /// overlay offers "Back to p. N".
     private func jump(toPage index: Int, keepOrigin: Bool = false) {
@@ -457,69 +389,33 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         pdfView.go(to: page)
     }
 
-    private var overlayActions: OverlayActions {
-        OverlayActions(
-            previousPage: { [weak self] in self?.turn(forward: false) },
-            nextPage: { [weak self] in self?.turn(forward: true) },
-            goToFraction: { [weak self] f in
-                guard let self, let model = self.model else { return }
-                self.jump(toPage: model.page(atFraction: f))
-            },
-            goBack: { [weak self] in
-                guard let self, let target = self.model?.takeBackTarget(),
-                      let page = self.pdfView.document?.page(at: target) else { return }
-                self.pdfView.go(to: page)
-            },
-            toggleContents: { [weak self] in
-                self?.state.sidebarVisible.toggle()
-                self?.chrome?.restartHideTimer()
-            },
-            setLayout: { [weak self] layout in self?.setLayout(layout) },
-            toggleBookmark: { [weak self] in self?.toggleBookmark() },
-            interacted: { [weak self] in self?.chrome?.restartHideTimer() },
-            settingsContent: { AnyView(ReaderSettingsView(isFixedLayout: true)) }
-        )
+    func jump(to href: String, keepOrigin: Bool) {
+        if let index = model?.pageIndex(for: href) { jump(toPage: index, keepOrigin: keepOrigin) }
     }
 
-    private var contentsActions: ContentsActions {
-        ContentsActions(
-            goToTOCItem: { [weak self] item in
-                guard let self, let index = self.model?.pageIndex(for: item.href) else { return }
-                self.jump(toPage: index)
-                self.state.sidebarVisible = false
-            },
-            goToBookmark: { [weak self] bookmark in
-                guard let self, let index = self.model?.pageIndex(for: bookmark.cfi) else { return }
-                self.jump(toPage: index)
-                self.state.sidebarVisible = false
-            },
-            removeBookmark: { [weak self] bookmark in
-                guard let self else { return }
-                self.model?.removeBookmark(cfi: bookmark.cfi, visible: self.visiblePages)
-            },
-            search: { [weak self] query in
-                self?.model?.search(query)
-                self?.pdfView.highlightedSelections = nil
-            },
-            goToHit: { [weak self] hit in
-                guard let self, let model = self.model else { return }
-                let keep = self.state.currentHitID != nil // Back returns to before the first result
-                self.state.currentHitID = hit.id
-                if let selection = model.hitSelections[hit.id] {
-                    model.noteJump(from: self.currentIndex, to: model.pageIndex(for: hit.cfi) ?? 0, keepOrigin: keep)
-                    self.pdfView.highlightedSelections = Array(model.hitSelections.values)
-                    selection.color = .systemYellow
-                    self.pdfView.go(to: selection)
-                    self.pdfView.setCurrentSelection(selection, animate: true)
-                } else if let index = model.pageIndex(for: hit.cfi) {
-                    self.jump(toPage: index, keepOrigin: keep)
-                }
-            },
-            close: { [weak self] in self?.state.sidebarVisible = false }
-        )
+    func jump(toFraction fraction: Double) {
+        if let model { jump(toPage: model.page(atFraction: fraction)) }
     }
 
-    private func toggleBookmark() {
+    func goBack() {
+        guard let target = model?.takeBackTarget(), let page = pdfView.document?.page(at: target) else { return }
+        pdfView.go(to: page)
+    }
+
+    /// Previous and next chapter: the outline's entries.
+    func previousChapter() {
+        if let target = outlinePages.last(where: { $0 < currentIndex }) { jump(toPage: target) }
+    }
+
+    func nextChapter() {
+        if let target = outlinePages.first(where: { $0 > currentIndex }) { jump(toPage: target) }
+    }
+
+    private var outlinePages: [Int] {
+        state.toc.compactMap { model?.pageIndex(for: $0.href) }.sorted()
+    }
+
+    func toggleBookmark() {
         model?.toggleBookmark(visible: visiblePages)
         updateRibbon()
         if state.isPageBookmarked {
@@ -527,16 +423,37 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
         }
     }
 
-    private func close() {
-        model?.saveNow()
-        onClose?()
+    func removeBookmark(cfi: String) { model?.removeBookmark(cfi: cfi, visible: visiblePages) }
+
+    func search(_ query: String) {
+        model?.search(query)
+        pdfView.highlightedSelections = nil
     }
 
-    func savePositionNow() { model?.saveNow() }
+    func goToHit(_ hit: ReaderState.SearchHit) {
+        guard let model else { return }
+        let keep = state.currentHitID != nil // Back returns to before the first result
+        state.currentHitID = hit.id
+        if let selection = model.hitSelections[hit.id] {
+            model.noteJump(from: currentIndex, to: model.pageIndex(for: hit.cfi) ?? 0, keepOrigin: keep)
+            pdfView.highlightedSelections = Array(model.hitSelections.values)
+            selection.color = .systemYellow
+            pdfView.go(to: selection)
+            pdfView.setCurrentSelection(selection, animate: true)
+        } else {
+            jump(to: hit.cfi, keepOrigin: keep)
+        }
+    }
+
+    /// Search highlights are temporary: they go when the panel closes.
+    func searchPanelClosed() {
+        pdfView.highlightedSelections = nil
+        model?.cancelSearch()
+    }
+
+    override func savePositionNow() { model?.saveNow() }
 
     // MARK: - Theme
-
-    private var currentTheme: Theme { settings.theme(for: traitCollection) }
 
     /// The ambient background for the pages on screen, faded in over the
     /// last one. Remade only when the pages or the theme change.
@@ -559,9 +476,8 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
     /// Themes colour the background around the page (spec, "PDF"), here
     /// mixed with the page's own colours (updateAmbient), so the PDF view
     /// and its inner views are see-through.
-    private func applyTheme() {
-        let theme = currentTheme
-        view.backgroundColor = theme.uiBackground
+    override func applyTheme() {
+        super.applyTheme()
         if pdfView?.document != nil { updateAmbient() }
         if let pdfView {
             pdfView.backgroundColor = .clear
@@ -580,7 +496,5 @@ final class PDFReaderViewController: UIViewController, UIGestureRecognizerDelega
                 queue.append(contentsOf: next.subviews)
             }
         }
-        overrideUserInterfaceStyle = theme.interfaceStyle
-        setNeedsStatusBarAppearanceUpdate()
     }
 }

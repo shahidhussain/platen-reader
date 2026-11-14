@@ -5,80 +5,9 @@ import SwiftUI
 import WebKit
 import os
 
-// Keys, clicks on the page, the trackpad and the scroll wheel.
-extension ReaderViewController {
-    // MARK: - Input
-
-    /// Click zones: in paginated mode the left third goes back, the right
-    /// third forward and the centre toggles the overlay. In scroll mode any
-    /// click toggles the overlay.
-    func handleClick(zone: String) {
-        if state.flow == .scrolled || zone == "centre" {
-            setOverlay(visible: !overlayVisible)
-        } else if zone == "left" {
-            turn(.left)
-        } else {
-            turn(.right)
-        }
-    }
-
-    /// Keys that are not menu shortcuts. Returns true if handled.
-    func handleKey(_ event: NSEvent) -> Bool {
-        let modifiers = event.modifierFlags.intersection([.command, .option, .control])
-        guard modifiers.isEmpty else { return false }
-        let shift = event.modifierFlags.contains(.shift)
-        // C shows or hides the controls (by character, so it follows the
-        // keyboard layout).
-        if !shift, event.charactersIgnoringModifiers?.lowercased() == "c" {
-            setOverlay(visible: !overlayVisible)
-            return true
-        }
-        // R: VoiceOver reads the page on screen again.
-        if !shift, event.charactersIgnoringModifiers?.lowercased() == "r", NSWorkspace.shared.isVoiceOverEnabled {
-            js("platen.readPage()")
-            return true
-        }
-        switch event.keyCode {
-        case 49: // space
-            turn(shift ? .prev : .next)
-        case 121: turn(.next) // page down
-        case 116: turn(.prev) // page up
-        case 123: previousPageLeft(nil) // ←
-        case 124: nextPageRight(nil) // →
-        case 125: if state.flow == .scrolled { js("platen.scrollLines(1)") } else { turn(.next) } // ↓
-        case 126: if state.flow == .scrolled { js("platen.scrollLines(-1)") } else { turn(.prev) } // ↑
-        case 53: // Esc: close the panel or overlay; exit full screen if neither is showing
-            if state.noteOpen {
-                js("platen.closeNote()")
-            } else if imageZoom != nil {
-                closeImage()
-            } else if explainerHost != nil {
-                dismissExplainer()
-            } else if state.sidebarVisible {
-                setSidebar(visible: false)
-            } else if overlayVisible {
-                setOverlay(visible: false)
-            } else if view.window?.styleMask.contains(.fullScreen) == true {
-                view.window?.toggleFullScreen(nil)
-            } else {
-                return false
-            }
-        default:
-            return false
-        }
-        return true
-    }
-
-    func mouseMoved(to point: NSPoint) {
-        // Reveal the title bar when the pointer reaches the top edge.
-        let nearTop = point.y > view.bounds.height - 36
-        if nearTop != titleBarVisible && !overlayVisible {
-            titleBarVisible = nearTop
-            applyChromeVisibility(animated: true)
-        }
-        if overlayVisible { restartHideTimer() }
-    }
-}
+// The trackpad and the scroll wheel. (Click zones and keys are in
+// ReaderBaseViewController; the keys only books have are overrides in
+// ReaderViewController.swift.)
 
 // MARK: - Trackpad and scroll wheel
 
@@ -107,13 +36,13 @@ extension ReaderViewController {
 
     /// Returns true if the event was used (and must not reach WebKit).
     func handleScroll(_ event: NSEvent) -> Bool {
-        guard bookSentToShell, failureHost == nil else { return false }
+        guard session.isOpenInPage, failureHost == nil else { return false }
         if imageZoom != nil { return true }
         // Scroll mode uses WebKit's own scrolling, unchanged.
         guard state.flow == .paginated || state.isFixedLayout else { return false }
         // Only over the page: the contents panel and overlay scroll normally.
         let point = view.convert(event.locationInWindow, from: nil)
-        if overlayVisible && overlayHost.frame.contains(point) { return false }
+        if chrome.isVisible && chrome.overlayView.frame.contains(point) { return false }
 
         // Momentum after the fingers lift never turns another page: one
         // gesture is one page at most.
@@ -125,7 +54,7 @@ extension ReaderViewController {
             let delta = abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) ? -event.scrollingDeltaY : -event.scrollingDeltaX
             guard delta != 0, event.timestamp >= swipe.wheelQuietUntil else { return true }
             swipe.wheelQuietUntil = event.timestamp + 0.25
-            turn(delta > 0 ? .next : .prev)
+            session.turn(delta > 0 ? .next : .prev)
             return true
         }
 
@@ -145,20 +74,20 @@ extension ReaderViewController {
             if swipe.axis == .horizontal && !state.isFixedLayout {
                 // The page moves with the fingers.
                 swipe.add(dx, at: event.timestamp)
-                callPlaten("swipeMove", dx)
+                session.swipeMove(by: Double(dx))
             } else if !swipe.turned {
                 // Vertical (or fixed layout): one page once past a threshold.
                 swipe.total += swipe.axis == .horizontal ? dx : dy
                 if abs(swipe.total) > 30 {
                     swipe.turned = true
                     let forward = swipe.total > 0
-                    if swipe.axis == .horizontal { turn(forward ? .right : .left) }
-                    else { turn(forward ? .next : .prev) }
+                    if swipe.axis == .horizontal { session.turn(forward ? .right : .left) }
+                    else { session.turn(forward ? .next : .prev) }
                 }
             }
         case .ended, .cancelled:
             if swipe.active && swipe.axis == .horizontal && !state.isFixedLayout {
-                callPlaten("swipeEnd", event.phase == .cancelled ? 0 : swipe.flickDirection(at: event.timestamp))
+                session.swipeEnd(direction: event.phase == .cancelled ? 0 : swipe.flickDirection(at: event.timestamp))
             }
             swipe.reset()
         default:

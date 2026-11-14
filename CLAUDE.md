@@ -5,24 +5,30 @@ A free, open source (MPL-2.0), file-first ebook viewer for macOS, with iOS to fo
 ## Layout
 
 - `PlatenCore/`: Swift package, platform-neutral (no AppKit, UIKit or WebKit). It holds the zip reader (Zip64, recovery scan), EPUB package parser, DRM detection, font de-obfuscation, path fix-ups, book identity and the per-book position store. Unit-tested.
-- `PlatenReader/Shared/`: code used by both the Mac and iOS apps (scheme handler with CSP and remote-load blocker, `ReaderState`, the settings model, the String Catalog, the log). A synchronised folder in both app targets. Nothing here may import AppKit or UIKit; platform parts go in `+AppKit` / `+UIKit` files in each app.
+- `PlatenReader/Shared/`: code used by both the Mac and iOS apps. A synchronised folder in both app targets (and compiled on its own by the `PlatenReaderTests` unit tests). Nothing here may import AppKit or UIKit; platform parts go in `+AppKit` / `+UIKit` files in each app.
+  - `BookSession`: one open book (reading the file, the saved position and bookmarks, the conversation with reader.js, every `platen` command). Each app's `ReaderViewController` is its `BookSessionHost` and adds only what is the platform's own.
+  - `ReaderBridge`: everything that crosses the JS bridge, typed: `ReaderMessage` (decoded once from `post()`), `WebSettings`, `PageTurn`, `ClickZone`. Add a case here when reader.js gains a message; never decode `[String: Any]` elsewhere.
+  - `ReaderCommands`: what a reader can be asked to do, for books (`BookSession`) and PDFs (each `PDFReaderViewController`) alike. The overlay, contents panel, menus and keys go through it.
+  - Also the scheme handler (CSP and remote-load blocker), `ReaderState`, the settings model, `PDFReaderModel`, the SwiftUI overlay and contents views, `WebViewWarmer`, `Citation`, the String Catalog and the log.
 - `Config/Shared.xcconfig`: the version, bundle ID and minimum OS versions, shared by both app targets.
 - `PlatenReader/Sources/`: macOS app (AppKit, with SwiftUI for the overlay and Settings). It is a file-system-synchronised group, so new files need no project edits.
   - `BookDocument`: an `NSDocument`. The reader loads the file itself, in the background.
-  - `ReaderViewController`: WKWebView, overlay, click zones, keys, the JS bridge and position saving.
+  - `ReaderBaseViewController`: what every book window has (the controls in `ReaderChrome`, spinner, failure message, theme, keys, click zones, menu actions). `ReaderViewController` (books: WKWebView, host of the `BookSession`) and `PDFReaderViewController` (PDFKit) subclass it.
   - `ReaderSchemeHandler`: serves `platen://reader/app/*` (the shell) and `platen://reader/book/*` (book files from memory). It also holds the CSP and the remote-load blocker.
   - `MainMenu`: the full command set. Actions go to the first responder.
 - PDFs are shown by PDFKit, not the web shell: `PlatenCore/PDFIdentity` (identity), `Shared/PDFReaderModel` (outline, page bookmarks, search, position, feeding the same `ReaderState` and overlay), and a `PDFReaderViewController` in each app. Fixture: `Fixtures/generated/outline.pdf`.
-- `PlatenReader iOS/`: the iOS and iPadOS app (target "PlatenReader iOS", same bundle ID): the document browser as the home screen, and a UIKit reader around the same web shell. M3 is planned phase by phase in `docs/m3-ios-plan.md`.
+- `PlatenReader iOS/`: the iOS and iPadOS app (target "PlatenReader iOS", same bundle ID): the document browser as the home screen, and UIKit readers shaped like the Mac's (`ReaderBaseViewController` with its own touch `ReaderChrome`; `ReaderViewController` for books and `PDFReaderViewController` for PDFs). M3 is planned phase by phase in `docs/m3-ios-plan.md`.
 - `PlatenReader/Web/`: `reader.html/js/css`, the shell that drives foliate-js. `foliate/` is vendored at a pinned commit (see `foliate/VENDORED.md`).
 - `design/icon/`: the app icon. `make-icons.py` draws it (SVG, in several background colours; Honey is the one in use), Quick Look renders it, and `mask-icon.swift` makes the corners transparent. The sizes live in `PlatenReader/Sources/Assets.xcassets/AppIcon.appiconset`.
 - `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `check-corpus.sh` (opens each fixture and checks the result), `run-debug.sh` (headless open + snapshots), `update-foliate.sh`. The Xcode project is maintained in Xcode; `PlatenReader/Sources` is a synchronised folder, so new files need no project edits.
-- Reader features live in `reader.js` (opening, the `platen` commands) and `PlatenReader/Web/modules/` (one module per feature: layout, book fixes, input, page numbers, bookmarks, jumps, search, contents; shared state in `state.js`). The native side is `ContentsPopover.swift`, `OverlayViews.swift`, `PageTurnView.swift` and `ImageZoomView.swift`. `ReaderViewController` is split by job into `ReaderViewController+*.swift` (messages, input, page turn, contents, menu, pictures).
+- Reader features live in `reader.js` (opening, the `platen` commands) and `PlatenReader/Web/modules/` (one module per feature: layout, book fixes, input, page numbers, bookmarks, jumps, search, contents; shared state in `state.js`). The native side is `ContentsPopover.swift` and `OverlayViews.swift` (Shared), and `PageTurnView.swift` and `ImageZoomView.swift` (Mac). The Mac `ReaderViewController` is split by job into `ReaderViewController+*.swift` (input, page turn, citation and context menu, menu, pictures).
 
 ## Build and test
 
 ```sh
 swift test --package-path PlatenCore                       # core unit tests
+xcodebuild test -project PlatenReader.xcodeproj -scheme PlatenReader -destination "platform=macOS" \
+  -derivedDataPath build/DerivedData -only-testing:PlatenReaderTests   # shared-code unit tests
 xcodebuild -project PlatenReader.xcodeproj -scheme PlatenReader \
   -configuration Debug -derivedDataPath build/DerivedData build
 python3 scripts/make-fixtures.py                           # regenerate corpus
@@ -50,7 +56,8 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 ## Rules
 
 - **The robustness corpus must stay green.** Every case in the spec's "Format support and robustness" table needs a fixture and a passing check. Add a fixture with every bug fix.
-- Swift owns files, parsing and state; JS only drives foliate-js. Book bytes go down through the scheme handler, and events come back up through `post()` → `WKScriptMessageHandler`.
+- Swift owns files, parsing and state; JS only drives foliate-js. Book bytes go down through the scheme handler, and events come back up through `post()` → `BookSession` (as a `ReaderMessage`).
+- Anything both apps need about an open book goes in `BookSession` or `ReaderCommands`, not in a view controller. Add a test in `PlatenReaderTests` for new shared logic.
 - Book scripts must never run, and remote loads must never happen. Both the CSP on the shell (inherited by foliate's blob iframes) and the WKContentRuleList enforce this. `Fixtures/generated/scripted.epub` and `remote-resource.epub` check them.
 - Font obfuscation is undone in Swift (`FontDeobfuscator`), and `encryption.xml` is then hidden from foliate-js so it is not undone twice.
 - No telemetry, no network and no permission prompts. Settings are global, and the only per-book data is position and bookmarks (`docs/per-book-data.md`).
