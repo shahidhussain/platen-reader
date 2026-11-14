@@ -6,9 +6,10 @@ import SwiftUI
 ///
 /// - Mac: in its own window (WelcomeWindowController), where a book can also
 ///   be dropped onto it.
-/// - iOS: full screen before the document browser, the first time the app
-///   is opened (SceneDelegate). Dropping books is not supported there, so
-///   the drop hint and the drop target are left out.
+/// - iOS: full screen, as the home screen when no book is open
+///   (HomeViewController); "Open Book…" shows the system's document picker.
+///   Dropping books is not supported there, so the drop hint and the drop
+///   target are left out.
 struct WelcomeView: View {
     let open: () -> Void
     /// Books dropped onto the screen (the Mac only); nil turns dropping off.

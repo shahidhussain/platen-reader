@@ -1,28 +1,25 @@
-import SwiftUI
 import UIKit
 
-/// One window. Its home screen is the system document browser; books open
-/// from there, from Files ("Open in Platen Reader") or from other apps'
-/// share sheets, always in place (see `DocumentBrowserViewController`).
+/// One window, whose root is Platen's own home screen
+/// (`HomeViewController`). Books open from there ("Open Book…"), from Files
+/// ("Open in Platen Reader") or from other apps' share sheets, always in
+/// place.
 ///
-/// Launching never lands in the browser: it goes back to the book that was
-/// open when Platen was last left, or, if that book was closed (or there is
-/// none), shows the welcome screen (the Mac's, full screen): the app's name
-/// and one "Open Book…" button, which leads to the browser.
+/// Launching goes back to the book that was open when Platen was last left;
+/// if that book was closed (or there is none), the home screen shows the
+/// welcome. A book opened from another app goes straight to that book.
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
-    private var browser: DocumentBrowserViewController?
-    /// The welcome screen while it is up, laid over the browser.
-    private var welcome: UIViewController?
+    private var home: HomeViewController?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
-        let browser = DocumentBrowserViewController()
+        let home = HomeViewController()
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = browser
+        window.rootViewController = home
         self.window = window
-        self.browser = browser
+        self.home = home
 
         // Launched by opening a book from another app: straight to it.
         let launchedWithBook = !connectionOptions.urlContexts.isEmpty
@@ -32,24 +29,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         #else
         let debugBook = false
         #endif
-        window.makeKeyAndVisible()
-        // Back to the book that was open, if there was one.
-        let reopen = launchedWithBook || debugBook ? nil : DocumentBrowserViewController.bookToReopen
-        if let reopen {
-            browser.openBook(at: reopen, revealFirst: false)
-        } else if !launchedWithBook, !debugBook {
-            // Laid over the browser rather than in its place, so the browser
-            // (slow to start) is ready behind it when the welcome fades.
-            let welcome = UIHostingController(rootView: WelcomeView(open: { [weak self] in self?.leaveWelcome() }))
-            welcome.view.frame = window.bounds
-            welcome.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            welcome.view.backgroundColor = .systemBackground
-            window.addSubview(welcome.view)
-            self.welcome = welcome
+        // Back to the book that was open, if there was one. (The book is
+        // presented once the home screen is in the window; until then a page
+        // in the theme's colour stands in, so the welcome does not flash.)
+        if !launchedWithBook, !debugBook, let reopen = LastOpenBook.url {
+            home.openBook(at: reopen)
         }
+        window.makeKeyAndVisible()
 
         if let context = connectionOptions.urlContexts.first {
-            open(context)
+            home.openBook(at: context.url)
         }
         #if DEBUG
         // Testing: PLATEN_OPEN_PATH opens a book straight away (see
@@ -57,40 +46,22 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let path = env["PLATEN_OPEN_PATH"] {
             let delay = Double(env["PLATEN_OPEN_DELAY"] ?? "") ?? 0
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                browser.openBook(at: URL(fileURLWithPath: path), revealFirst: false)
+                home.openBook(at: URL(fileURLWithPath: path))
             }
         }
         #endif
     }
 
-    /// A book opened from another app while Platen is running.
+    /// A book opened from another app while Platen is running. With
+    /// LSSupportsOpeningDocumentsInPlace, the URL is the original file
+    /// (security-scoped) where the provider allows it, not a copy in our
+    /// Inbox.
     func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
-        if let context = contexts.first { open(context) }
-    }
-
-    // MARK: - Welcome
-
-    /// Open Book… (or a book arriving from elsewhere): the welcome fades,
-    /// showing the document browser behind it.
-    private func leaveWelcome() {
-        guard let welcome else { return }
-        self.welcome = nil
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.3) {
-            welcome.view.alpha = 0
-        } completion: { _ in
-            welcome.view.removeFromSuperview()
-        }
-    }
-
-    private func open(_ context: UIOpenURLContext) {
-        leaveWelcome()
-        // With LSSupportsOpeningDocumentsInPlace, "open in place" means the
-        // URL is the original file (security-scoped), not a copy in our Inbox.
-        browser?.openBook(at: context.url, revealFirst: context.options.openInPlace)
+        if let context = contexts.first { home?.openBook(at: context.url) }
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
         // The app may be ended at any time once in the background.
-        browser?.reader?.savePositionNow()
+        home?.reader?.savePositionNow()
     }
 }

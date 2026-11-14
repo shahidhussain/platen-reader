@@ -16,7 +16,7 @@ class ReaderBaseViewController: UIViewController {
     let state: ReaderState
     let settings = ReaderSettings.shared
 
-    /// Called when the reader taps Close; the document browser dismisses us.
+    /// Called when the reader taps Close; the home screen dismisses us.
     var onClose: (() -> Void)?
 
     private(set) var chrome: ReaderChrome!
