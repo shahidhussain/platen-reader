@@ -595,7 +595,9 @@ struct LayoutPopover: View {
 
     var body: some View {
         #if os(iOS)
-        PopoverRows {
+        // Narrow: just wide enough for the names, the ticks and the line
+        // width's three choices, so the ticks sit near the names.
+        PopoverRows(width: 240) {
             ForEach(Array(state.availableLayouts.enumerated()), id: \.element) { index, layout in
                 if index > 0 { PopoverDivider(inset: 54) }
                 layoutRow(layout)

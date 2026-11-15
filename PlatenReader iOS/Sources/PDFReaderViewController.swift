@@ -38,6 +38,9 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     private var isLandscape = false
     /// Two pages side by side on screen now (Two Pages, in landscape).
     private var isSpread = false
+    /// The scale at which the pages on show fill the screen (`fillScreen`);
+    /// nil in Scroll, where PDFKit fits the pages to the width.
+    private var fitScale: CGFloat?
     /// Text was selected before the latest tap; that tap only clears it.
     private var hadSelection = false
     private var swipes: [UISwipeGestureRecognizer] = []
@@ -240,8 +243,17 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         layoutForOrientation(force: false, keepPage: nil)
+        // The window may have changed size without turning (iPad Split View).
+        if fitScale != nil, lastFittedSize != pdfView.bounds.size {
+            lastFittedSize = pdfView.bounds.size
+            fillScreen(resetZoom: true)
+        }
         placeRibbon()
     }
+    /// The PDF view's size, and the pages on show, when the pages were last
+    /// fitted.
+    private var lastFittedSize: CGSize = .zero
+    private var lastFittedPages: [Int] = []
 
     private func layoutForOrientation(force: Bool, keepPage: Int?) {
         guard let document = pdfView.document else { return }
@@ -263,7 +275,9 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             pdfView.displayMode = .singlePageContinuous
             pdfView.displayDirection = .vertical
             pdfView.displaysAsBook = false
+            // Pages fill the width, with a small gap between them.
             pdfView.displaysPageBreaks = true
+            pdfView.pageBreakMargins = UIEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
         } else if spread {
             pdfView.displayDirection = .horizontal
             if !wasSpread || force { spreadsStartOdd = current % 2 == 1 }
@@ -278,7 +292,10 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             pdfView.displayDirection = .horizontal
             pdfView.displayMode = .singlePage
             pdfView.displaysAsBook = false
-            pdfView.displaysPageBreaks = true
+            // No margin round the page, so it fills the screen's width or
+            // height (the page view keeps a gap between pages as they turn).
+            pdfView.displaysPageBreaks = false
+            pdfView.pageBreakMargins = .zero
             // Paging by PDFKit's page view controller: a swipe follows the
             // finger, as for books.
             pdfView.usePageViewController(true, withViewOptions: [UIPageViewController.OptionsKey.interPageSpacing: 12])
@@ -286,12 +303,15 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         swipes.forEach { $0.isEnabled = spread }
         state.columnsOnScreen = spread ? 2 : 1
         pdfView.autoScales = true
+        fitScale = nil
+        lastFittedPages = []
         if let page = document.page(at: current) { pdfView.go(to: page) }
         // Switching modes gives PDFKit's inner views their own (grey)
         // background and scroll bars; the theme colour goes back on. They
         // are new views, so the ribbon watches the new scroll view.
         DispatchQueue.main.async {
             self.applyTheme()
+            self.fillScreen()
             self.watchScrolling()
             self.placeRibbon()
         }
@@ -396,14 +416,29 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     private func reportPage() {
         guard !restoring, let model, let document = pdfView.document, let current = pdfView.currentPage else { return }
-        let fit = pdfView.scaleFactorForSizeToFit
+        let fit = fitScale ?? pdfView.scaleFactorForSizeToFit
         let zoom = fit > 0 ? Double(pdfView.scaleFactor / fit) : 1
         let index = document.index(for: current)
         var visible = visiblePages
         if !visible.contains(index) { visible.insert(index, at: 0) }
         model.pageChanged(to: visible.first ?? index, visible: visible, zoom: zoom > 1.05 ? zoom : nil)
+        // New pages on show: fit them (dropping a pinch zoom, except the
+        // saved one at opening).
+        if state.flow == .paginated, visible != lastFittedPages {
+            let opening = lastFittedPages.isEmpty
+            lastFittedPages = visible
+            fillScreen(resetZoom: !opening)
+        }
         updateRibbon()
         updateAmbient()
+        #if DEBUG
+        // Testing: how the pages fill the screen (PLATEN_LOG_PAGE_FIT).
+        if ProcessInfo.processInfo.environment["PLATEN_LOG_PAGE_FIT", default: ""].isEmpty == false,
+           let region = pageRegion {
+            let r = view.convert(region, from: pdfView)
+            log.notice("page fit: pages \(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))×\(Int(r.height)) in \(Int(self.view.bounds.width))×\(Int(self.view.bounds.height)), scale \(self.pdfView.scaleFactor, format: .fixed(precision: 3)), fit \(self.pdfView.scaleFactorForSizeToFit, format: .fixed(precision: 3))")
+        }
+        #endif
     }
 
     private func updateRibbon() {
@@ -434,6 +469,45 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     private func placeRibbon() {
         guard !ribbon.isHidden, let frame = ribbonFrame() else { return }
         if ribbon.frame != frame { ribbon.frame = frame }
+    }
+
+    /// Pages as large as the screen allows: in One Page and Two Pages, the
+    /// page (or the pair) touches the screen's sides or its top and bottom,
+    /// keeping its shape. PDFKit's own fit (autoScales) leaves the safe areas
+    /// free (the Dynamic Island, the home indicator), which put a margin
+    /// round every page; the controls float over the page anyway, so the
+    /// fit is worked out here against the whole screen. A zoom of the
+    /// reader's own (pinching in, or the one saved with the PDF) is kept
+    /// unless `resetZoom` (a page turn, a new window size).
+    ///
+    /// Scroll keeps PDFKit's fit: pages as wide as the screen.
+    private func fillScreen(resetZoom: Bool = false) {
+        guard state.flow == .paginated, let document = pdfView.document,
+              pdfView.bounds.width > 0, pdfView.bounds.height > 0 else {
+            pdfView.minScaleFactor = 0.05
+            pdfView.autoScales = true
+            fitScale = nil
+            return
+        }
+        // The pages on show, and the space they take side by side.
+        let pages = visiblePages.compactMap { document.page(at: $0) }
+        guard !pages.isEmpty else { return }
+        let sizes = pages.map { page -> CGSize in
+            let box = page.bounds(for: pdfView.displayBox).size
+            return page.rotation % 180 == 0 ? box : CGSize(width: box.height, height: box.width)
+        }
+        let width = sizes.reduce(0) { $0 + $1.width }
+        let height = sizes.map(\.height).max() ?? 0
+        guard width > 0, height > 0 else { return }
+        let fit = min(pdfView.bounds.width / width, pdfView.bounds.height / height)
+        let previous = fitScale ?? pdfView.scaleFactorForSizeToFit
+        let zoomedIn = !resetZoom && pdfView.scaleFactor > previous * 1.01
+        fitScale = fit
+        lastFittedSize = pdfView.bounds.size
+        pdfView.autoScales = false
+        pdfView.minScaleFactor = fit
+        pdfView.maxScaleFactor = fit * 8
+        if !zoomedIn { pdfView.scaleFactor = fit }
     }
 
     /// Follows the PDF view's scroll view (found inside it), so the ribbon

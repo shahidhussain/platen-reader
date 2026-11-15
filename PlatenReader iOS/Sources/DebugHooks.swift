@@ -15,6 +15,8 @@ import Foundation
 ///   container, for the same reason).
 /// - `PLATEN_KEEP_CONTROLS=1` keeps the controls up once shown (no 4 s
 ///   timeout), so popovers can be opened by hand in the Simulator.
+/// - `PLATEN_LOG_PAGE_FIT=1` logs where a PDF's pages sit on screen and at
+///   what scale (`page fit: …`), after each page change.
 /// - `PLATEN_STEPS="<step>;<step>"` runs steps 1.5 s apart after the first
 ///   page renders. A step is `@tap:<left|centre|right>` (as if that zone
 ///   were tapped), `@turn:<left|right|next|prev>` (a page turn, curled if
