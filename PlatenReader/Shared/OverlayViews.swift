@@ -29,6 +29,40 @@ extension View {
     }
 }
 
+#if os(iOS)
+/// The body of an iOS popover from the overlay: rows straight on the
+/// popover's own glass (no panel of their own), 300 points wide (or as
+/// given) and as tall as they need, so the popover fits them and never scrolls.
+struct PopoverRows<Content: View>: View {
+    var width: CGFloat = 300
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .padding(.vertical, 6)
+            .frame(width: width)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A hairline between popover rows, inset from the leading edge.
+struct PopoverDivider: View {
+    var inset: CGFloat = 16
+
+    var body: some View {
+        Divider().padding(.leading, inset)
+    }
+}
+
+extension View {
+    /// A popover row: a finger-sized height and the popover's side margins.
+    func popoverRow(minHeight: CGFloat = 46) -> some View {
+        padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: minHeight)
+    }
+}
+#endif
+
 /// The overlay's controls: location line, progress slider with chapter
 /// ticks, page buttons, Contents, Back and the Aa (typography) button. On the
 /// Mac they are one bar at the bottom, and the top part is the real window
@@ -431,33 +465,79 @@ struct ProgressSlider: View {
 
 /// The Aa popover: text size, font, line spacing and appearance. These are
 /// the same global settings as in Settings.
+///
+/// iOS: plain rows on the popover's own glass, sized to fit (a grouped form
+/// there drew a second panel inside the popover, at a fixed height). The Mac
+/// keeps a grouped form.
 struct TypographyPopover: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
     let actions: OverlayActions
 
     var body: some View {
-        Form {
+        #if os(iOS)
+        PopoverRows(width: 340) {
             // PDFs: only the theme applies (it colours the area around the
             // page); text size, font and spacing are the PDF's own.
-            if !state.isPDF { textControls }
-            Picker("Appearance", selection: $settings.appearance) {
-                ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }
+            if !state.isPDF {
+                textSizeRow
+                PopoverDivider()
+                LabeledContent("Font") { fontPicker.labelsHidden().fixedSize() }
+                    .popoverRow()
+                    .disabled(state.isFixedLayout)
+                PopoverDivider()
+                LabeledContent("Line Spacing") { lineSpacingPicker.labelsHidden().fixedSize() }
+                    .popoverRow()
+                    .disabled(state.isFixedLayout)
+                PopoverDivider()
             }
-            .pickerStyle(.menu)
+            LabeledContent("Appearance") { appearancePicker.labelsHidden() }
+                .popoverRow()
         }
-        .formStyle(.grouped)
-        #if os(iOS)
-        // A form in a popover has no height of its own on iOS.
-        .frame(width: 340, height: state.isPDF ? 110 : 300)
-        #else
-        .frame(width: 360)
-        .fixedSize(horizontal: false, vertical: true)
-        #endif
-        // VoiceOver names the popover rather than saying "scroll area".
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Text and Appearance"))
         .platenPopover()
+        #else
+        Form {
+            if !state.isPDF {
+                textSizeRow
+                fontPicker.disabled(state.isFixedLayout)
+                lineSpacingPicker.disabled(state.isFixedLayout)
+            }
+            appearancePicker
+        }
+        .formStyle(.grouped)
+        .frame(width: 360)
+        .fixedSize(horizontal: false, vertical: true)
+        // VoiceOver names the popover rather than saying "scroll area".
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Text and Appearance"))
+        #endif
+    }
+
+    private var appearancePicker: some View {
+        Picker("Appearance", selection: $settings.appearance) {
+            ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private var fontPicker: some View {
+        Picker("Font", selection: $settings.fontFamily) {
+            ForEach(ReaderSettings.curatedFonts, id: \.self) { name in
+                Text(name.isEmpty ? String(localized: "Publisher Default") : name).tag(name)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private var lineSpacingPicker: some View {
+        Picker("Line Spacing", selection: $settings.lineHeight) {
+            ForEach(ReaderSettings.lineHeights, id: \.self) { value in
+                Text(value == 0 ? String(localized: "Publisher Default") : value.formatted(.number.precision(.fractionLength(1...2)))).tag(value)
+            }
+        }
+        .pickerStyle(.menu)
     }
 
     /// The smaller and larger text buttons: on a touch screen each gets a
@@ -478,7 +558,7 @@ struct TypographyPopover: View {
     private let textSizeSpacing: CGFloat = 8
     #endif
 
-    @ViewBuilder private var textControls: some View {
+    private var textSizeRow: some View {
         LabeledContent("Text Size") {
             HStack(spacing: textSizeSpacing) {
                 Button { settings.smallerText() } label: { textSizeIcon("textformat.size.smaller") }
@@ -494,107 +574,123 @@ struct TypographyPopover: View {
             // Larger cancelled each other out.
             .buttonStyle(.borderless)
         }
-        .disabled(state.isFixedLayout)
-
-        Picker("Font", selection: $settings.fontFamily) {
-            ForEach(ReaderSettings.curatedFonts, id: \.self) { name in
-                Text(name.isEmpty ? String(localized: "Publisher Default") : name).tag(name)
-            }
-        }
-        .disabled(state.isFixedLayout)
-
-        Picker("Line Spacing", selection: $settings.lineHeight) {
-            ForEach(ReaderSettings.lineHeights, id: \.self) { value in
-                Text(value == 0 ? String(localized: "Publisher Default") : value.formatted(.number.precision(.fractionLength(1...2)))).tag(value)
-            }
-        }
+        #if os(iOS)
+        .popoverRow(minHeight: 52)
+        #endif
         .disabled(state.isFixedLayout)
     }
 }
 
 /// The layout popover: one page, two pages or scroll, and the line width.
+///
+/// iOS: plain rows on the popover's own glass, sized to fit: the layouts as
+/// a list with a tick by the one in use, then the line width (books). A
+/// grouped form there drew a second panel inside the popover, at a fixed
+/// height, off centre and scrollable. The Mac keeps a grouped form with a
+/// segmented control (and its shortcuts).
 struct LayoutPopover: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
     let actions: OverlayActions
 
     var body: some View {
-        Form {
-            layoutPicker
-
-            if state.isPDF, landscapeHint {
-                note("Two pages show side by side when you turn to landscape.")
-            } else if state.twoPagesTooNarrow {
-                note("The window is too narrow for two pages. Make it wider to see them side by side.")
+        #if os(iOS)
+        PopoverRows {
+            ForEach(Array(state.availableLayouts.enumerated()), id: \.element) { index, layout in
+                if index > 0 { PopoverDivider(inset: 54) }
+                layoutRow(layout)
             }
-
+            if let note {
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+            }
             if !state.isPDF {
-                Picker("Line Width", selection: $settings.lineWidth) {
-                    ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
+                PopoverDivider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Line Width")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    lineWidthPicker
                 }
-                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
                 .disabled(state.isFixedLayout)
             }
         }
-        .formStyle(.grouped)
-        #if os(iOS)
-        .frame(width: 320, height: height)
-        #else
-        .frame(width: 380)
-        .fixedSize(horizontal: false, vertical: true)
-        #endif
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Layout"))
         .platenPopover()
-    }
-
-    private var selection: Binding<ReadingLayout> {
-        Binding(get: { state.currentLayout }, set: actions.setLayout)
-    }
-
-    /// iOS: a list of the layouts with a tick by the one in use, as in the
-    /// system's own settings (a segmented control looked like tabs there).
-    /// The Mac keeps the segmented control, with its shortcuts.
-    @ViewBuilder private var layoutPicker: some View {
-        #if os(iOS)
-        Picker("Layout", selection: selection) {
-            ForEach(state.availableLayouts) { layout in
-                Label(layout.label, systemImage: layout.symbol).tag(layout)
-            }
-        }
-        .pickerStyle(.inline)
-        .labelsHidden()
         #else
-        Picker("Layout", selection: selection) {
-            ForEach(state.availableLayouts) { Text($0.label).tag($0) }
+        Form {
+            Picker("Layout", selection: Binding(get: { state.currentLayout }, set: actions.setLayout)) {
+                ForEach(state.availableLayouts) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
+            if let note {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !state.isPDF { lineWidthPicker.disabled(state.isFixedLayout) }
         }
-        .pickerStyle(.segmented)
-        .help(String(localized: "⌘1 one page, ⌘2 two pages, ⌘3 scroll"))
+        .formStyle(.grouped)
+        .frame(width: 380)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Layout"))
         #endif
     }
 
-    /// A PDF in Two Pages, held in portrait: one page shows until the
-    /// device is turned.
-    private var landscapeHint: Bool {
-        state.flow == .paginated && settings.pageLayout == .two && state.columnsOnScreen < 2
-    }
-
-    private func note(_ text: LocalizedStringKey) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+    private var lineWidthPicker: some View {
+        Picker("Line Width", selection: $settings.lineWidth) {
+            ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.segmented)
     }
 
     #if os(iOS)
-    /// A form in a popover has no height of its own on iOS: rows of about
-    /// 52 points (with the system's text sizes and the icons), the form's
-    /// margins, and a section for each note and the line width.
-    private var height: CGFloat {
-        var height = CGFloat(state.availableLayouts.count) * 52 + 34
-        if (state.isPDF && landscapeHint) || state.twoPagesTooNarrow { height += 92 }
-        if !state.isPDF { height += 52 + 20 }
-        return height
+    /// One layout: its symbol, its name, and a tick if it is in use.
+    private func layoutRow(_ layout: ReadingLayout) -> some View {
+        let selected = state.currentLayout == layout
+        return Button {
+            actions.setLayout(layout)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: layout.symbol)
+                    .frame(width: 24)
+                    .foregroundStyle(.secondary)
+                Text(layout.label)
+                Spacer(minLength: 8)
+                Image(systemName: "checkmark")
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.tint)
+                    .opacity(selected ? 1 : 0)
+            }
+            .popoverRow()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
     #endif
+
+    /// A line under the choices, when one is needed: a PDF in Two Pages held
+    /// in portrait (one page shows until the device is turned), or a window
+    /// too narrow for two pages.
+    private var note: LocalizedStringKey? {
+        if state.isPDF, state.flow == .paginated, settings.pageLayout == .two, state.columnsOnScreen < 2 {
+            return "Two pages show side by side when you turn to landscape."
+        }
+        if state.twoPagesTooNarrow {
+            return "The window is too narrow for two pages. Make it wider to see them side by side."
+        }
+        return nil
+    }
 }

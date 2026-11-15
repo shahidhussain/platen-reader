@@ -13,10 +13,14 @@ import Foundation
 /// - `PLATEN_FOLDER_PATH=<path>` chooses the folder the home screen shows
 ///   as covers, as "Choose Folder…" would (a folder inside the app's
 ///   container, for the same reason).
+/// - `PLATEN_KEEP_CONTROLS=1` keeps the controls up once shown (no 4 s
+///   timeout), so popovers can be opened by hand in the Simulator.
 /// - `PLATEN_STEPS="<step>;<step>"` runs steps 1.5 s apart after the first
 ///   page renders. A step is `@tap:<left|centre|right>` (as if that zone
 ///   were tapped), `@turn:<left|right|next|prev>` (a page turn, curled if
-///   that is the setting), `@snapshot` (a snapshot of the web view),
+///   that is the setting), `@doubleturn:<…>` (two turns 0.15 s apart, the second
+///   while the first is drawn), `@snapshot` (a snapshot of the web view), `@orientation` (logs the device's
+///   and the app's orientation),
 ///   `@close`, or JavaScript such as `platen.next()`. Each
 ///   step is logged as `step: …`; take screenshots between them with
 ///   `xcrun simctl io booted screenshot`.

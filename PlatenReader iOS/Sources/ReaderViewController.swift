@@ -253,6 +253,16 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
             webView.takeSnapshot(with: nil) { image, _ in log.notice("snapshot \(image == nil ? "failed" : "taken")") }
         } else if step.hasPrefix("@turn:"), let turn = PageTurn(rawValue: String(step.dropFirst(6))) {
             session.turn(turn)
+        } else if step == "@orientation" {
+            // The device's orientation against the app's: different (with
+            // the device in a supported orientation) means rotation is held.
+            let device = UIDevice.current.orientation
+            let app = view.window?.windowScene?.effectiveGeometry.interfaceOrientation ?? .unknown
+            log.notice("orientation: device \(device.isLandscape ? "landscape" : device.isPortrait ? "portrait" : "other", privacy: .public), app \(app.isLandscape ? "landscape" : "portrait", privacy: .public)")
+        } else if step.hasPrefix("@doubleturn:"), let turn = PageTurn(rawValue: String(step.dropFirst(12))) {
+            // A second turn while the first is still drawn (fast taps).
+            session.turn(turn)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.session.turn(turn) }
         } else {
             webView.evaluateJavaScript(step) { result, _ in
                 if let result = result as? String { log.notice("step result: \(result, privacy: .public)") }

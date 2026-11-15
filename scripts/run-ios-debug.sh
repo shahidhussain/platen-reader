@@ -50,7 +50,7 @@ cp "$book" "$documents/"
 rm -f "$snaps/$name"-*.png(N)
 
 started=$(date "+%Y-%m-%d %H:%M:%S")
-SIMCTL_CHILD_PLATEN_OPEN_DELAY=${PLATEN_OPEN_DELAY:-0} SIMCTL_CHILD_PLATEN_OPEN_PATH="$documents/$(basename "$book")" SIMCTL_CHILD_PLATEN_STEPS="$steps" \
+SIMCTL_CHILD_PLATEN_OPEN_DELAY=${PLATEN_OPEN_DELAY:-0} SIMCTL_CHILD_PLATEN_OPEN_PATH="$documents/$(basename "$book")" SIMCTL_CHILD_PLATEN_STEPS="$steps" SIMCTL_CHILD_PLATEN_KEEP_CONTROLS=${PLATEN_KEEP_CONTROLS:-} \
   xcrun simctl launch "$sim" $bundle > /dev/null
 
 # The first page takes a few seconds in the Simulator (WebKit is slow to

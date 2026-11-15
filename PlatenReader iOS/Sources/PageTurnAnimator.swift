@@ -68,6 +68,13 @@ final class PageTurnAnimator {
     private var cover: UIView?
     /// The system's page curl, while one runs.
     private var pager: UIPageViewController?
+    /// True once `pager` has started its animated turn. UIKit turns
+    /// autorotation off for the whole app while a page view controller
+    /// animates, and back on only when the animation completes; a pager
+    /// removed mid-turn never completes, which left the app stuck in one
+    /// orientation until it was quit. So a started curl is never cut short:
+    /// it is hidden and left to finish (`finishNow`).
+    private var pagerAnimating = false
     /// Counts turns, so a late callback from an abandoned turn is ignored.
     private var generation = 0
 
@@ -162,10 +169,18 @@ final class PageTurnAnimator {
                     // that ends up on show: the new page, and its back.
                     let back = backs.back()
                     let new = self.picturePage(after)
+                    self.pagerAnimating = true
                     pager.setViewControllers([new, back],
                                              direction: leafMovesLeft ? .forward : .reverse, animated: true) { _ in
                         log.info("page curl took \(Int((CACurrentMediaTime() - started) * 1000)) ms")
-                        if self.generation == turn { self.removePager() }
+                        // Always this pager, even if a later turn has
+                        // moved on: only now is its transition over. It is
+                        // taken down on the next turn of the run loop: the
+                        // page view controller turns autorotation back on
+                        // after this block returns, which it skips if it has
+                        // already been removed.
+                        if self.pager === pager { self.pager = nil; self.pagerAnimating = false }
+                        DispatchQueue.main.async { self.detach(pager) }
                     }
                 }
             }
@@ -367,7 +382,15 @@ final class PageTurnAnimator {
         pageView.transform = .identity
         pageView.alpha = 1
         removeCover()
-        removePager()
+        if let pager, pagerAnimating {
+            // Mid-curl: hide it and let it finish; its completion removes
+            // it (see `pagerAnimating`).
+            pager.view.alpha = 0
+            self.pager = nil
+            pagerAnimating = false
+        } else {
+            removePager()
+        }
     }
 
     private func addCover(_ image: UIImage) -> UIView {
@@ -387,9 +410,16 @@ final class PageTurnAnimator {
         cover = nil
     }
 
+    /// Removes a curl that has not started animating (or has finished).
     private func removePager() {
         guard let pager else { return }
         self.pager = nil
+        pagerAnimating = false
+        detach(pager)
+    }
+
+    private func detach(_ pager: UIPageViewController) {
+        guard pager.parent != nil || pager.view.superview != nil else { return }
         pager.willMove(toParent: nil)
         pager.view.removeFromSuperview()
         pager.removeFromParent()

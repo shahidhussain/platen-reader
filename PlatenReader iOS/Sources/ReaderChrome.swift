@@ -178,6 +178,10 @@ final class ReaderChrome {
     func restartHideTimer() {
         hideTimer?.invalidate()
         guard isVisible, !UIAccessibility.isVoiceOverRunning else { return }
+        #if DEBUG
+        // Testing: PLATEN_KEEP_CONTROLS keeps the controls up (DebugHooks).
+        if ProcessInfo.processInfo.environment["PLATEN_KEEP_CONTROLS", default: ""].isEmpty == false { return }
+        #endif
         hideTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
             guard let self, self.isVisible else { return }
             if self.state.overlayPopoverOpen || self.state.sidebarVisible || self.owner?.presentedViewController != nil { return }
