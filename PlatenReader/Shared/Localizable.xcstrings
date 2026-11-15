@@ -74,6 +74,9 @@
     "Books will open at the beginning. This cannot be undone." : {
 
     },
+    "Books you open appear here." : {
+
+    },
     "Bring All to Front" : {
 
     },
@@ -185,6 +188,9 @@
     "Folder: %@" : {
 
     },
+    "Folders you look at appear here." : {
+
+    },
     "Font" : {
 
     },
@@ -206,6 +212,9 @@
     "Hide Others" : {
 
     },
+    "Home" : {
+
+    },
     "Hyphenate Text" : {
 
     },
@@ -213,6 +222,9 @@
 
     },
     "In iCloud" : {
+
+    },
+    "It may have been moved or deleted, or it is on a drive or network share that is not connected." : {
 
     },
     "Larger Text" : {
@@ -284,6 +296,12 @@
     "No Books Here" : {
 
     },
+    "No Recent Books" : {
+
+    },
+    "No Recent Folders" : {
+
+    },
     "No results for “%@”" : {
 
     },
@@ -291,6 +309,12 @@
 
     },
     "None" : {
+
+    },
+    "Not available" : {
+
+    },
+    "OK" : {
 
     },
     "One Page" : {
@@ -381,10 +405,22 @@
     "Reading positions and bookmarks" : {
 
     },
+    "Recent Books" : {
+
+    },
+    "Recent Folders" : {
+
+    },
+    "Remove" : {
+
+    },
     "Remove Bookmark" : {
 
     },
     "Remove Bookmark (⌘D)" : {
+
+    },
+    "Remove from Recents" : {
 
     },
     "Save Image…" : {
@@ -495,6 +531,9 @@
     "The window is too narrow for two pages. Make it wider to see them side by side." : {
 
     },
+    "This book can’t be opened" : {
+
+    },
     "This book could not be opened." : {
 
     },
@@ -504,10 +543,16 @@
     "This cannot be undone." : {
 
     },
+    "This folder can’t be opened" : {
+
+    },
     "This PDF could not be opened." : {
 
     },
     "This PDF is protected by a password." : {
+
+    },
+    "Title, author or file name" : {
 
     },
     "Two Pages" : {

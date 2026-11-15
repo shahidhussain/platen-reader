@@ -101,3 +101,79 @@ final class OpeningStageTests: XCTestCase {
         XCTAssertEqual(ReaderState().opening, .reading)
     }
 }
+
+/// Recent Books and Recent Folders (Shared/Recents.swift), and folder search.
+final class RecentsTests: XCTestCase {
+    private func temporaryFolder() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
+    }
+
+    private func file(_ folder: URL, _ name: String) -> URL {
+        let url = folder.appendingPathComponent(name)
+        FileManager.default.createFile(atPath: url.path, contents: Data("x".utf8))
+        return url
+    }
+
+    @MainActor
+    func testNewestFirstOncePerItemAndKeptAcrossLaunches() throws {
+        let folder = try temporaryFolder()
+        let store = folder.appendingPathComponent("recents")
+        let list = RecentList(kind: .books, directory: store)
+        let a = file(folder, "A.epub"), b = file(folder, "B.epub")
+        list.opened(a, now: Date(timeIntervalSince1970: 1))
+        list.opened(b, now: Date(timeIntervalSince1970: 2))
+        list.opened(a, title: "Book A", author: "Ann", now: Date(timeIntervalSince1970: 3))
+        XCTAssertEqual(list.items.map(\.name), ["A.epub", "B.epub"])
+        XCTAssertEqual(list.items[0].displayName, "Book A")
+        XCTAssertEqual(list.items[1].displayName, "B")
+
+        let relaunched = RecentList(kind: .books, directory: store)
+        XCTAssertEqual(relaunched.items, list.items)
+        XCTAssertEqual(RecentList(kind: .folders, directory: store).items, [], "books and folders are kept apart")
+    }
+
+    @MainActor
+    func testCoversAreKeptAndRemovedWithTheirItem() throws {
+        let folder = try temporaryFolder()
+        let list = RecentList(kind: .books, directory: folder.appendingPathComponent("recents"))
+        let item = try XCTUnwrap(list.opened(file(folder, "A.epub")))
+        XCTAssertNil(list.coverURL(for: item))
+        list.update(item.id, title: "Title", author: nil, cover: Data("jpeg".utf8))
+        let updated = list.items[0]
+        let cover = try XCTUnwrap(list.coverURL(for: updated))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cover.path))
+        list.remove(updated)
+        XCTAssertEqual(list.items, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cover.path))
+    }
+
+    @MainActor
+    func testTheListIsCapped() throws {
+        let folder = try temporaryFolder()
+        let list = RecentList(kind: .folders, directory: folder.appendingPathComponent("recents"), limit: 3)
+        for i in 1...5 { list.opened(file(folder, "\(i)")) }
+        XCTAssertEqual(list.items.map(\.name), ["5", "4", "3"])
+    }
+
+    @MainActor
+    func testAnItemThatHasGoneIsNotReachable() throws {
+        let folder = try temporaryFolder()
+        let list = RecentList(kind: .books, directory: folder.appendingPathComponent("recents"))
+        let url = file(folder, "A.epub")
+        let item = try XCTUnwrap(list.opened(url))
+        XCTAssertTrue(RecentList.isReachable(item))
+        try FileManager.default.removeItem(at: url)
+        XCTAssertFalse(RecentList.isReachable(item))
+    }
+
+    func testSearchMatchesEveryWordInNameTitleOrAuthor() {
+        XCTAssertTrue(FolderSearch.matches("", name: "anything"))
+        XCTAssertTrue(FolderSearch.matches("eyre", name: "je.epub", title: "Jane Eyre"))
+        XCTAssertTrue(FolderSearch.matches("bronte jane", name: "je.epub", title: "Jane Eyre", authors: ["Charlotte Brontë"]))
+        XCTAssertTrue(FolderSearch.matches("KOBO", name: "kobo"))
+        XCTAssertFalse(FolderSearch.matches("austen", name: "je.epub", title: "Jane Eyre", authors: ["Charlotte Brontë"]))
+    }
+}

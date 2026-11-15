@@ -37,4 +37,16 @@ Platen stores one JSON file per book:
 - Writes are atomic: Platen writes a temporary file and renames it over the old one. Saves after page turns are debounced by 0.75 s; closing the window saves immediately.
 - Settings > Advanced > Clear deletes the whole `books` folder.
 
+## Recents (iOS)
+
+At the reader's request (15 Nov 2026), the iOS home screen keeps two short lists for its Recent Books and Recent Folders tabs:
+
+```
+~/Library/Application Support/Platen Reader/recents/books.json
+~/Library/Application Support/Platen Reader/recents/folders.json
+~/Library/Application Support/Platen Reader/recents/covers/<id>.jpg
+```
+
+Each entry has an `id`, a `bookmark` (the system's reference to the file or folder, which keeps permission to read it and is how it is found again), its `name`, the `path` it was at (to recognise it when opened again, and to show which folder it is in; never used to open it), `lastOpened`, and for books the `title` and `author` and whether a copy of the cover is kept (`hasCover`, a small JPEG in `covers/`, so the list shows it even when the book cannot be reached). At most 60 of each are kept, newest first. A long press on an item removes it, with its cover copy; nothing else about the book is touched.
+
 Portability between apps is not a goal. The format is documented so people can inspect, back up or delete their own data.

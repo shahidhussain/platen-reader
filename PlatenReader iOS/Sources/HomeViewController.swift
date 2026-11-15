@@ -1,4 +1,3 @@
-import Combine
 import PlatenCore
 import SwiftUI
 import UIKit
@@ -24,10 +23,6 @@ import UniformTypeIdentifiers
 /// Platen has no library of its own; folders are the library.
 final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
     private let library = LibraryFolder.shared
-    /// The welcome or the folder view, whichever is showing.
-    private var content: UIViewController?
-    private var showsFolder = false
-    private var cancellables: Set<AnyCancellable> = []
     /// The picker on screen is choosing a folder, not a book.
     private var pickingFolder = false
 
@@ -54,48 +49,19 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        showContent()
-        // A folder chosen (or lost): the welcome gives way to the folder view.
-        library.$root
-            .map { $0 != nil }
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.showContent() }
-            .store(in: &cancellables)
-    }
-
-    /// The folder view if a folder has been chosen, else the welcome.
-    private func showContent() {
-        let wantsFolder = library.root != nil
-        guard content == nil || wantsFolder != showsFolder else { return }
-        showsFolder = wantsFolder
-        let next: UIViewController
-        if wantsFolder {
-            next = UIHostingController(rootView: FolderBrowserView(
-                library: library,
-                openBook: { [weak self] in self?.openBook(at: $0) },
-                chooseBook: { [weak self] in self?.chooseBook() },
-                chooseFolder: { [weak self] in self?.chooseFolder() }
-            ))
-        } else {
-            let welcome = WelcomeView(open: { [weak self] in self?.chooseBook() },
-                                      chooseFolder: { [weak self] in self?.chooseFolder() })
-            next = UIHostingController(rootView: welcome)
-            next.view.backgroundColor = .clear
-        }
-        if let content {
-            content.willMove(toParent: nil)
-            content.view.removeFromSuperview()
-            content.removeFromParent()
-        }
-        addChild(next)
-        next.view.frame = view.bounds
-        next.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // The tabs (Home, Recent Books, Recent Folders), whose Home tab is
+        // the folder view once a folder is chosen, or the welcome until then.
+        let tabs = UIHostingController(rootView: HomeTabs(library: library, actions: HomeActions(
+            openBook: { [weak self] in self?.openBook(at: $0) },
+            chooseBook: { [weak self] in self?.chooseBook() },
+            chooseFolder: { [weak self] in self?.chooseFolder() }
+        )))
+        addChild(tabs)
+        tabs.view.frame = view.bounds
+        tabs.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         // Below the launch cover, if it is up.
-        if let launchCover { view.insertSubview(next.view, belowSubview: launchCover) } else { view.addSubview(next.view) }
-        next.didMove(toParent: self)
-        content = next
+        if let launchCover { view.insertSubview(tabs.view, belowSubview: launchCover) } else { view.addSubview(tabs.view) }
+        tabs.didMove(toParent: self)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -180,6 +146,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
             LastOpenBook.remember(url)
             // Its folder is the one the folder view shows from now on.
             self.library.bookOpened(url)
+            self.addToRecents(url)
             reader.modalPresentationStyle = .fullScreen
             self.reader = reader
             self.present(reader, animated: animated) { [weak self] in
@@ -197,6 +164,23 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
             presented.dismiss(animated: false, completion: show)
         } else {
             show()
+        }
+    }
+}
+
+extension HomeViewController {
+    /// Puts the book at the top of Recent Books, then (in the background)
+    /// adds its title, author and a copy of its cover, so the list shows them
+    /// even when the book cannot be reached later. The reader holds access
+    /// to the book meanwhile.
+    func addToRecents(_ url: URL) {
+        guard let item = RecentList.books.opened(url) else { return }
+        Task.detached(priority: .utility) {
+            let entry = CoverCache.standard().cover(for: url)
+            let jpeg = entry.imageURL.flatMap { try? Data(contentsOf: $0) }
+            await MainActor.run {
+                RecentList.books.update(item.id, title: entry.info.title, author: entry.info.authors.first, cover: jpeg)
+            }
         }
     }
 }

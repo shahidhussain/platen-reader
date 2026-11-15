@@ -60,7 +60,7 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 - Anything both apps need about an open book goes in `BookSession` or `ReaderCommands`, not in a view controller. Add a test in `PlatenReaderTests` for new shared logic.
 - Book scripts must never run, and remote loads must never happen. Both the CSP on the shell (inherited by foliate's blob iframes) and the WKContentRuleList enforce this. `Fixtures/generated/scripted.epub` and `remote-resource.epub` check them.
 - Font obfuscation is undone in Swift (`FontDeobfuscator`), and `encryption.xml` is then hidden from foliate-js so it is not undone twice.
-- No telemetry, no network and no permission prompts. The one agreed exception: Save to Photos (long press on a PDF picture, iOS) asks once for add-only photo access, only when the reader chooses it. Settings are global, and the only per-book data is position and bookmarks (`docs/per-book-data.md`).
+- No telemetry, no network and no permission prompts. The one agreed exception: Save to Photos (long press on a PDF picture, iOS) asks once for add-only photo access, only when the reader chooses it. Settings are global, and the only per-book data is position and bookmarks (`docs/per-book-data.md`), plus the agreed exception of the iOS Recent Books and Recent Folders lists (bookmarks, names and cover copies; see that file).
 - Comment liberally: explain what and why for a non-specialist. User-facing strings go in String Catalogs (development language en-GB).
 - Add a line to `scripts/check-corpus.sh` for every new fixture.
 - If you patch vendored foliate-js, record it in `PlatenReader/Web/foliate/VENDORED.md`.
