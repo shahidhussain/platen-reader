@@ -284,13 +284,16 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         pageArea.layoutIfNeeded()
         let wasSpread = isSpread
         isLandscape = landscape
-        // pageLayout is read when the setting has already changed (the
-        // observer runs after the change), so this is the new choice.
-        let spread = landscape && state.flow == .paginated && settings.pageLayout == .two
-        isSpread = spread
         // The page to keep in view: the one being read (in a spread, its
         // left page, which PDFKit reports as the current page).
         let current = keepPage ?? pdfView.currentPage.map { document.index(for: $0) } ?? 0
+        // pageLayout is read when the setting has already changed (the
+        // observer runs after the change), so this is the new choice. Pages
+        // are paired only if they are taller than wide: a PDF whose pages
+        // are already spreads (many picture books) shows one at a time.
+        let spread = landscape && state.flow == .paginated && settings.pageLayout == .two
+            && pagesArePortrait(around: current, in: document)
+        isSpread = spread
 
         if state.flow == .scrolled {
             // One long column of pages, in either orientation.
@@ -331,6 +334,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         // are new views, so the ribbon watches the new scroll view.
         DispatchQueue.main.async {
             self.applyTheme()
+            self.ignoreSafeAreaInScrolling()
             self.fillScreen()
             self.watchScrolling()
             self.placeRibbon()
@@ -562,6 +566,31 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     private func placeRibbon() {
         guard !ribbon.isHidden, let frame = ribbonFrame() else { return }
         if ribbon.frame != frame { ribbon.frame = frame }
+    }
+
+    /// Whether the page being read and the next are taller than wide, so a
+    /// pair of them makes a book's spread.
+    private func pagesArePortrait(around index: Int, in document: PDFDocument) -> Bool {
+        [index, index + 1].compactMap { document.page(at: $0) }.allSatisfy { page in
+            let box = page.bounds(for: pdfView.displayBox).size
+            let size = page.rotation % 180 == 0 ? box : CGSize(width: box.height, height: box.width)
+            return size.width < size.height
+        }
+    }
+
+    /// PDFKit's own scroll views allow for the safe areas (the home
+    /// indicator, the Dynamic Island) when they centre a page, which put a
+    /// page that fills the height 10 points too high in landscape: cut at
+    /// the top, a strip showing at the bottom. The page should use the
+    /// whole screen (the controls float over it), so they do not. They are
+    /// new views after each change of layout, so this runs then.
+    private func ignoreSafeAreaInScrolling() {
+        func scrollViews(in view: UIView) -> [UIScrollView] {
+            view.subviews.flatMap { sub in ((sub as? UIScrollView).map { [$0] } ?? []) + scrollViews(in: sub) }
+        }
+        for scroll in scrollViews(in: pdfView) where scroll.contentInsetAdjustmentBehavior != .never {
+            scroll.contentInsetAdjustmentBehavior = .never
+        }
     }
 
     /// Pages as large as the screen allows: in One Page and Two Pages, the
