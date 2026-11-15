@@ -11,6 +11,9 @@
         }
       }
     },
+    "%@, page %lld" : {
+
+    },
     "%lld pages left in chapter" : {
 
     },
@@ -72,6 +75,9 @@
 
     },
     "Bring All to Front" : {
+
+    },
+    "Cancel" : {
 
     },
     "Choose Folder…" : {
@@ -318,9 +324,6 @@
     "Page turn animation" : {
 
     },
-    "Pages" : {
-
-    },
     "Paginated" : {
 
     },
@@ -367,6 +370,15 @@
 
     },
     "Save Image…" : {
+
+    },
+    "Save to Photos" : {
+
+    },
+    "Save to Files…" : {
+
+    },
+    "Saved to Photos" : {
 
     },
     "Scroll" : {
@@ -459,6 +471,9 @@
     "The file may be damaged, or not a PDF." : {
 
     },
+    "The picture could not be saved to Photos." : {
+
+    },
     "The window is too narrow for two pages. Make it wider to see them side by side." : {
 
     },
@@ -478,6 +493,9 @@
 
     },
     "Two Pages" : {
+
+    },
+    "Two pages show side by side when you turn to landscape." : {
 
     },
     "Untitled" : {

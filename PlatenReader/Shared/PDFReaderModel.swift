@@ -150,6 +150,12 @@ final class PDFReaderModel: NSObject, PDFDocumentDelegate {
 
     static func href(page: Int) -> String { "page:\(page)" }
 
+    /// Whether a page has a bookmark (for the ribbon, which lies on the
+    /// bookmarked page of a spread).
+    func isBookmarked(page: Int) -> Bool {
+        record.bookmarks.contains { $0.cfi == Self.href(page: page) }
+    }
+
     /// The page an outline entry, bookmark or search result points at.
     func pageIndex(for href: String) -> Int? {
         guard href.hasPrefix("page:"), let index = Int(href.dropFirst(5)) else { return nil }

@@ -161,6 +161,30 @@ class ReaderBaseViewController: UIViewController {
         chrome.showCloseOnly()
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // The controls' margins follow the screen's shape (ReaderChrome).
+        chrome?.updateEdges(in: view)
+    }
+
+    #if DEBUG
+    /// One scripted step (see DebugHooks.swift): the steps both readers
+    /// take. Subclasses handle their own and pass the rest here.
+    func runDebugStep(_ step: String) {
+        if step == "@close" {
+            close()
+        } else if step == "@orientation" {
+            // The device's orientation against the app's: different (with
+            // the device in a supported orientation) means rotation is held.
+            let device = UIDevice.current.orientation
+            let app = view.window?.windowScene?.effectiveGeometry.interfaceOrientation ?? .unknown
+            log.notice("orientation: device \(device.isLandscape ? "landscape" : device.isPortrait ? "portrait" : "other", privacy: .public), app \(app.isLandscape ? "landscape" : "portrait", privacy: .public)")
+        } else {
+            log.notice("step not understood: \(step, privacy: .public)")
+        }
+    }
+    #endif
+
     func close() {
         savePositionNow()
         onClose?()

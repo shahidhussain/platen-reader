@@ -244,15 +244,19 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     #if DEBUG
     /// One scripted step (see DebugHooks.swift).
-    func runDebugStep(_ step: String) {
+    override func runDebugStep(_ step: String) {
         if step.hasPrefix("@tap:"), let zone = ClickZone(rawValue: String(step.dropFirst(5))) {
             handleTap(zone: zone)
-        } else if step == "@close" {
-            close()
+        } else if step == "@close" || step == "@orientation" {
+            super.runDebugStep(step)
         } else if step == "@snapshot" {
             webView.takeSnapshot(with: nil) { image, _ in log.notice("snapshot \(image == nil ? "failed" : "taken")") }
         } else if step.hasPrefix("@turn:"), let turn = PageTurn(rawValue: String(step.dropFirst(6))) {
             session.turn(turn)
+        } else if step.hasPrefix("@doubleturn:"), let turn = PageTurn(rawValue: String(step.dropFirst(12))) {
+            // A second turn while the first is still drawn (fast taps).
+            session.turn(turn)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.session.turn(turn) }
         } else {
             webView.evaluateJavaScript(step) { result, _ in
                 if let result = result as? String { log.notice("step result: \(result, privacy: .public)") }

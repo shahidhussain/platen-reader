@@ -49,6 +49,14 @@ final class PageTurnAnimator {
     /// theme's background, PDFs paper white. Nil: the reader's background.
     var curlBackColour: (() -> UIColor?)?
 
+    /// Where the spine is, when two pages are shown side by side as a book
+    /// (the PDF reader's spreads), in the page view's coordinates. The curl
+    /// then turns one page about it, as in a book: going forward, the right
+    /// page lifts and lays down on the left one (its back is the new left
+    /// page); going back, the left page turns over to the right. Nil: one
+    /// page, which curls away whole.
+    var curlSpine: (() -> CGFloat?)?
+
     /// Called when a turn finds nowhere to go: the reader is at the start
     /// or end of the book. The reader says so (ReaderChrome.showNotice).
     var onEdge: ((PageTurn) -> Void)?
@@ -68,6 +76,13 @@ final class PageTurnAnimator {
     private var cover: UIView?
     /// The system's page curl, while one runs.
     private var pager: UIPageViewController?
+    /// True once `pager` has started its animated turn. UIKit turns
+    /// autorotation off for the whole app while a page view controller
+    /// animates, and back on only when the animation completes; a pager
+    /// removed mid-turn never completes, which left the app stuck in one
+    /// orientation until it was quit. So a started curl is never cut short:
+    /// it is hidden and left to finish (`finishNow`).
+    private var pagerAnimating = false
     /// Counts turns, so a late callback from an abandoned turn is ignored.
     private var generation = 0
 
@@ -119,6 +134,7 @@ final class PageTurnAnimator {
     }
 
     private func curl(_ request: PageTurn, leafMovesLeft: Bool) {
+        if let spine = curlSpine?() { return bookCurl(request, leafMovesLeft: leafMovesLeft, spine: spine) }
         generation += 1
         let turn = generation
         // Double-sided, so the back of the leaf is a page of our own (a
@@ -162,10 +178,74 @@ final class PageTurnAnimator {
                     // that ends up on show: the new page, and its back.
                     let back = backs.back()
                     let new = self.picturePage(after)
+                    self.pagerAnimating = true
                     pager.setViewControllers([new, back],
                                              direction: leafMovesLeft ? .forward : .reverse, animated: true) { _ in
                         log.info("page curl took \(Int((CACurrentMediaTime() - started) * 1000)) ms")
-                        if self.generation == turn { self.removePager() }
+                        // Always this pager, even if a later turn has
+                        // moved on: only now is its transition over. It is
+                        // taken down on the next turn of the run loop: the
+                        // page view controller turns autorotation back on
+                        // after this block returns, which it skips if it has
+                        // already been removed.
+                        if self.pager === pager { self.pager = nil; self.pagerAnimating = false }
+                        DispatchQueue.main.async { self.detach(pager) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A curl about the spine of two pages side by side (see `curlSpine`).
+    /// UIPageViewController does this itself with its spine in the middle:
+    /// it is given the left and right pages before the turn, then the left
+    /// and right pages after it, and turns the one leaf between them.
+    private func bookCurl(_ request: PageTurn, leafMovesLeft: Bool, spine: CGFloat) {
+        generation += 1
+        let turn = generation
+        let region = curlRegion?()?.intersection(pageView.bounds).nonEmpty ?? pageView.bounds
+        // Two halves of equal width either side of the spine (the narrower
+        // page, if they differ, has a little of the background beside it).
+        let half = max(spine - region.minX, region.maxX - spine)
+        let book = CGRect(x: spine - half, y: region.minY, width: half * 2, height: region.height)
+        let left = CGRect(x: book.minX, y: book.minY, width: half, height: book.height)
+        let right = CGRect(x: spine, y: book.minY, width: half, height: book.height)
+
+        let pager = UIPageViewController(transitionStyle: .pageCurl, navigationOrientation: .horizontal,
+                                         options: [.spineLocation: UIPageViewController.SpineLocation.mid.rawValue])
+        pager.isDoubleSided = true // required with the spine in the middle
+        pager.view.isUserInteractionEnabled = false
+        pager.view.backgroundColor = .clear
+        pager.view.frame = book.offsetBy(dx: pageView.frame.minX, dy: pageView.frame.minY)
+        self.pager = pager
+
+        func halves(_ full: UIImage?) -> [UIViewController]? {
+            guard let full, let l = crop(full, to: left), let r = crop(full, to: right) else { return nil }
+            return [picturePage(l), picturePage(r)]
+        }
+        snapshot { [weak self] full in
+            guard let self, self.generation == turn else { return }
+            guard let before = halves(full) else {
+                self.pager = nil
+                return self.turnOrReportEdge(request)
+            }
+            pager.setViewControllers(before, direction: .forward, animated: false)
+            self.host.addChild(pager)
+            self.pageView.superview?.insertSubview(pager.view, aboveSubview: self.pageView)
+            pager.didMove(toParent: self.host)
+
+            self.turnOrReportEdge(request) { moved in
+                guard self.generation == turn else { return }
+                guard moved else { return self.removePager() }
+                self.snapshot { full in
+                    guard self.generation == turn, let after = halves(full) else { return self.removePager() }
+                    let started = CACurrentMediaTime()
+                    self.pagerAnimating = true
+                    pager.setViewControllers(after, direction: leafMovesLeft ? .forward : .reverse, animated: true) { _ in
+                        log.info("page curl took \(Int((CACurrentMediaTime() - started) * 1000)) ms")
+                        if self.pager === pager { self.pager = nil; self.pagerAnimating = false }
+                        // Removed on the next turn of the run loop (see curl).
+                        DispatchQueue.main.async { self.detach(pager) }
                     }
                 }
             }
@@ -367,7 +447,15 @@ final class PageTurnAnimator {
         pageView.transform = .identity
         pageView.alpha = 1
         removeCover()
-        removePager()
+        if let pager, pagerAnimating {
+            // Mid-curl: hide it and let it finish; its completion removes
+            // it (see `pagerAnimating`).
+            pager.view.alpha = 0
+            self.pager = nil
+            pagerAnimating = false
+        } else {
+            removePager()
+        }
     }
 
     private func addCover(_ image: UIImage) -> UIView {
@@ -387,9 +475,16 @@ final class PageTurnAnimator {
         cover = nil
     }
 
+    /// Removes a curl that has not started animating (or has finished).
     private func removePager() {
         guard let pager else { return }
         self.pager = nil
+        pagerAnimating = false
+        detach(pager)
+    }
+
+    private func detach(_ pager: UIPageViewController) {
+        guard pager.parent != nil || pager.view.superview != nil else { return }
         pager.willMove(toParent: nil)
         pager.view.removeFromSuperview()
         pager.removeFromParent()

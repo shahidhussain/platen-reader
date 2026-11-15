@@ -50,6 +50,15 @@ enum ReadingLayout: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The symbol for this layout (the same as the overlay's Layout button).
+    var symbol: String {
+        switch self {
+        case .onePage: return "doc.plaintext"
+        case .twoPages: return "book"
+        case .scroll: return "scroll"
+        }
+    }
+
     var shortcut: String {
         switch self {
         case .onePage: return "1"

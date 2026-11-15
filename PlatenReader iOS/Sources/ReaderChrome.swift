@@ -69,6 +69,11 @@ final class ReaderChrome {
         for host in [bottom, top, buttons] as [UIViewController] {
             (host as? UIHostingController<OverlayBar>)?.sizingOptions = [.intrinsicContentSize]
             (host as? UIHostingController<ReaderTopControls>)?.sizingOptions = [.intrinsicContentSize]
+            // Their places already allow for the safe areas (updateEdges);
+            // a hosting view would otherwise pad its content by however much
+            // it overlaps them, undoing the placing.
+            (host as? UIHostingController<OverlayBar>)?.safeAreaRegions = []
+            (host as? UIHostingController<ReaderTopControls>)?.safeAreaRegions = []
             host.view.backgroundColor = .clear
             host.view.translatesAutoresizingMaskIntoConstraints = false
             host.view.alpha = 0
@@ -78,6 +83,9 @@ final class ReaderChrome {
             host.didMove(toParent: owner)
         }
         let safe = root.safeAreaLayoutGuide
+        topEdge = top.view.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4)
+        bottomEdge = bottom.view.bottomAnchor.constraint(equalTo: safe.bottomAnchor)
+        NSLayoutConstraint.activate([topEdge!, bottomEdge!])
         NSLayoutConstraint.activate([
             bottom.view.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             bottom.view.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 10),
@@ -85,11 +93,9 @@ final class ReaderChrome {
             bottom.view.widthAnchor.constraint(equalTo: safe.widthAnchor, constant: -20).withPriority(.defaultHigh),
             // Not too wide on an iPad, so the buttons stay near the slider.
             bottom.view.widthAnchor.constraint(lessThanOrEqualToConstant: 760),
-            bottom.view.bottomAnchor.constraint(equalTo: safe.bottomAnchor),
 
             top.view.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 12),
             top.view.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -12),
-            top.view.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4),
 
             // Right-aligned with the › button, just above it.
             buttons.view.trailingAnchor.constraint(equalTo: bottom.view.trailingAnchor),
@@ -97,6 +103,27 @@ final class ReaderChrome {
         ])
         // A long title truncates rather than running off the screen.
         top.view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    }
+
+    /// The top and bottom controls' distance from the safe area's edges.
+    private var topEdge: NSLayoutConstraint?
+    private var bottomEdge: NSLayoutConstraint?
+
+    /// Places the top and bottom controls for the screen's shape. In
+    /// portrait the safe area keeps them clear of the Dynamic Island and the
+    /// home indicator. On an iPhone in landscape its top is the screen's
+    /// edge, which put the top controls almost against it, and its bottom
+    /// leaves a deep strip for the home indicator, which held the bottom
+    /// controls high: there, the top controls sit 14 points down, and the
+    /// bottom ones lower, the location line just clear of the indicator.
+    /// Called by the reader whenever its layout changes.
+    func updateEdges(in root: UIView) {
+        let insets = root.safeAreaInsets
+        let landscapePhone = root.bounds.width > root.bounds.height && insets.top < 20
+        let top: CGFloat = landscapePhone ? max(4, 14 - insets.top) : 4
+        let bottom: CGFloat = landscapePhone ? max(0, insets.bottom - 9) : 0
+        if topEdge?.constant != top { topEdge?.constant = top }
+        if bottomEdge?.constant != bottom { bottomEdge?.constant = bottom }
     }
 
     /// Light or dark controls, whatever the reader's own style is. The PDF
@@ -178,6 +205,10 @@ final class ReaderChrome {
     func restartHideTimer() {
         hideTimer?.invalidate()
         guard isVisible, !UIAccessibility.isVoiceOverRunning else { return }
+        #if DEBUG
+        // Testing: PLATEN_KEEP_CONTROLS keeps the controls up (DebugHooks).
+        if ProcessInfo.processInfo.environment["PLATEN_KEEP_CONTROLS", default: ""].isEmpty == false { return }
+        #endif
         hideTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
             guard let self, self.isVisible else { return }
             if self.state.overlayPopoverOpen || self.state.sidebarVisible || self.owner?.presentedViewController != nil { return }
