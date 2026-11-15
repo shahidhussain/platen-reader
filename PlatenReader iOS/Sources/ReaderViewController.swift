@@ -244,21 +244,15 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     #if DEBUG
     /// One scripted step (see DebugHooks.swift).
-    func runDebugStep(_ step: String) {
+    override func runDebugStep(_ step: String) {
         if step.hasPrefix("@tap:"), let zone = ClickZone(rawValue: String(step.dropFirst(5))) {
             handleTap(zone: zone)
-        } else if step == "@close" {
-            close()
+        } else if step == "@close" || step == "@orientation" {
+            super.runDebugStep(step)
         } else if step == "@snapshot" {
             webView.takeSnapshot(with: nil) { image, _ in log.notice("snapshot \(image == nil ? "failed" : "taken")") }
         } else if step.hasPrefix("@turn:"), let turn = PageTurn(rawValue: String(step.dropFirst(6))) {
             session.turn(turn)
-        } else if step == "@orientation" {
-            // The device's orientation against the app's: different (with
-            // the device in a supported orientation) means rotation is held.
-            let device = UIDevice.current.orientation
-            let app = view.window?.windowScene?.effectiveGeometry.interfaceOrientation ?? .unknown
-            log.notice("orientation: device \(device.isLandscape ? "landscape" : device.isPortrait ? "portrait" : "other", privacy: .public), app \(app.isLandscape ? "landscape" : "portrait", privacy: .public)")
         } else if step.hasPrefix("@doubleturn:"), let turn = PageTurn(rawValue: String(step.dropFirst(12))) {
             // A second turn while the first is still drawn (fast taps).
             session.turn(turn)

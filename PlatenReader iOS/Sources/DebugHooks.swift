@@ -23,10 +23,13 @@ import Foundation
 ///   that is the setting), `@doubleturn:<…>` (two turns 0.15 s apart, the second
 ///   while the first is drawn), `@snapshot` (a snapshot of the web view), `@orientation` (logs the device's
 ///   and the app's orientation),
-///   `@close`, or JavaScript such as `platen.next()`. Each
+///   `@close`, or JavaScript such as `platen.next()`. PDFs take `@turn:<…>`,
+///   `@doubleturn:<…>`, `@swipe:<left|right>` (a finger drawn across the
+///   page over 0.3 s; left brings the next page), `@orientation` and
+///   `@close`. Each
 ///   step is logged as `step: …`; take screenshots between them with
 ///   `xcrun simctl io booted screenshot`.
-extension ReaderViewController {
+extension ReaderBaseViewController {
     func runDebugStepsIfAny() {
         guard let list = ProcessInfo.processInfo.environment["PLATEN_STEPS"] else { return }
         let steps = list.split(separator: ";").map(String.init)
