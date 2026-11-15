@@ -126,9 +126,11 @@ class ReaderBaseViewController: UIViewController {
             .sink { [weak self] _ in self?.savePositionNow() }
             .store(in: &cancellables)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, !self.hasShownPage, self.failureHost == nil else { return }
-            self.spinner.startAnimating()
+        // A loading bar and a line saying what is happening, if opening
+        // takes more than a moment (so quick opens show nothing).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, self.state.opening != nil, self.failureHost == nil else { return }
+            self.showOpeningProgress()
         }
     }
 
@@ -137,6 +139,45 @@ class ReaderBaseViewController: UIViewController {
     override var prefersStatusBarHidden: Bool { !(chrome?.isVisible ?? false) }
     override var prefersHomeIndicatorAutoHidden: Bool { !(chrome?.isVisible ?? false) }
     override var preferredStatusBarStyle: UIStatusBarStyle { currentTheme.isDark ? .lightContent : .darkContent }
+
+    // MARK: - Opening progress
+
+    private var openingHost: UIViewController?
+
+    private func showOpeningProgress() {
+        let host = UIHostingController(rootView: OpeningProgressView(state: state))
+        host.view.backgroundColor = .clear
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.isUserInteractionEnabled = false
+        host.view.alpha = 0
+        addChild(host)
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            host.view.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+        host.didMove(toParent: self)
+        openingHost = host
+        UIView.animate(withDuration: 0.2) { host.view.alpha = 1 }
+        // Gone once the first page is on screen (or the book failed).
+        state.$opening
+            .filter { $0 == nil }
+            .first()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.hideOpeningProgress() }
+            .store(in: &cancellables)
+    }
+
+    private func hideOpeningProgress() {
+        guard let host = openingHost else { return }
+        openingHost = nil
+        // A moment for the bar to fill, then fade.
+        UIView.animate(withDuration: 0.25, delay: 0.15) { host.view.alpha = 0 } completion: { _ in
+            host.willMove(toParent: nil)
+            host.view.removeFromSuperview()
+            host.removeFromParent()
+        }
+    }
 
     // MARK: - Failure and closing
 

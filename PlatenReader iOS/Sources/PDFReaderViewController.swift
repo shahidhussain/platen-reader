@@ -218,6 +218,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                 guard let self else { return }
                 switch result {
                 case .success(let loaded):
+                    self.state.opening = nil // PDFKit draws the page at once
                     let model = PDFReaderModel(loaded: loaded, url: url, state: self.state)
                     self.model = model
                     // One reading mode for every book and PDF (the setting).
@@ -243,6 +244,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                     log.info("PDF: \(model.pageCount) pages, \(self.state.toc.count) contents entries")
                     log.info("First page visible after \(elapsed, format: .fixed(precision: 0)) ms")
                 case .failure(let error):
+                    self.state.opening = nil
                     log.error("Could not open \(url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
                     self.showFailure(error)
                 }

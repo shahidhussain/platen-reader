@@ -91,7 +91,16 @@ private struct FolderGridView: View {
             .padding(.vertical, 12)
         }
         .overlay {
-            if model.entries.isEmpty {
+            if !model.hasLoaded {
+                // Reading the folder (slow for a large one or a network
+                // share): not empty, just not read yet.
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Looking for books…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            } else if model.entries.isEmpty {
                 ContentUnavailableView {
                     Label("No Books Here", systemImage: "books.vertical")
                 } description: {
@@ -99,6 +108,15 @@ private struct FolderGridView: View {
                 }
             }
         }
+        .overlay(alignment: .bottom) {
+            let (done, total) = model.coverProgress
+            if model.hasLoaded, total > 0, done < total {
+                CoverProgress(done: done, total: total)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.3), value: model.coverProgress.done < model.coverProgress.total)
         .navigationTitle(folder.lastPathComponent)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -136,6 +154,30 @@ private struct FolderGridView: View {
             // In iCloud only: fetch it first; it opens when it arrives.
             model.download(entry)
         }
+    }
+}
+
+/// While covers are being made: a small bar floating at the bottom, with
+/// how many are done. Covers are made once and kept, so this shows the
+/// first time a folder is opened (or after many books are added).
+private struct CoverProgress: View {
+    let done: Int
+    let total: Int
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ProgressView(value: Double(done), total: Double(total))
+                .progressViewStyle(.linear)
+                .frame(width: 160)
+            Text("Making covers: \(done) of \(total)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: Capsule())
+        .accessibilityElement(children: .combine)
     }
 }
 
