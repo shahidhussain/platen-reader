@@ -84,3 +84,20 @@ final class BookFolderTests: XCTestCase {
         XCTAssertEqual(LibraryFolder(defaults: defaults).pathFromRoot, [])
     }
 }
+
+/// The opening stages behind the loading bar (Shared/OpeningProgress.swift).
+final class OpeningStageTests: XCTestCase {
+    func testStagesMoveTheBarForwardAndNeverFillIt() {
+        let stages: [OpeningStage] = [.downloading, .reading, .preparing, .layingOut]
+        XCTAssertEqual(stages, stages.sorted())
+        let targets = stages.map(\.progress)
+        XCTAssertEqual(targets, targets.sorted(), "each stage moves the bar on")
+        XCTAssertLessThan(targets.last ?? 1, 1, "the bar fills only when the page is shown")
+        XCTAssertTrue(stages.allSatisfy { !$0.label.isEmpty })
+    }
+
+    @MainActor
+    func testANewReaderStartsOpening() {
+        XCTAssertEqual(ReaderState().opening, .reading)
+    }
+}

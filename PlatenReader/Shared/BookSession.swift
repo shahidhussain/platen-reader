@@ -120,6 +120,12 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
     private func loadBook() {
         openStarted = CFAbsoluteTimeGetCurrent()
         let url = self.url
+        // A book only in iCloud is downloaded first (by the coordinated read
+        // below); say so, as that can take a while.
+        let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
+        if values?.isUbiquitousItem == true, let status = values?.ubiquitousItemDownloadingStatus, status == .notDownloaded {
+            state.opening = .downloading
+        }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // Coordinated, so offloaded iCloud files download first and file
             // providers (SMB, cloud apps) hand over a readable copy.
@@ -128,6 +134,7 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
                 guard let self else { return }
                 switch result {
                 case .success(let book):
+                    if self.state.opening == .downloading { self.state.opening = .reading }
                     let elapsed = (CFAbsoluteTimeGetCurrent() - self.openStarted) * 1000
                     log.info("Read \(url.lastPathComponent, privacy: .public) in \(elapsed, format: .fixed(precision: 0)) ms")
                     for warning in book.warnings { log.notice("\(warning, privacy: .public)") }
@@ -164,6 +171,7 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
     private func sendBookIfReady() {
         guard shellReady, let book, !isOpenInPage, let webView else { return }
         isOpenInPage = true
+        state.opening = .preparing
         let settings = currentSettings
         lastSettings = settings
         var options: [String: Any] = [
@@ -182,6 +190,7 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
 
     private func fail(_ error: Error) {
         log.error("Could not open \(self.url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+        state.opening = nil
         host?.sessionDidFail(error)
     }
 
@@ -247,6 +256,7 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
 
         case .firstRender:
             hasRendered = true
+            state.opening = nil
             let elapsed = (CFAbsoluteTimeGetCurrent() - openStarted) * 1000
             log.info("First page visible after \(elapsed, format: .fixed(precision: 0)) ms")
             host?.sessionDidRenderFirstPage()
@@ -259,6 +269,9 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
             log.debug("contents: \(contents.toc.count) entries\(contents.synthesised ? " (built from headings)" : "", privacy: .public)")
 
         case .relocate(let place):
+            // foliate has opened the book and placed the first page; its
+            // chapter is now loading and being laid out (the long wait).
+            if !hasRendered, state.opening == .preparing { state.opening = .layingOut }
             if let cfi = place.cfi, var record {
                 record.lastCFI = cfi
                 self.record = record

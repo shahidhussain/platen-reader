@@ -134,6 +134,9 @@
     "Downloading" : {
 
     },
+    "Downloading from iCloud…" : {
+
+    },
     "Edit" : {
 
     },
@@ -218,6 +221,9 @@
     "last page in chapter" : {
 
     },
+    "Laying out the first page…" : {
+
+    },
     "Layout" : {
 
     },
@@ -239,10 +245,16 @@
     "Location" : {
 
     },
+    "Looking for books…" : {
+
+    },
     "Make Platen the Default" : {
 
     },
     "Make Platen the Default for All Ebooks" : {
+
+    },
+    "Making covers: %lld of %lld" : {
 
     },
     "Medium" : {
@@ -288,6 +300,9 @@
 
     },
     "Open Recent" : {
+
+    },
+    "Opening the book…" : {
 
     },
     "Open…" : {
@@ -340,6 +355,9 @@
 
     },
     "Platen Reader" : {
+
+    },
+    "Preparing the pages…" : {
 
     },
     "Previous Chapter" : {

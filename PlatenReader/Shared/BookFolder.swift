@@ -203,6 +203,10 @@ final class LibraryFolder: ObservableObject {
 final class FolderModel: NSObject, ObservableObject {
     let folder: URL
     @Published private(set) var entries: [FolderEntry] = []
+    /// False until the folder has been read once. Reading a large folder,
+    /// or one on a network share, takes a while; until then the view says
+    /// it is looking, not that the folder is empty.
+    @Published private(set) var hasLoaded = false
     /// Covers made so far, by book URL. A book with no entry is waiting.
     @Published private(set) var covers: [URL: BookCoverInfo] = [:]
     @Published private(set) var images: [URL: CGImage] = [:]
@@ -261,6 +265,7 @@ final class FolderModel: NSObject, ObservableObject {
 
     private func apply(_ new: [FolderEntry]) {
         if new != entries { entries = new }
+        if !hasLoaded { hasLoaded = true }
         // Covers of books that changed are made again (their cache key
         // changes); those of books that went are dropped.
         let urls = Set(new.map(\.url))
@@ -292,6 +297,13 @@ final class FolderModel: NSObject, ObservableObject {
                 self.images[url] = image
             }
         }
+    }
+
+    /// Covers still to make, and how many books want one, for the progress
+    /// bar while they are made (books in iCloud only have none yet).
+    var coverProgress: (done: Int, total: Int) {
+        let books = entries.filter { $0.kind == .book && $0.isDownloaded }
+        return (books.filter { covers[$0.url] != nil }.count, books.count)
     }
 
     /// Decodes a cached cover now, off the main thread, so scrolling never
