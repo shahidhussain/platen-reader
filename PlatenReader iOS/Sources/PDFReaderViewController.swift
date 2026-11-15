@@ -448,9 +448,10 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     private func configurePageTurner() {
         // A turn past the first or last page says so, rather than just not
-        // moving.
+        // moving. (Swipes ask for .left or .right, not .next or .prev, so
+        // the direction is read from isForward.)
         pageTurner.onEdge = { [weak self] request in
-            self?.chrome.showNotice(request == .next ? String(localized: "End of document")
+            self?.chrome.showNotice(request.isForward ? String(localized: "End of document")
                                                       : String(localized: "Start of document"))
         }
         // Only the page curls (or the spread, in landscape), not the

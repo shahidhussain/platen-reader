@@ -399,8 +399,15 @@ struct ProgressSlider: View {
     let onEditingChanged: (Bool) -> Void
 
     @State private var dragging = false
+    @Environment(\.colorScheme) private var colorScheme
     private let knob: CGFloat = 18
     private let track: CGFloat = 4
+
+    /// The part of the track still to read, and the chapter ticks. A light
+    /// line on dark glass needs more weight than a dark line on light glass
+    /// to be seen as well (in dark mode, 15% white all but vanished).
+    private var restOfTrack: Color { Color.primary.opacity(colorScheme == .dark ? 0.35 : 0.15) }
+    private var tickColour: Color { Color.primary.opacity(colorScheme == .dark ? 0.5 : 0.3) }
 
     var body: some View {
         GeometryReader { geo in
@@ -411,7 +418,7 @@ struct ProgressSlider: View {
             }
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.primary.opacity(0.15))
+                    .fill(restOfTrack)
                     .frame(height: track)
                     .padding(.horizontal, knob / 2)
                 Capsule()
@@ -420,7 +427,7 @@ struct ProgressSlider: View {
                     .offset(x: rightToLeft ? position(value) : knob / 2)
                 ForEach(Array(ticks.dropFirst().dropLast().enumerated()), id: \.offset) { _, tick in
                     Rectangle()
-                        .fill(Color.primary.opacity(0.3))
+                        .fill(tickColour)
                         .frame(width: 1, height: 10)
                         .offset(x: position(tick))
                 }
