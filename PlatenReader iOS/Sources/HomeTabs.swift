@@ -18,15 +18,6 @@ final class HomeNavigation: ObservableObject {
     @Published var tab: Tab = .home
     @Published var folderPath: [URL] = []
 
-    /// A sideways swipe on a tab's main screen moves to the tab beside it:
-    /// left for the next, right for the one before. Inside a folder, a swipe
-    /// right goes back instead (SwipeBack), so tabs do not change there.
-    func swiped(left: Bool) {
-        guard tab != .folders || folderPath.isEmpty,
-              let next = Tab(rawValue: tab.rawValue + (left ? 1 : -1)) else { return }
-        withAnimation(.easeInOut(duration: 0.2)) { tab = next }
-    }
-
     /// Shows a folder in the Recent Folders tab (just chosen, or tapped).
     func show(folder: URL) {
         FolderAccess.hold(folder)
@@ -46,49 +37,110 @@ enum FolderAccess {
     }
 }
 
-/// The home screen: three tabs, whose bar stays at the bottom even inside a
-/// folder, so the reader can always get back out.
+/// The home screen: three sections side by side, Home, Recent Books and
+/// Recent Folders, which slide sideways under the finger (or when a tab is
+/// tapped), so they read as three pages in a row. The tab bar stays at the
+/// bottom even inside a folder, so the reader can always get back out;
+/// there, a swipe right goes back instead (the row stands still).
 /// - **Home:** the welcome (Open Book…, Choose Folder…), for now.
 /// - **Recent Books:** books opened lately, from anywhere, newest first.
 /// - **Recent Folders:** folders looked at lately, as a list; a folder opens
-///   inside the tab.
+///   inside the section.
+///
+/// The system's tab view cannot slide between its tabs, so the sections are
+/// pages of a paging scroll view, with a tab bar of Platen's own on glass.
 struct HomeTabs: View {
     @ObservedObject var navigation: HomeNavigation
     let actions: HomeActions
+    /// The page the row is scrolled to (follows the finger).
+    @State private var shown: HomeNavigation.Tab? = .home
+
+    /// Inside a folder the row stands still: a swipe goes back.
+    private var rowLocked: Bool { navigation.tab == .folders && !navigation.folderPath.isEmpty }
 
     var body: some View {
-        TabView(selection: $navigation.tab) {
-            WelcomeView(open: actions.chooseBook, chooseFolder: actions.chooseFolder)
-                .contentShape(Rectangle())
-                .tabSwipe(navigation)
-                .tabItem { Label("Home", systemImage: "house") }
-                .tag(HomeNavigation.Tab.home)
-            RecentBooksView(actions: actions)
-                .tabSwipe(navigation)
-                .tabItem { Label("Recent Books", systemImage: "clock") }
-                .tag(HomeNavigation.Tab.books)
-            RecentFoldersView(navigation: navigation, actions: actions)
-                .tabSwipe(navigation)
-                .tabItem { Label("Recent Folders", systemImage: "folder") }
-                .tag(HomeNavigation.Tab.folders)
+        ScrollView(.horizontal) {
+            HStack(spacing: 0) {
+                ForEach(HomeNavigation.Tab.allCases, id: \.self) { tab in
+                    page(tab)
+                        .containerRelativeFrame(.horizontal)
+                        .id(tab)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $shown)
+        .scrollIndicators(.hidden)
+        .scrollDisabled(rowLocked)
+        .safeAreaInset(edge: .bottom) {
+            HomeTabBar(selection: Binding(get: { navigation.tab }, set: { tab in
+                // Tapping Recent Folders again goes back to its list.
+                if tab == navigation.tab, tab == .folders { navigation.folderPath = [] }
+                navigation.tab = tab
+            }))
+        }
+        // A swipe that settles on a page makes it the tab; a tab chosen
+        // (tapped, or a folder just chosen) slides the row to it.
+        .onChange(of: shown) { _, tab in
+            if let tab, tab != navigation.tab { navigation.tab = tab }
+        }
+        .onChange(of: navigation.tab) { _, tab in
+            guard shown != tab else { return }
+            withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .snappy(duration: 0.35)) { shown = tab }
+        }
+        // A tab chosen before the row was laid out (a folder chosen at
+        // launch): go to it once it is on screen.
+        .onAppear {
+            DispatchQueue.main.async { if shown != navigation.tab { shown = navigation.tab } }
+        }
+    }
+
+    @ViewBuilder private func page(_ tab: HomeNavigation.Tab) -> some View {
+        switch tab {
+        case .home: WelcomeView(open: actions.chooseBook, chooseFolder: actions.chooseFolder)
+        case .books: RecentBooksView(actions: actions)
+        case .folders: RecentFoldersView(navigation: navigation, actions: actions)
         }
     }
 }
 
-extension View {
-    /// Switches tabs on a clear sideways swipe (see HomeNavigation.swiped),
-    /// alongside the screen's own scrolling and taps.
-    func tabSwipe(_ navigation: HomeNavigation) -> some View {
-        simultaneousGesture(
-            DragGesture(minimumDistance: 30)
-                .onEnded { drag in
-                    let dx = drag.translation.width, dy = drag.translation.height
-                    // Mostly sideways, and far enough (or quick enough).
-                    guard abs(dx) > abs(dy) * 2,
-                          abs(dx) > 90 || abs(drag.predictedEndTranslation.width) > 200 else { return }
-                    navigation.swiped(left: dx < 0)
-                }
-        )
+/// The tab bar: Home, Recent Books and Recent Folders, on glass, the one
+/// shown picked out.
+struct HomeTabBar: View {
+    @Binding var selection: HomeNavigation.Tab
+
+    var body: some View {
+        HStack(spacing: 4) {
+            item(.home, "Home", "house")
+            item(.books, "Recent Books", "clock")
+            item(.folders, "Recent Folders", "folder")
+        }
+        .padding(4)
+        .overlaySurface(Capsule())
+        .padding(.bottom, 4)
+    }
+
+    private func item(_ tab: HomeNavigation.Tab, _ title: LocalizedStringKey, _ symbol: String) -> some View {
+        let selected = selection == tab
+        return Button { selection = tab } label: {
+            VStack(spacing: 2) {
+                Image(systemName: selected ? symbol + ".fill" : symbol)
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(height: 22)
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            .frame(width: 100, height: 48)
+            .background {
+                if selected { Capsule().fill(Color.primary.opacity(0.08)) }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }
 
@@ -216,7 +268,8 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
 /// (this device, iCloud Drive, a network share, a drive), its name, its
 /// path (the end of it always shown) and when. Tapping one shows it inside
 /// this tab. Each is checked in the background; one that does not answer is
-/// greyed. A long press (or a swipe) removes it; + adds a folder.
+/// greyed. A long press removes it (a sideways swipe moves between the
+/// home screen's sections); + adds a folder.
 struct RecentFoldersView: View {
     @ObservedObject private var recents = RecentList.folders
     @ObservedObject var navigation: HomeNavigation
@@ -234,11 +287,6 @@ struct RecentFoldersView: View {
                         .contextMenu {
                             Button(role: .destructive) { recents.remove(item) } label: {
                                 Label("Remove from Recents", systemImage: "minus.circle")
-                            }
-                        }
-                        .swipeActions {
-                            Button(role: .destructive) { recents.remove(item) } label: {
-                                Label("Remove", systemImage: "minus.circle")
                             }
                         }
                 }
