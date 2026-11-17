@@ -10,9 +10,14 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     override open func viewDidLoad() {
         super.viewDidLoad()
         interactivePopGestureRecognizer?.delegate = self
+        // The swipe anywhere is new in iOS 26; its API exists only in that
+        // SDK (Xcode 26 and later), so older toolchains, such as CI's, leave
+        // it out.
+        #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             interactiveContentPopGestureRecognizer?.delegate = self
         }
+        #endif
     }
 
     public func gestureRecognizerShouldBegin(_ recogniser: UIGestureRecognizer) -> Bool {
