@@ -74,10 +74,16 @@
     "Books will open at the beginning. This cannot be undone." : {
 
     },
+    "Books you open appear here." : {
+
+    },
     "Bring All to Front" : {
 
     },
     "Cancel" : {
+
+    },
+    "Change the filter to see the other books here." : {
 
     },
     "Choose Folder…" : {
@@ -102,6 +108,9 @@
 
     },
     "Close Book" : {
+
+    },
+    "Cloud storage" : {
 
     },
     "Contents" : {
@@ -155,10 +164,16 @@
     "EPUB, KEPUB, MOBI, AZW3, PDF or plain text. You can also drop a book here." : {
 
     },
+    "External drive" : {
+
+    },
     "File" : {
 
     },
     "File Types" : {
+
+    },
+    "Filter" : {
 
     },
     "Find" : {
@@ -185,6 +200,9 @@
     "Folder: %@" : {
 
     },
+    "Folders you look at appear here." : {
+
+    },
     "Font" : {
 
     },
@@ -206,13 +224,22 @@
     "Hide Others" : {
 
     },
+    "Home" : {
+
+    },
     "Hyphenate Text" : {
 
     },
     "Hyphenate text in paginated mode" : {
 
     },
+    "iCloud Drive" : {
+
+    },
     "In iCloud" : {
+
+    },
+    "It may have been moved or deleted, or it is on a drive or network share that is not connected." : {
 
     },
     "Larger Text" : {
@@ -269,6 +296,9 @@
     "Narrow" : {
 
     },
+    "Network share" : {
+
+    },
     "Next Chapter" : {
 
     },
@@ -284,6 +314,15 @@
     "No Books Here" : {
 
     },
+    "No Books of These Kinds" : {
+
+    },
+    "No Recent Books" : {
+
+    },
+    "No Recent Folders" : {
+
+    },
     "No results for “%@”" : {
 
     },
@@ -291,6 +330,21 @@
 
     },
     "None" : {
+
+    },
+    "Not available" : {
+
+    },
+    "Not connected" : {
+
+    },
+    "OK" : {
+
+    },
+    "On My iPhone" : {
+
+    },
+    "On this device" : {
 
     },
     "One Page" : {
@@ -345,6 +399,9 @@
     "Picture" : {
 
     },
+    "Plain Text" : {
+
+    },
     "Plain text is left out, since most text files are not books. Use its own button to open all text files in Platen." : {
 
     },
@@ -381,10 +438,22 @@
     "Reading positions and bookmarks" : {
 
     },
+    "Recent Books" : {
+
+    },
+    "Recent Folders" : {
+
+    },
+    "Remove" : {
+
+    },
     "Remove Bookmark" : {
 
     },
     "Remove Bookmark (⌘D)" : {
+
+    },
+    "Remove from Recents" : {
 
     },
     "Save Image…" : {
@@ -495,6 +564,9 @@
     "The window is too narrow for two pages. Make it wider to see them side by side." : {
 
     },
+    "This book can’t be opened" : {
+
+    },
     "This book could not be opened." : {
 
     },
@@ -504,10 +576,16 @@
     "This cannot be undone." : {
 
     },
+    "This folder can’t be opened" : {
+
+    },
     "This PDF could not be opened." : {
 
     },
     "This PDF is protected by a password." : {
+
+    },
+    "Title, author or file name" : {
 
     },
     "Two Pages" : {

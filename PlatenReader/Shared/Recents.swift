@@ -1,0 +1,414 @@
+import Combine
+import Foundation
+import PlatenCore
+
+/// A book or folder the reader opened lately, for the home screen's Recent
+/// Books and Recent Folders tabs.
+///
+/// It is found again through a bookmark (a reference that survives the item
+/// being moved or renamed, and keeps permission to read it), never through
+/// its path, which is kept only to recognise the same item opened twice and
+/// to say where it was.
+struct RecentItem: Codable, Identifiable, Equatable, Sendable {
+    var id = UUID()
+    var bookmark: Data
+    /// The file or folder name, as it was ("Middlemarch.epub", "Kids").
+    var name: String
+    /// The book's own title and first author, if it names them.
+    var title: String?
+    var author: String?
+    /// The path when last opened: to spot the same item again, and to show
+    /// the folder it is in. Never used to open it.
+    var path: String
+    var lastOpened: Date
+    /// A copy of the cover is kept with the list (`RecentList.coverURL`).
+    var hasCover = false
+    /// Where it is stored (on this device, iCloud Drive, a network share, a
+    /// drive), for the icon; and where it is, as a reader would say it
+    /// ("iCloud Drive/Books/Kids", "smb://nas/books/Kids"). Worked out when
+    /// it was opened; older entries work them out from `path`.
+    var storage: StorageKind?
+    var location: String?
+
+    var storageKind: StorageKind { storage ?? StoragePlace(path: path).kind }
+    var locationText: String { location ?? StoragePlace(path: path).location }
+
+    /// "Middlemarch" for "Middlemarch.kepub.epub"; a folder's own name.
+    var displayName: String { title ?? FolderScanner.displayName(URL(fileURLWithPath: path)) }
+
+    /// The folder it is in ("Kids"), to tell apart two items of one name.
+    var place: String { URL(fileURLWithPath: path).deletingLastPathComponent().lastPathComponent }
+}
+
+/// Where a file or folder is kept, for the icon in Recent Folders.
+enum StorageKind: String, Codable, Sendable {
+    case device, iCloud, network, drive, otherCloud
+
+    var symbol: String {
+        switch self {
+        case .device: return "iphone"
+        case .iCloud: return "icloud"
+        case .network: return "server.rack"
+        case .drive: return "externaldrive"
+        case .otherCloud: return "cloud"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .device: return String(localized: "On this device")
+        case .iCloud: return String(localized: "iCloud Drive")
+        case .network: return String(localized: "Network share")
+        case .drive: return String(localized: "External drive")
+        case .otherCloud: return String(localized: "Cloud storage")
+        }
+    }
+}
+
+/// Where a path is, worked out from the path alone (no disk access, so it
+/// never waits on a share that has gone away): iOS keeps each kind of
+/// storage in a place of its own.
+/// - iCloud Drive: `…/Mobile Documents/com~apple~CloudDocs/…`, or an app's
+///   own iCloud folder `…/Mobile Documents/iCloud~com~app/Documents/…`.
+/// - Network shares (Files > Connect to Server):
+///   `…/LiveFiles/com.apple.filesystems.smbclientd/<mount>/<share>/…`. The
+///   server's name is not in the path; `RecentList` adds it when it can.
+/// - External drives: `…/LiveFiles/com.apple.filesystems.userfsd/…` (and
+///   other LiveFiles file systems); on the Mac, `/Volumes/<name>/…`.
+/// - This device: On My iPhone (`…/File Provider Storage/…`), or an app's
+///   own folder (`…/Containers/Data/Application/<id>/Documents/…`).
+/// - Other providers (Dropbox, Google Drive…): `…/CloudStorage/<name>/…`.
+struct StoragePlace: Equatable, Sendable {
+    var kind: StorageKind
+    /// The path as the reader would say it, ending in the folder itself.
+    var location: String
+
+    init(path: String) {
+        let parts = path.split(separator: "/").map(String.init)
+        func after(_ marker: String, skipping skip: Int = 0) -> [String]? {
+            guard let i = parts.firstIndex(of: marker) else { return nil }
+            return Array(parts.dropFirst(i + 1 + skip))
+        }
+        func join(_ head: String, _ rest: [String]) -> String { ([head] + rest).joined(separator: "/") }
+
+        if let rest = after("com~apple~CloudDocs") {
+            self.init(kind: .iCloud, location: join(String(localized: "iCloud Drive"), rest))
+        } else if let i = parts.firstIndex(of: "Mobile Documents"), parts.count > i + 1 {
+            // An app's own iCloud folder: iCloud~com~maker~App/Documents/…
+            let app = parts[i + 1].split(separator: "~").last.map(String.init) ?? parts[i + 1]
+            let rest = Array(parts.dropFirst(i + 2)).drop { $0 == "Documents" }
+            self.init(kind: .iCloud, location: join(String(localized: "iCloud Drive"), [app] + rest))
+        } else if let rest = after("com.apple.filesystems.smbclientd", skipping: 1) {
+            self.init(kind: .network, location: join("smb:/", rest))
+        } else if let i = parts.firstIndex(of: "LiveFiles"), parts.count > i + 2 {
+            // A drive: <file system>/<mount or volume>/…
+            let rest = Array(parts.dropFirst(i + 2))
+            self.init(kind: .drive, location: rest.joined(separator: "/"))
+        } else if parts.first == "Volumes", parts.count > 1 {
+            self.init(kind: .drive, location: Array(parts.dropFirst()).joined(separator: "/"))
+        } else if let rest = after("File Provider Storage") {
+            self.init(kind: .device, location: join(String(localized: "On My iPhone"), rest))
+        } else if let i = parts.firstIndex(of: "Application"), parts.count > i + 2, parts[i + 2] == "Documents" {
+            self.init(kind: .device, location: join(String(localized: "On My iPhone"), ["Platen Reader"] + parts.dropFirst(i + 3)))
+        } else if let rest = after("CloudStorage") {
+            self.init(kind: .otherCloud, location: rest.joined(separator: "/"))
+        } else {
+            self.init(kind: .device, location: path)
+        }
+    }
+
+    init(kind: StorageKind, location: String) {
+        self.kind = kind
+        self.location = location
+    }
+}
+
+/// The recent books, or the recent folders: newest first, at most `limit`,
+/// one entry per item. Kept as a JSON file (and, for books, a copy of each
+/// cover) in Application Support, so recent books still show their covers
+/// when the book itself cannot be reached (a share that is not connected,
+/// a drive that is not plugged in).
+///
+/// This is the one place Platen keeps a list of what was read, at the
+/// reader's request (docs/per-book-data.md, "Recents"); each entry can be
+/// removed from the list (a long press), and nothing else is kept.
+@MainActor
+final class RecentList: ObservableObject {
+    enum Kind: String { case books, folders }
+
+    @Published private(set) var items: [RecentItem] = []
+    let kind: Kind
+    let directory: URL
+    let limit: Int
+
+    static let books = RecentList(kind: .books)
+    static let folders = RecentList(kind: .folders)
+
+    /// Application Support/Platen Reader/recents (or the test home).
+    nonisolated static var defaultDirectory: URL {
+        PositionStore.defaultDirectory.deletingLastPathComponent().appendingPathComponent("recents", isDirectory: true)
+    }
+
+    init(kind: Kind, directory: URL = RecentList.defaultDirectory, limit: Int = 60) {
+        self.kind = kind
+        self.directory = directory
+        self.limit = limit
+        if let data = try? Data(contentsOf: listURL),
+           let saved = try? JSONDecoder.recents.decode([RecentItem].self, from: data) {
+            // One entry per place, the newest kept (lists saved by earlier
+            // versions could hold one place under two spellings of its path).
+            items = Self.merged(saved)
+        }
+    }
+
+    /// One entry per place: of entries at the same place, the one opened
+    /// most lately, dated by the latest of them. Newest first.
+    private nonisolated static func merged(_ list: [RecentItem]) -> [RecentItem] {
+        var byPlace: [String: RecentItem] = [:]
+        for item in list {
+            let key = key(item.path)
+            guard var kept = byPlace[key] else { byPlace[key] = item; continue }
+            if item.lastOpened > kept.lastOpened { kept = item }
+            byPlace[key] = kept
+        }
+        return byPlace.values.sorted { $0.lastOpened > $1.lastOpened }
+    }
+
+    /// The form paths are compared in.
+    private nonisolated static func key(_ path: String) -> String {
+        FolderScanner.canonicalPath(URL(fileURLWithPath: path))
+    }
+
+    /// Whether this file or folder is on the list.
+    func contains(_ url: URL) -> Bool {
+        let path = FolderScanner.canonicalPath(url)
+        return items.contains { Self.key($0.path) == path }
+    }
+
+    private var listURL: URL { directory.appendingPathComponent("\(kind.rawValue).json") }
+
+    /// Where an item's cover copy is (books only).
+    func coverURL(for item: RecentItem) -> URL? {
+        guard item.hasCover else { return nil }
+        return directory.appendingPathComponent("covers", isDirectory: true).appendingPathComponent("\(item.id.uuidString).jpg")
+    }
+
+    /// An item was opened: it goes to the top (the same item opened before
+    /// moves up rather than appearing twice). Call while access to it is
+    /// held, so the bookmark keeps permission to read it.
+    @discardableResult
+    func opened(_ url: URL, title: String? = nil, author: String? = nil, now: Date = Date(),
+                bookmark made: Data? = nil) -> RecentItem? {
+        guard let bookmark = made ?? (try? url.bookmarkData()) else { return nil }
+        let path = FolderScanner.canonicalPath(url)
+        var item = items.first { Self.key($0.path) == path }
+            ?? RecentItem(bookmark: bookmark, name: url.lastPathComponent, path: path, lastOpened: now)
+        item.bookmark = bookmark
+        item.path = path
+        item.name = url.lastPathComponent
+        item.lastOpened = now
+        let place = StoragePlace(path: path)
+        item.storage = item.storage ?? place.kind
+        item.location = item.location ?? place.location
+        if let title, !title.isEmpty { item.title = title }
+        if let author, !author.isEmpty { item.author = author }
+        items.removeAll { $0.id == item.id }
+        items.insert(item, at: 0)
+        for dropped in items.dropFirst(limit) { removeCover(of: dropped) }
+        items = Array(items.prefix(limit))
+        save()
+        refinePlace(of: item, url: url)
+        return item
+    }
+
+    /// Asks the file system, in the background, what the path alone cannot
+    /// say: for a network share, the server's address ("smb://nas/books"),
+    /// and whether a /Volumes path is a share or a drive.
+    private func refinePlace(of item: RecentItem, url: URL) {
+        Self.checkQueue.async { [weak self] in
+            let keys: Set<URLResourceKey> = [.volumeIsLocalKey, .volumeURLForRemountingKey, .volumeURLKey, .isUbiquitousItemKey]
+            guard let values = try? url.resourceValues(forKeys: keys) else { return }
+            var place: StoragePlace?
+            if values.volumeIsLocal == false || values.volumeURLForRemounting != nil,
+               let remount = values.volumeURLForRemounting, let volume = values.volume {
+                // smb://user@nas/books plus the path below the share.
+                let below = url.standardizedFileURL.path.dropFirst(volume.standardizedFileURL.path.count)
+                var server = URLComponents(url: remount, resolvingAgainstBaseURL: false)
+                server?.user = nil
+                server?.password = nil
+                let base = (server?.string ?? remount.absoluteString).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                place = StoragePlace(kind: .network, location: base + (below.hasPrefix("/") ? "" : "/") + below)
+            } else if values.isUbiquitousItem == true, StoragePlace(path: url.path).kind != .iCloud {
+                place = StoragePlace(kind: .otherCloud, location: StoragePlace(path: url.path).location)
+            }
+            guard let place else { return }
+            DispatchQueue.main.async { self?.setPlace(place, of: item.id) }
+        }
+    }
+
+    /// `opened`, with the bookmark made in the background first (making it
+    /// asks the file system, which can be slow for a network share): for a
+    /// folder shown on screen, which must not wait for it.
+    func openedSoon(_ url: URL) {
+        Self.checkQueue.async {
+            guard let bookmark = try? url.bookmarkData() else { return }
+            DispatchQueue.main.async { [weak self] in self?.opened(url, bookmark: bookmark) }
+        }
+    }
+
+    private func setPlace(_ place: StoragePlace, of id: RecentItem.ID) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        items[i].storage = place.kind
+        items[i].location = place.location
+        save()
+    }
+
+    /// Fills in what was learnt about a book after it was opened: its title
+    /// and author, and a copy of its cover (a JPEG).
+    func update(_ id: RecentItem.ID, title: String?, author: String?, cover: Data?) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        if let title, !title.isEmpty { items[index].title = title }
+        if let author, !author.isEmpty { items[index].author = author }
+        if let cover {
+            let folder = directory.appendingPathComponent("covers", isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            if (try? cover.write(to: folder.appendingPathComponent("\(id.uuidString).jpg"), options: .atomic)) != nil {
+                items[index].hasCover = true
+            }
+        }
+        save()
+    }
+
+    /// Takes an item off the list (its cover copy too). The book or folder
+    /// itself is not touched.
+    func remove(_ item: RecentItem) {
+        items.removeAll { $0.id == item.id }
+        removeCover(of: item)
+        save()
+    }
+
+    /// The item's current place, from its bookmark (nil if it is gone, or on
+    /// a drive or share that is not connected). Slow for a network share, so
+    /// call it off the main thread (`RecentList.resolve` is nonisolated).
+    nonisolated static func resolve(_ item: RecentItem) -> URL? {
+        var stale = false
+        return try? URL(resolvingBookmarkData: item.bookmark, bookmarkDataIsStale: &stale)
+    }
+
+    /// Whether the item can be reached now: its bookmark resolves and the
+    /// file or folder is there. Off the main thread.
+    nonisolated static func isReachable(_ item: RecentItem) -> Bool {
+        guard let url = resolve(item) else { return false }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        return (try? url.checkResourceIsReachable()) == true
+    }
+
+    /// The answer to "can this item be reached?".
+    enum Reached: Sendable {
+        /// Yes, and this is where it is now.
+        case yes(URL)
+        case no
+        /// No answer within the time allowed (a share that has gone away).
+        case noAnswer
+    }
+
+    /// Whether the item can be reached, giving up after `timeout` seconds. A
+    /// network share that has gone away can take a long time to fail. The
+    /// check runs on an ordinary background queue (a read that hangs there
+    /// holds one thread, not Swift's small pool of threads that the rest of
+    /// the app's background work shares), and the answer comes at the time
+    /// limit whether or not the check has finished. When the item is found,
+    /// the list learns where it is now (`found`).
+    func reachability(of item: RecentItem, timeout: TimeInterval = 6) async -> Reached {
+        let answer: Reached = await withCheckedContinuation { continuation in
+            let once = ResumeOnce(continuation)
+            Self.checkQueue.async {
+                guard Self.isReachable(item), let url = Self.resolve(item) else { return once.resume(.no) }
+                once.resume(.yes(url))
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { once.resume(.noAnswer) }
+        }
+        if case .yes(let url) = answer { found(item.id, at: url) }
+        return answer
+    }
+
+    /// Checks run here, side by side: one stuck on a share does not hold up
+    /// the others.
+    private nonisolated static let checkQueue = DispatchQueue(label: "org.platenreader.recents-check",
+                                                              qos: .userInitiated, attributes: .concurrent)
+
+    /// An item was found at `url`. Its stored path is brought up to date (an
+    /// app's own folder moves when the app is updated, for one), and
+    /// entries that turn out to be the same place are merged, keeping the
+    /// newest.
+    func found(_ id: RecentItem.ID, at url: URL) {
+        let path = FolderScanner.canonicalPath(url)
+        guard let i = items.firstIndex(where: { $0.id == id }), Self.key(items[i].path) != path else { return }
+        items[i].path = path
+        let place = StoragePlace(path: path)
+        if items[i].storage != .network { items[i].storage = place.kind; items[i].location = place.location }
+        let merged = Self.merged(items)
+        for gone in items where !merged.contains(where: { $0.id == gone.id }) { removeCover(of: gone) }
+        items = merged
+        save()
+    }
+
+    private func removeCover(of item: RecentItem) {
+        if let url = coverURL(for: item) { try? FileManager.default.removeItem(at: url) }
+    }
+
+    private func save() {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder.recents.encode(items) {
+            try? data.write(to: listURL, options: .atomic)
+        }
+    }
+}
+
+/// Resumes a continuation with the first answer given, ignoring the rest
+/// (a check and its time limit race).
+final class ResumeOnce<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Never>?
+
+    init(_ continuation: CheckedContinuation<Value, Never>) { self.continuation = continuation }
+
+    func resume(_ value: Value) {
+        let waiting = lock.withLock { () -> CheckedContinuation<Value, Never>? in
+            defer { continuation = nil }
+            return continuation
+        }
+        waiting?.resume(returning: value)
+    }
+}
+
+private extension JSONEncoder {
+    static let recents: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+}
+
+private extension JSONDecoder {
+    static let recents: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+}
+
+/// Matching a search in a folder against a book's file name, title and
+/// authors (or a folder's name): every word typed must appear in one of
+/// them, ignoring case and accents ("bronte jane" finds "Jane Eyre" by
+/// Charlotte Brontë).
+enum FolderSearch {
+    static func matches(_ query: String, name: String, title: String? = nil, authors: [String] = []) -> Bool {
+        let words = query.split(whereSeparator: \.isWhitespace)
+        guard !words.isEmpty else { return true }
+        let haystack = ([name, title ?? ""] + authors).joined(separator: " ")
+        return words.allSatisfy { haystack.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+    }
+}
