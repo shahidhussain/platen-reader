@@ -1,6 +1,7 @@
 // Platen Reader: Reader settings turned into CSS and paginator layout.
 
 import { reader } from './state.js'
+import { applyBodyTextSize } from './bookfixes.js'
 
 // ---------------------------------------------------------------------------
 // Settings → CSS and layout
@@ -114,6 +115,9 @@ const applyLayout = () => {
     r.setAttribute('gap', sideMargin
         ? `${(sideMargin / Math.max(window.innerWidth, 1) * 100).toFixed(2)}%` : '6%')
     r.setStyles?.(bookCSS(reader.settings))
+    // Each chapter's root, adjusted so its body text is the size chosen
+    // (bookfixes.js), follows a change of size.
+    for (const { doc } of r.getContents?.() ?? []) if (doc) applyBodyTextSize(doc, reader.settings.fontSize)
 }
 
 // Debounce re-layout during window resizes so dragging stays smooth; the

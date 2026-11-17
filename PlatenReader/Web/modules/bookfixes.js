@@ -131,6 +131,89 @@ function rescalePublisherFontSizes(doc) {
 }
 
 
+// The same text size setting gave different sizes in different books:
+// it sets the size of each chapter's root element, but many books then size
+// their body text relative to it (p { font-size: 0.8em }, body { font-size:
+// 120% }). So the size most of a chapter's text actually comes out at is
+// measured, and the root is set so that that text is the size chosen.
+// Headings, notes and small print keep their proportions to it.
+
+// The body text size as a share of the root's: the font size that the most
+// characters of the chapter are set in. Measured once per chapter, when it
+// loads (the root is then at the size chosen).
+function measureBodyTextRatio(doc) {
+    const root = parseFloat(getComputedStyle(doc.documentElement).fontSize)
+    if (!root || !doc.body) return 1
+    const counts = new Map()
+    const sizes = new Map() // element → its font size, measured once
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT)
+    let seen = 0
+    for (let node = walker.nextNode(); node && seen < 20000; node = walker.nextNode()) {
+        const length = node.textContent.trim().length
+        const el = node.parentElement
+        if (!length || !el) continue
+        let size = sizes.get(el)
+        if (size === undefined) {
+            size = Math.round(parseFloat(getComputedStyle(el).fontSize) * 2) / 2
+            sizes.set(el, size)
+        }
+        counts.set(size, (counts.get(size) ?? 0) + length)
+        seen += length
+    }
+    // Too little text to judge (a title page, a picture): leave it alone.
+    if (seen < 200) return 1
+    let best = root, most = 0
+    for (const [size, count] of counts) if (count > most) { best = size; most = count }
+    const ratio = best / root
+    return Math.min(Math.max(ratio, 0.6), 1.6)
+}
+
+// Sets the chapter's root so its body text is `fontSize` pixels.
+function applyBodyTextSize(doc, fontSize) {
+    const ratio = doc.platenTextRatio ?? 1
+    if (Math.abs(ratio - 1) < 0.03) {
+        doc.documentElement.style.removeProperty('font-size')
+        return
+    }
+    doc.documentElement.style.setProperty('font-size', `${+(fontSize / ratio).toFixed(2)}px`, 'important')
+}
+
+function normaliseBodyTextSize(doc, fontSize) {
+    doc.platenTextRatio = measureBodyTextRatio(doc)
+    applyBodyTextSize(doc, fontSize)
+}
+
+// A page that is just one picture (a cover, a plate, a page of a picture
+// book) shows it as large as the page allows, touching its sides or its top
+// and bottom, rather than at whatever size the book's CSS gave it. A chapter
+// counts as one when it has a single picture and almost no text.
+function fitLonePicture(doc) {
+    const body = doc.body
+    if (!body) return
+    const pictures = body.querySelectorAll('img, svg')
+    const text = (body.textContent ?? '').replace(/\s+/g, '')
+    if (pictures.length !== 1 || text.length > 20) return
+    doc.documentElement.classList.add('platen-lone-picture')
+    const style = doc.createElement('style')
+    style.textContent = `
+        /* platen-styles: a page that is one picture (bookfixes.js) */
+        html.platen-lone-picture body,
+        html.platen-lone-picture body * {
+            margin-top: 0 !important; margin-bottom: 0 !important;
+            padding-top: 0 !important; padding-bottom: 0 !important;
+        }
+        html.platen-lone-picture img,
+        html.platen-lone-picture svg {
+            display: block !important;
+            width: 100% !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
+            object-fit: contain !important;
+            margin: 0 auto !important;
+        }`
+    doc.head?.append(style)
+}
+
 // Tables wider than a page would spill into the next column, over its text.
 // WebKit ignores max-width on tables, so once laid out, any table wider than
 // the page is set to the page's width. (foliate-js notices the change in size
@@ -145,4 +228,4 @@ function fitWideTables(doc) {
             table.style.setProperty('width', '100%', 'important')
 }
 
-export { ensureReadableColours, fitWideTables, rescalePublisherFontSizes }
+export { applyBodyTextSize, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes }

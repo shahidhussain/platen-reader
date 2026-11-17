@@ -76,6 +76,10 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         tap.delaysTouchesEnded = false
         tap.delegate = self
         webView.addGestureRecognizer(tap)
+        // A finger held on a picture offers to save or share it.
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(pagePressed(_:)))
+        press.delegate = self
+        webView.addGestureRecognizer(press)
         installSwipeRecogniser()
 
         NSLayoutConstraint.activate([
@@ -113,6 +117,26 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
             guard target == .page else { return }
             self.handleTap(zone: ClickZone(x: point.x, width: self.webView.bounds.width))
         }
+    }
+
+    /// A finger held on the page: if it is on a picture, the page sends it
+    /// (sessionShowPicture), which offers Save and Share. Elsewhere, WebKit
+    /// selects text as usual.
+    @objc private func pagePressed(_ recogniser: UILongPressGestureRecognizer) {
+        guard recogniser.state == .began, session.hasRendered else { return }
+        session.pictureAt(recogniser.location(in: webView)) { _ in }
+    }
+
+    func sessionShowPicture(_ picture: ReaderMessage.Picture) {
+        guard let image = UIImage(data: picture.data) else { return }
+        // A picture, not text: drop any selection WebKit's own long press
+        // began.
+        webView.evaluateJavaScript("for (const { doc } of platen.view.renderer.getContents()) doc.getSelection()?.removeAllRanges()")
+        let ext = picture.mimeType.split(separator: "/").last.map { $0 == "jpeg" ? "jpg" : String($0) } ?? "png"
+        let base = state.title.isEmpty ? url.deletingPathExtension().lastPathComponent : state.title
+        let name = picture.alt.isEmpty ? String(localized: "\(base), picture") : picture.alt
+        offerPicture(image, file: (picture.data, ext), name: String(name.prefix(80)),
+                     from: picture.rect.intersection(webView.bounds), in: webView)
     }
 
     // Recognise taps and swipes alongside WebKit's own gesture recognisers.
@@ -240,7 +264,8 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     // Picture zoom, the click-zone explainer and VoiceOver's page text are
     // still to come on iOS (docs/m3-ios-plan.md); the session already
-    // delivers what they need (`sessionShowPicture`, `sessionPageText`).
+    // delivers what they need (`sessionPageText`). A held picture offers
+    // Save and Share (`sessionShowPicture`, above).
 
     #if DEBUG
     /// One scripted step (see DebugHooks.swift).

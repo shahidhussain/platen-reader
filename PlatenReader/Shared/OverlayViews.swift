@@ -500,6 +500,13 @@ struct TypographyPopover: View {
             }
             LabeledContent("Appearance") { appearancePicker.labelsHidden() }
                 .popoverRow()
+            if state.isPDF {
+                PopoverDivider()
+                // The glow of the page's own colours around it.
+                Toggle("Ambient Light", isOn: $settings.ambientLight)
+                    .tint(Color(uiColor: .systemGreen))
+                    .popoverRow()
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Text and Appearance"))

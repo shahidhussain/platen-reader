@@ -429,6 +429,16 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
         }
     }
 
+    /// Asks the page for the picture under a held finger (iOS); if there is
+    /// one, it arrives as an `image` message (`sessionShowPicture`).
+    func pictureAt(_ point: CGPoint, completion: @escaping (Bool) -> Void) {
+        guard isOpenInPage, let webView else { return completion(false) }
+        webView.callAsyncJavaScript("return platen.pictureAt(x, y)", arguments: ["x": point.x, "y": point.y],
+                                    in: nil, in: .page) { result in
+            completion(((try? result.get()) as? Bool) ?? false)
+        }
+    }
+
     // MARK: - Helpers
 
     private func saveBookmarks(_ record: BookRecord) {

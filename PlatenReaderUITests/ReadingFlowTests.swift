@@ -88,13 +88,27 @@ final class ReadingFlowTests: XCTestCase {
 
     /// The title the Go menu gives the bookmark command (it says "Remove
     /// Bookmark" when the page is bookmarked).
-    private func bookmarkMenuTitle() -> String {
-        let go = app.menuBars.menuBarItems["Go"]
-        go.click()
-        defer { app.typeKey(.escape, modifierFlags: []) }
-        if app.menuItems["Remove Bookmark"].waitForExistence(timeout: 1) { return "Remove Bookmark" }
-        if app.menuItems["Bookmark This Page"].exists { return "Bookmark This Page" }
-        return ""
+    /// The Bookmark item's title in the Go menu. The page reports a page's
+    /// bookmark a moment after ⌘D (once its ribbons are redrawn), and an
+    /// open menu does not update, so when `expecting` is given the menu is
+    /// opened again a few times until it shows that title.
+    private func bookmarkMenuTitle(expecting expected: String? = nil) -> String {
+        var title = ""
+        for attempt in 0..<4 {
+            if attempt > 0 { Thread.sleep(forTimeInterval: 0.5) }
+            let go = app.menuBars.menuBarItems["Go"]
+            go.click()
+            if app.menuItems["Remove Bookmark"].waitForExistence(timeout: 1) {
+                title = "Remove Bookmark"
+            } else if app.menuItems["Bookmark This Page"].exists {
+                title = "Bookmark This Page"
+            } else {
+                title = ""
+            }
+            app.typeKey(.escape, modifierFlags: [])
+            if expected == nil || title == expected { break }
+        }
+        return title
     }
 
     // MARK: Tests
@@ -147,7 +161,7 @@ final class ReadingFlowTests: XCTestCase {
         let bookmarked = (page.value as? String) ?? ""
         XCTAssertEqual(bookmarkMenuTitle(), "Bookmark This Page")
         app.typeKey("d", modifierFlags: .command)
-        XCTAssertEqual(bookmarkMenuTitle(), "Remove Bookmark")
+        XCTAssertEqual(bookmarkMenuTitle(expecting: "Remove Bookmark"), "Remove Bookmark")
 
         // Positions are saved shortly after the last turn; give it time.
         Thread.sleep(forTimeInterval: 2)
@@ -156,6 +170,6 @@ final class ReadingFlowTests: XCTestCase {
         // Reopen: the same page, still bookmarked.
         launch()
         waitForPage("the saved page", timeout: 15) { $0 == bookmarked }
-        XCTAssertEqual(bookmarkMenuTitle(), "Remove Bookmark")
+        XCTAssertEqual(bookmarkMenuTitle(expecting: "Remove Bookmark"), "Remove Bookmark")
     }
 }

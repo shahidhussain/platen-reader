@@ -190,6 +190,9 @@ final class ReaderSettings: ObservableObject {
     @Published var lineWidth: LineWidth { didSet { save("lineWidth", lineWidth.rawValue) } }
     @Published var fontFamily: String { didSet { save("fontFamily", fontFamily) } }
     @Published var hyphenate: Bool { didSet { save("hyphenate", hyphenate) } }
+    /// The soft glow of a PDF's own colours around its pages (iOS). Off:
+    /// the theme's plain colour.
+    @Published var ambientLight: Bool { didSet { save("ambientLight", ambientLight) } }
     /// Optional "N pages left in chapter" in the location line (paginated).
     @Published var showPagesLeftInChapter: Bool { didSet { save("showPagesLeftInChapter", showPagesLeftInChapter) } }
 
@@ -210,6 +213,7 @@ final class ReaderSettings: ObservableObject {
         lineWidth = string("lineWidth").flatMap(LineWidth.init) ?? .medium
         fontFamily = string("fontFamily") ?? ""
         hyphenate = bool("hyphenate", true)
+        ambientLight = bool("ambientLight", true)
         showPagesLeftInChapter = bool("showPagesLeftInChapter", false)
     }
 

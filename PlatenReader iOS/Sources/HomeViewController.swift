@@ -29,6 +29,9 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
 
     /// The book or PDF on screen, if any.
     private(set) var reader: ReaderBaseViewController?
+    /// Told when a reader is made (the start-up animation follows the
+    /// first book's progress).
+    var onReaderCreated: ((ReaderBaseViewController) -> Void)?
 
     /// A book asked for before this screen was in the window (at launch, from
     /// another app). Presenting then would lay the book out at zero size, so
@@ -176,6 +179,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
             self.addToRecents(url)
             reader.modalPresentationStyle = .fullScreen
             self.reader = reader
+            self.onReaderCreated?(reader)
             self.present(reader, animated: animated) { [weak self] in
                 self?.launchCover?.removeFromSuperview()
                 self?.launchCover = nil
