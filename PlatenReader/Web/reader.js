@@ -104,16 +104,33 @@ const sendFirstRender = force => {
 // one. Only with one page across, in paginated mode, and not in fixed
 // layout books (whose pages are drawn as the publisher made them).
 let lonePictureSection = null
-async function reportLonePicture() {
+// The chapter whose picture Swift has (sent, not just being read).
+let lonePictureSent = null
+// The picture-only page on screen, if there is one (and native display is
+// in use: one page across, paginated, not fixed layout, on iOS).
+function currentLonePicture() {
     const r = reader.view?.renderer
     const { doc, index } = r?.getContents?.()[0] ?? {}
     const usable = reader.settings?.touch && !reader.isFixedLayout && reader.settings?.flow !== 'scrolled'
         && (r?.feet?.length ?? 1) === 1
     const picture = usable && doc?.documentElement.classList.contains('platen-lone-picture')
         ? doc.querySelector('img, image') : null
+    return { r, doc, index, picture }
+}
+// For a page turn, before it is drawn: whether the page now on screen is a
+// picture-only page whose picture Swift already has ('same'), one it is
+// about to be sent ('new'), or not one ('none').
+function lonePictureState() {
+    const { index, picture } = currentLonePicture()
+    if (!picture) return 'none'
+    return lonePictureSent === index ? 'same' : 'new'
+}
+async function reportLonePicture() {
+    const { r, doc, index, picture } = currentLonePicture()
     if (!picture) {
         if (lonePictureSection !== null) {
             lonePictureSection = null
+            lonePictureSent = null
             post('lonePicture', {})
             // The page's own copy shows again (Scroll, two pages…).
             for (const { doc } of r?.getContents?.() ?? []) doc?.documentElement.classList.remove('platen-native-picture')
@@ -133,6 +150,7 @@ async function reportLonePicture() {
             binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
         if (lonePictureSection !== index) return // moved on meanwhile
         post('lonePicture', { data: btoa(binary), mimeType: blob.type })
+        lonePictureSent = index
         doc.documentElement.classList.add('platen-native-picture')
     } catch (e) {
         lonePictureSection = null
@@ -315,6 +333,8 @@ window.platen = {
     tapTarget,
     // iOS: the picture under a held finger, sent as an 'image' message.
     pictureAt,
+    // iOS, during a page turn: is the new page a picture-only page?
+    lonePictureState,
     // The text size chosen, in pixels (for checks: body text should be it).
     fontSize: () => reader.settings?.fontSize,
     // Esc closes an open note pop-up; says whether there was one.

@@ -16,12 +16,17 @@ extension ReaderViewController {
             host: self, pageView: pageArea,
             snapshot: { [weak self] done in
                 guard let self else { return done(nil) }
-                // The page with its native picture, if it has one.
-                self.pageSnapshot(nil, done: done)
+                // The page with its glow and native picture, if it has them.
+                self.pageSnapshot(nil, withGlow: true, done: done)
             },
             turnUnderneath: { [weak self] request, done in
                 guard let self else { return done(false) }
-                self.session.turnInstantly(request) { moved, _ in done(moved) }
+                self.session.turnInstantly(request) { moved, _ in
+                    // The new page's glow before the animation, so the page
+                    // arrives with it rather than the glow appearing after.
+                    guard moved else { return done(false) }
+                    self.settleLonePicture { self.makeGlowNow { done(true) } }
+                }
             })
         // A turn past the start or end of the book says so, rather than
         // just not moving.

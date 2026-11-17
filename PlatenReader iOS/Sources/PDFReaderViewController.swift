@@ -860,8 +860,19 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         guard key != ambientKey, !indexes.isEmpty else { return }
         ambientKey = key
         if let ready = ambientCache[key] {
-            // Made ahead: on at once, so it arrives with its page.
-            ambient.image = ready
+            if pageTurner.isCurling && !UIAccessibility.isReduceMotionEnabled {
+                // A curl: only the page curls, while the glow behind it
+                // stays. It fades from the old page's to the new over the
+                // curl, landing as the page does.
+                UIView.transition(with: ambient, duration: PageTurnAnimator.curlDuration,
+                                  options: [.transitionCrossDissolve, .allowUserInteraction, .curveEaseInOut]) {
+                    self.ambient.image = ready
+                }
+            } else {
+                // Made ahead: on at once. A slide or swipe moves the glow
+                // with its page (both are in the page area).
+                ambient.image = ready
+            }
         } else {
             makeAmbient(indexes, theme: theme, document: document) { [weak self] image in
                 guard let self, self.ambientKey == key, let image else { return }

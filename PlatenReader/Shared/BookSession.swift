@@ -446,6 +446,16 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
         }
     }
 
+    /// During a page turn (iOS): whether the page now on screen is a
+    /// picture-only page whose picture the reader has ("same"), one about to
+    /// be sent ("new"), or not one ("none").
+    func lonePictureState(completion: @escaping (String) -> Void) {
+        guard isOpenInPage, let webView else { return completion("none") }
+        webView.callAsyncJavaScript("return platen.lonePictureState()", arguments: [:], in: nil, in: .page) { result in
+            completion(((try? result.get()) as? String) ?? "none")
+        }
+    }
+
     // MARK: - Helpers
 
     private func saveBookmarks(_ record: BookRecord) {

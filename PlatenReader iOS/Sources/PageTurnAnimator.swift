@@ -72,6 +72,13 @@ final class PageTurnAnimator {
     /// True while a turn is being drawn or a finger is moving the page.
     var isBusy: Bool { cover != nil || pager != nil || swipe != nil }
 
+    /// True while a page curl is being prepared or drawn (only the page
+    /// curls: what is behind it stays, so the PDF reader fades its glow
+    /// over `curlDuration` to land with it).
+    var isCurling: Bool { pager != nil }
+    /// About how long the system's page curl takes.
+    static let curlDuration: TimeInterval = 0.5
+
     /// The picture of the old page, laid over the live page.
     private var cover: UIView?
     /// The system's page curl, while one runs.
