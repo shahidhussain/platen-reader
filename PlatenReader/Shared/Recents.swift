@@ -197,8 +197,9 @@ final class RecentList: ObservableObject {
     /// moves up rather than appearing twice). Call while access to it is
     /// held, so the bookmark keeps permission to read it.
     @discardableResult
-    func opened(_ url: URL, title: String? = nil, author: String? = nil, now: Date = Date()) -> RecentItem? {
-        guard let bookmark = try? url.bookmarkData() else { return nil }
+    func opened(_ url: URL, title: String? = nil, author: String? = nil, now: Date = Date(),
+                bookmark made: Data? = nil) -> RecentItem? {
+        guard let bookmark = made ?? (try? url.bookmarkData()) else { return nil }
         let path = FolderScanner.canonicalPath(url)
         var item = items.first { Self.key($0.path) == path }
             ?? RecentItem(bookmark: bookmark, name: url.lastPathComponent, path: path, lastOpened: now)
@@ -224,7 +225,7 @@ final class RecentList: ObservableObject {
     /// say: for a network share, the server's address ("smb://nas/books"),
     /// and whether a /Volumes path is a share or a drive.
     private func refinePlace(of item: RecentItem, url: URL) {
-        Task.detached(priority: .utility) { [weak self] in
+        Self.checkQueue.async { [weak self] in
             let keys: Set<URLResourceKey> = [.volumeIsLocalKey, .volumeURLForRemountingKey, .volumeURLKey, .isUbiquitousItemKey]
             guard let values = try? url.resourceValues(forKeys: keys) else { return }
             var place: StoragePlace?
@@ -241,7 +242,17 @@ final class RecentList: ObservableObject {
                 place = StoragePlace(kind: .otherCloud, location: StoragePlace(path: url.path).location)
             }
             guard let place else { return }
-            await self?.setPlace(place, of: item.id)
+            DispatchQueue.main.async { self?.setPlace(place, of: item.id) }
+        }
+    }
+
+    /// `opened`, with the bookmark made in the background first (making it
+    /// asks the file system, which can be slow for a network share): for a
+    /// folder shown on screen, which must not wait for it.
+    func openedSoon(_ url: URL) {
+        Self.checkQueue.async {
+            guard let bookmark = try? url.bookmarkData() else { return }
+            DispatchQueue.main.async { [weak self] in self?.opened(url, bookmark: bookmark) }
         }
     }
 
@@ -303,28 +314,29 @@ final class RecentList: ObservableObject {
     }
 
     /// Whether the item can be reached, giving up after `timeout` seconds. A
-    /// network share that has gone away can take a long time to fail; the
-    /// check carries on in the background regardless. When the item is
-    /// found, the list learns where it is now (`found`).
+    /// network share that has gone away can take a long time to fail. The
+    /// check runs on an ordinary background queue (a read that hangs there
+    /// holds one thread, not Swift's small pool of threads that the rest of
+    /// the app's background work shares), and the answer comes at the time
+    /// limit whether or not the check has finished. When the item is found,
+    /// the list learns where it is now (`found`).
     func reachability(of item: RecentItem, timeout: TimeInterval = 6) async -> Reached {
-        let answer = await withTaskGroup(of: Reached.self) { group in
-            group.addTask {
-                await Task.detached(priority: .userInitiated) { () -> Reached in
-                    guard RecentList.isReachable(item), let url = RecentList.resolve(item) else { return .no }
-                    return .yes(url)
-                }.value
+        let answer: Reached = await withCheckedContinuation { continuation in
+            let once = ResumeOnce(continuation)
+            Self.checkQueue.async {
+                guard Self.isReachable(item), let url = Self.resolve(item) else { return once.resume(.no) }
+                once.resume(.yes(url))
             }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(timeout))
-                return .noAnswer
-            }
-            let first = await group.next() ?? .noAnswer
-            group.cancelAll()
-            return first
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { once.resume(.noAnswer) }
         }
         if case .yes(let url) = answer { found(item.id, at: url) }
         return answer
     }
+
+    /// Checks run here, side by side: one stuck on a share does not hold up
+    /// the others.
+    private nonisolated static let checkQueue = DispatchQueue(label: "org.platenreader.recents-check",
+                                                              qos: .userInitiated, attributes: .concurrent)
 
     /// An item was found at `url`. Its stored path is brought up to date (an
     /// app's own folder moves when the app is updated, for one), and
@@ -351,6 +363,23 @@ final class RecentList: ObservableObject {
         if let data = try? JSONEncoder.recents.encode(items) {
             try? data.write(to: listURL, options: .atomic)
         }
+    }
+}
+
+/// Resumes a continuation with the first answer given, ignoring the rest
+/// (a check and its time limit race).
+final class ResumeOnce<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Never>?
+
+    init(_ continuation: CheckedContinuation<Value, Never>) { self.continuation = continuation }
+
+    func resume(_ value: Value) {
+        let waiting = lock.withLock { () -> CheckedContinuation<Value, Never>? in
+            defer { continuation = nil }
+            return continuation
+        }
+        waiting?.resume(returning: value)
     }
 }
 

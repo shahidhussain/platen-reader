@@ -77,7 +77,6 @@ struct RecentBooksView: View {
     @ObservedObject private var recents = RecentList.books
     let actions: HomeActions
 
-    @State private var images: [RecentItem.ID: CGImage] = [:]
     @State private var reach: [RecentItem.ID: Reach] = [:]
     @State private var cannotOpen: RecentItem?
 
@@ -89,7 +88,7 @@ struct RecentBooksView: View {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
                     ForEach(recents.items) { item in
                         Button { open(item) } label: {
-                            BookTile(title: item.displayName, author: item.author, image: images[item.id],
+                            BookTile(title: item.displayName, author: item.author, imageFile: recents.coverURL(for: item),
                                      badge: reach[item.id] == .unavailable ? .unavailable : nil)
                         }
                         .buttonStyle(.plain)
@@ -150,15 +149,10 @@ struct RecentBooksView: View {
         }
     }
 
-    /// Loads the covers not yet loaded, and checks each book can be reached,
-    /// all in the background (a network share can be slow to answer).
+    /// Checks each book can be reached, in the background (a network share
+    /// can be slow to answer). The covers load themselves (BookTile).
     private func refresh() async {
-        let items = recents.items
-        for item in items where images[item.id] == nil {
-            guard let url = recents.coverURL(for: item) else { continue }
-            if let image = await Task.detached(operation: { decodeImage(url) }).value { images[item.id] = image }
-        }
-        await checkReach(items, in: recents, into: $reach)
+        await checkReach(recents.items, in: recents, into: $reach)
     }
 }
 
@@ -167,6 +161,8 @@ struct RecentBooksView: View {
 @MainActor
 private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: Binding<[RecentItem.ID: Reach]>) async {
     for item in items where reach.wrappedValue[item.id] == nil { reach.wrappedValue[item.id] = .checking }
+    // Each check answers within its time limit (see reachability), so this
+    // finishes even when a share does not answer.
     await withTaskGroup(of: Void.self) { group in
         for item in items {
             group.addTask { @MainActor in
@@ -180,10 +176,6 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
     }
 }
 
-private func decodeImage(_ url: URL) -> CGImage? {
-    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-    return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
-}
 
 // MARK: - Recent Folders
 

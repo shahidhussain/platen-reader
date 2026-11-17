@@ -73,15 +73,16 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
         guard let data = AppDefaults.store.data(forKey: "libraryFolder") else { return }
         AppDefaults.store.removeObject(forKey: "libraryFolder")
         AppDefaults.store.removeObject(forKey: "libraryCurrentFolder")
-        Task {
-            let url = await Task.detached { () -> URL? in
-                var stale = false
-                return try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale)
-            }.value
-            guard let url else { return }
+        DispatchQueue.global(qos: .utility).async {
+            var stale = false
+            guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else { return }
             let scoped = url.startAccessingSecurityScopedResource()
-            if !RecentList.folders.contains(url) { RecentList.folders.opened(url) }
+            let bookmark = try? url.bookmarkData()
             if scoped { url.stopAccessingSecurityScopedResource() }
+            guard let bookmark else { return }
+            DispatchQueue.main.async {
+                if !RecentList.folders.contains(url) { RecentList.folders.opened(url, bookmark: bookmark) }
+            }
         }
     }
 
@@ -201,10 +202,10 @@ extension HomeViewController {
     /// to the book meanwhile.
     func addToRecents(_ url: URL) {
         guard let item = RecentList.books.opened(url) else { return }
-        Task.detached(priority: .utility) {
+        DispatchQueue.global(qos: .utility).async {
             let entry = CoverCache.standard().cover(for: url)
             let jpeg = entry.imageURL.flatMap { try? Data(contentsOf: $0) }
-            await MainActor.run {
+            DispatchQueue.main.async {
                 RecentList.books.update(item.id, title: entry.info.title, author: entry.info.authors.first, cover: jpeg)
             }
         }

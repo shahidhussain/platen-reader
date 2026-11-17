@@ -236,3 +236,24 @@ extension RecentsTests {
         return url
     }
 }
+
+/// Keeping folder listings, and racing a check against its time limit.
+final class FolderSpeedTests: XCTestCase {
+    @MainActor
+    func testAListingIsKeptForNextTime() {
+        let folder = URL(fileURLWithPath: "/tmp/platen-test-\(UUID().uuidString)", isDirectory: true)
+        XCTAssertNil(FolderListingCache.listing(of: folder))
+        let entries = [FolderEntry(url: folder.appendingPathComponent("a.epub"), name: "a", kind: .book)]
+        FolderListingCache.keep(entries, of: folder)
+        XCTAssertEqual(FolderListingCache.listing(of: folder), entries)
+    }
+
+    func testTheFirstAnswerWins() async {
+        let answer: String = await withCheckedContinuation { continuation in
+            let once = ResumeOnce(continuation)
+            once.resume("time limit")
+            once.resume("check") // too late: ignored
+        }
+        XCTAssertEqual(answer, "time limit")
+    }
+}

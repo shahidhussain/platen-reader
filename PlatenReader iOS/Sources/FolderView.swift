@@ -66,7 +66,7 @@ struct FolderGridView: View {
                         case .book:
                             let info = model.covers[entry.url]
                             BookTile(title: info?.title ?? entry.name, author: info?.authors.first,
-                                     image: model.images[entry.url],
+                                     imageFile: model.coverFiles[entry.url],
                                      badge: entry.isDownloaded ? nil
                                          : model.downloading.contains(entry.url) ? .downloading : .inCloud)
                         }
@@ -112,7 +112,11 @@ struct FolderGridView: View {
         }
         .animation(.easeOut(duration: 0.3), value: model.coverProgress.done < model.coverProgress.total)
         .navigationTitle(folder.lastPathComponent)
-        .navigationBarTitleDisplayMode(.large)
+        // The title sits in the bar with the buttons, and there is no Back
+        // button: a swipe across the page goes back (SwipeBack), as does
+        // tapping the Recent Folders tab. The grid gets the space.
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         // The search field opens from the search button (and closes with
         // Cancel, clearing the search).
         .searchable(text: $query, isPresented: $searching,
@@ -139,8 +143,7 @@ struct FolderGridView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button(action: chooseBook) { Label("Open Book…", systemImage: "book") }
-                    Button(action: chooseFolder) { Label("Choose Folder…", systemImage: "folder") }
+                    Button(action: chooseFolder) { Label("Choose Folder…", systemImage: "folder.badge.plus") }
                 } label: {
                     Label("More", systemImage: "ellipsis.circle")
                 }
@@ -150,7 +153,7 @@ struct FolderGridView: View {
         .onAppear {
             model.onDownloaded = openBook
             model.start()
-            RecentList.folders.opened(folder) // for the Recent Folders tab
+            RecentList.folders.openedSoon(folder) // for the Recent Folders tab
         }
         .onDisappear { model.stop() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
@@ -215,8 +218,11 @@ struct BookTile: View {
 
     let title: String
     let author: String?
-    let image: CGImage?
+    /// The cover picture's file (nil: none, or not made yet). It is decoded
+    /// while the tile is on screen (CoverImages).
+    let imageFile: URL?
     var badge: Badge?
+    @State private var image: CGImage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -232,6 +238,10 @@ struct BookTile: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(.isButton)
+        .task(id: imageFile) {
+            image = imageFile.flatMap(CoverImages.shared.cached)
+            if image == nil, let imageFile { image = await CoverImages.shared.image(imageFile) }
+        }
     }
 
     @ViewBuilder private var cover: some View {
