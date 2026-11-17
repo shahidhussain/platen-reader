@@ -45,7 +45,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// allows, touching its sides or its top and bottom, with no bars.
     private(set) var lonePictureView: UIImageView!
     /// The glow behind the page (ambient light), and its next renewal.
-    private(set) var ambient: UIImageView!
+    private(set) var ambient: AmbientGlowView!
     private var ambientWork: DispatchWorkItem?
     private var ambientMaskSize: CGSize = .zero
     private var ambientMask: UIImage?
@@ -79,17 +79,17 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         // The page and, over it, a page that is just one picture shown
         // natively (sessionShowLonePicture): together, so page turns move
         // and photograph them as one.
+        // Ambient light: a soft glow of the page's own colours behind the
+        // book, whose page is then see-through (`usesAmbientLight`). It is
+        // behind the page area, not in it: pages slide over it while it
+        // fades from one page's glow to the next (AmbientGlowView); a curl
+        // carries the old page's glow in its picture.
+        ambient = AmbientGlowView()
+        ambient.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(ambient)
         pageArea = UIView()
         pageArea.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(pageArea)
-        // Ambient light: a soft glow of the page's own colours behind the
-        // book, whose page is then see-through (`usesAmbientLight`). It is
-        // part of the page area, so it arrives and leaves with its page.
-        ambient = UIImageView()
-        ambient.translatesAutoresizingMaskIntoConstraints = false
-        ambient.contentMode = .scaleToFill
-        ambient.isAccessibilityElement = false
-        pageArea.addSubview(ambient)
         pageArea.addSubview(webView)
         lonePictureView = UIImageView()
         lonePictureView.translatesAutoresizingMaskIntoConstraints = false
@@ -118,10 +118,10 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         installSwipeRecogniser()
 
         NSLayoutConstraint.activate([
-            ambient.leadingAnchor.constraint(equalTo: pageArea.leadingAnchor),
-            ambient.trailingAnchor.constraint(equalTo: pageArea.trailingAnchor),
-            ambient.topAnchor.constraint(equalTo: pageArea.topAnchor),
-            ambient.bottomAnchor.constraint(equalTo: pageArea.bottomAnchor),
+            ambient.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            ambient.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            ambient.topAnchor.constraint(equalTo: root.topAnchor),
+            ambient.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             pageArea.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             pageArea.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             pageArea.topAnchor.constraint(equalTo: root.topAnchor),
@@ -215,10 +215,10 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     }
 
     /// A picture of the page area as it is: the web view's snapshot, with
-    /// the native picture drawn over it when it is showing. Page turns ask
-    /// for the glow under it too (`withGlow`), so a page leaves (and the next
-    /// arrives) with its own glow; the glow itself is made from a picture
-    /// without one.
+    /// the native picture drawn over it when it is showing. A curl asks for
+    /// the glow under it too (`withGlow`), so the old page curls away with
+    /// its own glow; a slide's picture is the page alone, over the glow that
+    /// stays; the glow itself is made from a picture without one.
     func pageSnapshot(_ configuration: WKSnapshotConfiguration?, withGlow: Bool = false,
                       done: @escaping (UIImage?) -> Void) {
         webView.takeSnapshot(with: configuration) { [weak self] image, _ in
@@ -345,7 +345,9 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         pageSnapshot(config) { [weak self] image in
             guard let self, let image else { return done() }
             PDFAmbientBackground.make(from: image, theme: theme) { [weak self] glow in
-                if let self, let glow, let masked = self.maskedGlow(glow) { self.ambient.image = masked }
+                // During a slide this is the page sliding in: it fades in
+                // with the slide (AmbientGlowView).
+                if let self, let glow, let masked = self.maskedGlow(glow) { self.ambient.show(masked) }
                 done()
             }
         }
@@ -372,10 +374,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
                     // The first glow is there from the start; later ones
                     // (a jump, a new setting) fade from the old.
                     let fade = self.ambient.image == nil || UIAccessibility.isReduceMotionEnabled ? 0 : 0.35
-                    UIView.transition(with: self.ambient, duration: fade,
-                                      options: [.transitionCrossDissolve, .allowUserInteraction]) {
-                        self.ambient.image = masked
-                    }
+                    self.ambient.show(masked, fade: fade)
                 }
             }
         }

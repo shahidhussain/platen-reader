@@ -14,10 +14,11 @@ extension ReaderViewController {
     func makePageTurnAnimator() -> PageTurnAnimator {
         let animator = PageTurnAnimator(
             host: self, pageView: pageArea,
-            snapshot: { [weak self] done in
+            snapshot: { [weak self] forCurl, done in
                 guard let self else { return done(nil) }
-                // The page with its glow and native picture, if it has them.
-                self.pageSnapshot(nil, withGlow: true, done: done)
+                // The page with its native picture, if it has one, and for
+                // a curl its glow too (a slide's glow stays and fades).
+                self.pageSnapshot(nil, withGlow: forCurl, done: done)
             },
             turnUnderneath: { [weak self] request, done in
                 guard let self else { return done(false) }
@@ -28,6 +29,9 @@ extension ReaderViewController {
                     self.settleLonePicture { self.makeGlowNow { done(true) } }
                 }
             })
+        // Slides and swipes fade the glow behind the pages in step with them.
+        animator.slideProgress = { [weak self] progress in self?.ambient.slide(to: progress) }
+        animator.slideEnded = { [weak self] turned in self?.ambient.endSlide(turned: turned) }
         // A turn past the start or end of the book says so, rather than
         // just not moving.
         animator.onEdge = { [weak self] request in

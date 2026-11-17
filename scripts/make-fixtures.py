@@ -464,6 +464,24 @@ def main():
                        manifest_extra=['<item id="pic" href="images/cover.png" media-type="image/png"/>'],
                        extra_files=[("OEBPS/images/cover.png", png(400, 600, (176, 64, 48)))]))
 
+    # A full-page plate partway through a chapter: text, then a page that
+    # is one picture and nothing else, then more text. On iOS that page
+    # shows the picture natively, as large as the screen allows, just like
+    # a chapter that is one picture.
+    words = " ".join(["The ship drifted on through the long grey afternoon."] * 6)
+    text = "".join(f"<p>{words}</p>" for _ in range(3))
+    plate = xhtml("Plates",
+                  f'<h1>Plates</h1>{text}'
+                  '<div style="break-before: column"><img src="images/plate.png" alt="A plate"/></div>'
+                  # WebKit's columns ignore break-after, so the text after
+                  # the plate starts its own page the way books do it: a
+                  # heading that breaks before itself.
+                  f'<h2 style="break-before: column">Afterwards</h2>{text}')
+    made.append(simple("plate-page.epub", "The Plate Between",
+                       [("ch1.xhtml", plate)],
+                       manifest_extra=['<item id="pic" href="images/plate.png" media-type="image/png"/>'],
+                       extra_files=[("OEBPS/images/plate.png", png(600, 800, (40, 96, 160)))]))
+
     for m in made:
         print(f"{os.path.getsize(m):>10,}  {os.path.relpath(m, ROOT)}")
 

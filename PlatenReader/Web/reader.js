@@ -99,61 +99,99 @@ const sendFirstRender = force => {
     post('firstRender')
 }
 // iOS: a page that is just one picture is shown natively, as large as the
-// screen allows (bookfixes.js marks such chapters). Its bytes go to Swift
-// once per chapter; an empty message says the page on screen no longer is
-// one. Only with one page across, in paginated mode, and not in fixed
-// layout books (whose pages are drawn as the publisher made them).
-let lonePictureSection = null
-// The chapter whose picture Swift has (sent, not just being read).
+// screen allows. That is a whole chapter that is one picture (bookfixes.js
+// marks those), or any single page, anywhere in a chapter, on which one
+// picture is all there is (a plate between pages of text). Its bytes go to
+// Swift once per picture; an empty message says the page on screen no
+// longer is one. Only with one page across, in paginated mode, and not in
+// fixed layout books (whose pages are drawn as the publisher made them).
+//
+// The picture being shown (a key: chapter and picture), and the one Swift
+// has (sent, not just being read).
+let lonePictureKey = null
 let lonePictureSent = null
+// The page's own copy, hidden while the native one shows.
+let hiddenPicture = null
+
+// The one picture on the page on screen, if that is all the page holds.
+// foliate's visible range only takes in elements wholly on the page, so on
+// such a page it holds that picture and (almost) no text. Small pictures
+// (ornaments, a drop cap drawn as an image) do not count.
+function pagePicture(doc) {
+    const range = reader.view?.lastLocation?.range
+    if (!range || range.startContainer?.ownerDocument !== doc) return null
+    if (range.toString().replace(/\s+/g, '').length > 20) return null
+    const pictures = [...doc.querySelectorAll('img, svg')].filter(p => {
+        if (p.localName === 'img' ? p.closest('svg') : p.parentElement?.closest('svg')) return false
+        if (!range.intersectsNode(p)) return false
+        const { width, height } = p.getBoundingClientRect()
+        return width >= 120 && height >= 120
+    })
+    return pictures.length === 1 ? pictures[0] : null
+}
+
 // The picture-only page on screen, if there is one (and native display is
-// in use: one page across, paginated, not fixed layout, on iOS).
+// in use: one page across, paginated, not fixed layout, on iOS). `picture`
+// is the img or svg element; `key` names it within the book.
 function currentLonePicture() {
     const r = reader.view?.renderer
     const { doc, index } = r?.getContents?.()[0] ?? {}
     const usable = reader.settings?.touch && !reader.isFixedLayout && reader.settings?.flow !== 'scrolled'
         && (r?.feet?.length ?? 1) === 1
-    const picture = usable && doc?.documentElement.classList.contains('platen-lone-picture')
-        ? doc.querySelector('img, image') : null
-    return { r, doc, index, picture }
+    if (!usable || !doc) return { r, doc, index, picture: null, key: null }
+    const picture = doc.documentElement.classList.contains('platen-lone-picture')
+        ? doc.querySelector('img, svg') : pagePicture(doc)
+    const key = picture ? `${index}:${[...doc.querySelectorAll('img, svg')].indexOf(picture)}` : null
+    return { r, doc, index, picture, key }
+}
+// The address of a picture's bytes (an svg's is in its <image>).
+function pictureSource(picture) {
+    if (picture.localName === 'img') return picture.currentSrc || picture.src
+    const image = picture.querySelector('image')
+    return image?.getAttribute('href') ?? image?.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+}
+function showPageCopy() {
+    hiddenPicture?.style.removeProperty('visibility')
+    hiddenPicture = null
 }
 // For a page turn, before it is drawn: whether the page now on screen is a
 // picture-only page whose picture Swift already has ('same'), one it is
 // about to be sent ('new'), or not one ('none').
 function lonePictureState() {
-    const { index, picture } = currentLonePicture()
+    const { picture, key } = currentLonePicture()
     if (!picture) return 'none'
-    return lonePictureSent === index ? 'same' : 'new'
+    return lonePictureSent === key ? 'same' : 'new'
 }
 async function reportLonePicture() {
-    const { r, doc, index, picture } = currentLonePicture()
+    const { picture, key } = currentLonePicture()
     if (!picture) {
-        if (lonePictureSection !== null) {
-            lonePictureSection = null
+        if (lonePictureKey !== null) {
+            lonePictureKey = null
             lonePictureSent = null
             post('lonePicture', {})
             // The page's own copy shows again (Scroll, two pages…).
-            for (const { doc } of r?.getContents?.() ?? []) doc?.documentElement.classList.remove('platen-native-picture')
+            showPageCopy()
         }
         return
     }
-    if (lonePictureSection === index) return
-    lonePictureSection = index
+    if (lonePictureKey === key) return
+    lonePictureKey = key
     try {
-        const src = picture.localName === 'image'
-            ? picture.getAttribute('href') ?? picture.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
-            : (picture.currentSrc || picture.src)
+        const src = pictureSource(picture)
+        if (!src) throw new Error('no source')
         const blob = await (await fetch(src)).blob()
         const bytes = new Uint8Array(await blob.arrayBuffer())
         let binary = ''
         for (let i = 0; i < bytes.length; i += 0x8000)
             binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-        if (lonePictureSection !== index) return // moved on meanwhile
+        if (lonePictureKey !== key) return // moved on meanwhile
         post('lonePicture', { data: btoa(binary), mimeType: blob.type })
-        lonePictureSent = index
-        doc.documentElement.classList.add('platen-native-picture')
+        lonePictureSent = key
+        showPageCopy()
+        picture.style.setProperty('visibility', 'hidden', 'important')
+        hiddenPicture = picture
     } catch (e) {
-        lonePictureSection = null
+        lonePictureKey = null
         post('log', { level: 'error', message: `lone picture: ${e}` })
     }
 }
@@ -335,6 +373,13 @@ window.platen = {
     pictureAt,
     // iOS, during a page turn: is the new page a picture-only page?
     lonePictureState,
+    // Whether the page on screen is one picture and nothing else, whatever
+    // the platform (the corpus checks it on the Mac, which has no native
+    // picture view).
+    pagePicture: () => {
+        const doc = reader.view?.renderer?.getContents?.()[0]?.doc
+        return !!(doc && pagePicture(doc))
+    },
     // The text size chosen, in pixels (for checks: body text should be it).
     fontSize: () => reader.settings?.fontSize,
     // Esc closes an open note pop-up; says whether there was one.

@@ -197,10 +197,8 @@ function fitLonePicture(doc) {
     const style = doc.createElement('style')
     style.textContent = `
         /* platen-styles: a page that is one picture (bookfixes.js). On iOS
-           the picture is shown natively, full screen, and the page's own
-           copy is hidden once it has been sent (platen-native-picture). */
-        html.platen-native-picture img,
-        html.platen-native-picture svg { visibility: hidden !important; }
+           the picture is shown natively, full screen, and reader.js hides
+           the page's own copy once it has been sent. */
         html.platen-lone-picture body,
         html.platen-lone-picture body * {
             margin-top: 0 !important; margin-bottom: 0 !important;

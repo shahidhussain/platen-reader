@@ -23,7 +23,7 @@ import UIKit
 final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, UIGestureRecognizerDelegate {
     private(set) var pdfView: PDFView!
     /// Behind the pages: their own colours, softened (PDFAmbientBackground).
-    private var ambient: UIImageView!
+    private var ambient: AmbientGlowView!
     /// What the ambient background was last made for (pages and theme), so
     /// it is only remade when that changes.
     private var ambientKey: String?
@@ -43,9 +43,10 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     private var fitScale: CGFloat?
     /// Text was selected before the latest tap; that tap only clears it.
     private var hadSelection = false
-    /// Holds the ambient background, the pages and the ribbon, so a slide or
-    /// a swipe moves them together: a new page arrives with its own
-    /// background (and ribbon) rather than having them change after it.
+    /// Holds the pages and the ribbon, so a slide or a swipe moves them
+    /// together: a new page arrives with its ribbon rather than having it
+    /// change after it. The ambient background stays behind, and fades from
+    /// one page's to the next in step with the slide (AmbientGlowView).
     private var pageArea: UIView!
     /// Invert Colours: white, laid over the pages with a difference blend,
     /// which turns every colour beneath it into its opposite (white paper
@@ -63,11 +64,13 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// the same as in the book reader.
     private lazy var pageTurner = PageTurnAnimator(
         host: self, pageView: pageArea,
-        snapshot: { [weak self] done in
+        snapshot: { [weak self] _, done in
             guard let self else { return done(nil) }
             let view: UIView = self.pageArea
+            // See-through around the pages, so a slide shows the glow
+            // behind (a curl takes only the page itself, `curlRegion`).
             let format = UIGraphicsImageRendererFormat.preferred()
-            format.opaque = true
+            format.opaque = false
             done(UIGraphicsImageRenderer(bounds: view.bounds, format: format).image { _ in
                 view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
             })
@@ -97,17 +100,14 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     override func loadView() {
         let root = UIView()
+        // The ambient background, stretched across the whole screen behind
+        // the PDF view (which is see-through around its pages).
+        ambient = AmbientGlowView()
+        ambient.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(ambient)
         pageArea = UIView()
         pageArea.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(pageArea)
-
-        // The ambient background, stretched across the whole screen behind
-        // the PDF view (which is see-through around its pages).
-        ambient = UIImageView()
-        ambient.translatesAutoresizingMaskIntoConstraints = false
-        ambient.contentMode = .scaleToFill
-        ambient.isAccessibilityElement = false
-        pageArea.addSubview(ambient)
 
         pdfView = PDFView()
         pdfView.translatesAutoresizingMaskIntoConstraints = false
@@ -164,7 +164,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         configurePageTurner()
 
         var constraints: [NSLayoutConstraint] = []
-        for (inner, outer) in [(pageArea!, root), (ambient!, pageArea!), (pdfView!, pageArea!), (inverter!, pageArea!)] as [(UIView, UIView)] {
+        for (inner, outer) in [(pageArea!, root), (ambient!, root), (pdfView!, pageArea!), (inverter!, pageArea!)] as [(UIView, UIView)] {
             constraints += [
                 inner.leadingAnchor.constraint(equalTo: outer.leadingAnchor),
                 inner.trailingAnchor.constraint(equalTo: outer.trailingAnchor),
@@ -535,6 +535,9 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             self?.chrome.showNotice(request.isForward ? String(localized: "End of document")
                                                       : String(localized: "Start of document"))
         }
+        // Slides and swipes fade the glow behind the pages in step with them.
+        pageTurner.slideProgress = { [weak self] progress in self?.ambient.slide(to: progress) }
+        pageTurner.slideEnded = { [weak self] turned in self?.ambient.endSlide(turned: turned) }
         // Only the page curls (or the spread, in landscape), not the
         // background around it; its back is paper, whatever the theme.
         pageTurner.curlRegion = { [weak self] in self?.pageRegion }
@@ -864,22 +867,16 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                 // A curl: only the page curls, while the glow behind it
                 // stays. It fades from the old page's to the new over the
                 // curl, landing as the page does.
-                UIView.transition(with: ambient, duration: PageTurnAnimator.curlDuration,
-                                  options: [.transitionCrossDissolve, .allowUserInteraction, .curveEaseInOut]) {
-                    self.ambient.image = ready
-                }
+                ambient.show(ready, fade: PageTurnAnimator.curlDuration, curve: .curveEaseInOut)
             } else {
-                // Made ahead: on at once. A slide or swipe moves the glow
-                // with its page (both are in the page area).
-                ambient.image = ready
+                // Made ahead: on at once, or during a slide or swipe, fading
+                // in step with it (AmbientGlowView).
+                ambient.show(ready)
             }
         } else {
             makeAmbient(indexes, theme: theme, document: document) { [weak self] image in
                 guard let self, self.ambientKey == key, let image else { return }
-                let fade = UIAccessibility.isReduceMotionEnabled ? 0 : 0.35
-                UIView.transition(with: self.ambient, duration: fade, options: [.transitionCrossDissolve, .allowUserInteraction]) {
-                    self.ambient.image = image
-                }
+                self.ambient.show(image, fade: UIAccessibility.isReduceMotionEnabled ? 0 : 0.35)
             }
         }
         // Make the next and previous pages' backgrounds now, so they are
