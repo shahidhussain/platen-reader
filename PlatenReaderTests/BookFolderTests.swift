@@ -51,38 +51,6 @@ final class BookFolderTests: XCTestCase {
         XCTAssertTrue(FolderScanner.isInside(folder, folder: folder))
         XCTAssertFalse(FolderScanner.isInside(URL(fileURLWithPath: "/var/mobile/Books2/b.epub"), folder: folder))
     }
-
-    @MainActor
-    func testChosenFolderAndLastFolderSurviveRelaunch() throws {
-        let root = try temporaryFolder()
-        let series = root.appendingPathComponent("Series/Part One", isDirectory: true)
-        try FileManager.default.createDirectory(at: series, withIntermediateDirectories: true)
-        let suiteName = "org.platenreader.tests.folder.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
-
-        let library = LibraryFolder(defaults: defaults)
-        XCTAssertNil(library.root)
-        library.choose(root)
-        XCTAssertEqual(library.current, root)
-        XCTAssertEqual(library.pathFromRoot, [])
-
-        // A book opened from a folder inside the chosen one: that folder is
-        // shown, with the folders above it on the navigation path.
-        library.bookOpened(series.appendingPathComponent("book.epub"))
-        XCTAssertEqual(library.pathFromRoot.map(\.lastPathComponent), ["Series", "Part One"])
-        // One from elsewhere changes nothing.
-        library.bookOpened(URL(fileURLWithPath: "/elsewhere/book.epub"))
-        XCTAssertEqual(library.current.map(FolderScanner.canonicalPath), FolderScanner.canonicalPath(series))
-
-        let relaunched = LibraryFolder(defaults: defaults)
-        XCTAssertEqual(relaunched.root.map(FolderScanner.canonicalPath), FolderScanner.canonicalPath(root))
-        XCTAssertEqual(relaunched.pathFromRoot.map(\.lastPathComponent), ["Series", "Part One"])
-
-        // The last folder shown has gone: back to the chosen folder.
-        try FileManager.default.removeItem(at: root.appendingPathComponent("Series"))
-        XCTAssertEqual(LibraryFolder(defaults: defaults).pathFromRoot, [])
-    }
 }
 
 /// The opening stages behind the loading bar (Shared/OpeningProgress.swift).
@@ -175,5 +143,96 @@ final class RecentsTests: XCTestCase {
         XCTAssertTrue(FolderSearch.matches("bronte jane", name: "je.epub", title: "Jane Eyre", authors: ["Charlotte Brontë"]))
         XCTAssertTrue(FolderSearch.matches("KOBO", name: "kobo"))
         XCTAssertFalse(FolderSearch.matches("austen", name: "je.epub", title: "Jane Eyre", authors: ["Charlotte Brontë"]))
+    }
+}
+
+/// Where recent folders are kept, worked out from their paths
+/// (StoragePlace), and the folder view's filter by kind of book.
+final class StorageAndFilterTests: XCTestCase {
+    func testStorageKindsAndReadablePaths() {
+        let iCloud = StoragePlace(path: "/private/var/mobile/Library/Mobile Documents/com~apple~CloudDocs/Books/Kids")
+        XCTAssertEqual(iCloud, StoragePlace(kind: .iCloud, location: "iCloud Drive/Books/Kids"))
+
+        let appCloud = StoragePlace(path: "/private/var/mobile/Library/Mobile Documents/iCloud~com~maker~Reader/Documents/Novels")
+        XCTAssertEqual(appCloud, StoragePlace(kind: .iCloud, location: "iCloud Drive/Reader/Novels"))
+
+        let share = StoragePlace(path: "/private/var/mobile/Library/LiveFiles/com.apple.filesystems.smbclientd/A1B2C3/both/books-kids/picturebooks")
+        XCTAssertEqual(share, StoragePlace(kind: .network, location: "smb://both/books-kids/picturebooks"))
+
+        let drive = StoragePlace(path: "/private/var/mobile/Library/LiveFiles/com.apple.filesystems.userfsd/USB Stick/Books")
+        XCTAssertEqual(drive.kind, .drive)
+        XCTAssertTrue(drive.location.hasSuffix("USB Stick/Books"))
+
+        let onPhone = StoragePlace(path: "/private/var/mobile/Containers/Shared/AppGroup/1234/File Provider Storage/Books")
+        XCTAssertEqual(onPhone, StoragePlace(kind: .device, location: "On My iPhone/Books"))
+
+        let ownFolder = StoragePlace(path: "/var/mobile/Containers/Data/Application/ABCD/Documents/Library Books")
+        XCTAssertEqual(ownFolder, StoragePlace(kind: .device, location: "On My iPhone/Platen Reader/Library Books"))
+
+        XCTAssertEqual(StoragePlace(path: "/Volumes/both/books").kind, .drive)
+        XCTAssertEqual(StoragePlace(path: "/Users/me/Library/CloudStorage/Dropbox/Books").kind, .otherCloud)
+    }
+
+    func testOlderEntriesWorkOutTheirPlaceFromThePath() {
+        let item = RecentItem(bookmark: Data(), name: "Kids",
+                              path: "/private/var/mobile/Library/Mobile Documents/com~apple~CloudDocs/Books/Kids",
+                              lastOpened: Date())
+        XCTAssertEqual(item.storageKind, .iCloud)
+        XCTAssertEqual(item.locationText, "iCloud Drive/Books/Kids")
+    }
+
+    func testBookFileTypesByExtension() {
+        func type(_ name: String) -> BookFileType? { BookFileType(URL(fileURLWithPath: "/b/" + name)) }
+        XCTAssertEqual(type("a.epub"), .epub)
+        XCTAssertEqual(type("a.kepub.epub"), .kepub)
+        XCTAssertEqual(type("a.KEPUB"), .kepub)
+        XCTAssertEqual(type("a.mobi"), .mobi)
+        XCTAssertEqual(type("a.prc"), .mobi)
+        XCTAssertEqual(type("a.azw3"), .kindle)
+        XCTAssertEqual(type("a.pdf"), .pdf)
+        XCTAssertEqual(type("a.txt"), .text)
+        XCTAssertNil(type("a.docx"))
+    }
+
+    @MainActor
+    func testTheFilterAlwaysShowsAtLeastOneKindAndIsKept() throws {
+        let suite = "org.platenreader.tests.filter.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+
+        let filter = BookTypeFilter(defaults: defaults)
+        XCTAssertTrue(filter.showsAll)
+        for type in BookFileType.allCases { filter.toggle(type) }
+        XCTAssertEqual(BookFileType.allCases.filter(filter.isShown), [.text], "the last kind stays shown")
+        XCTAssertFalse(filter.shows(URL(fileURLWithPath: "/b/a.epub")))
+        XCTAssertTrue(filter.shows(URL(fileURLWithPath: "/b/a.txt")))
+
+        let relaunched = BookTypeFilter(defaults: defaults)
+        XCTAssertEqual(BookFileType.allCases.filter(relaunched.isShown), [.text])
+        relaunched.toggle(.epub)
+        XCTAssertTrue(relaunched.isShown(.epub))
+    }
+}
+
+extension RecentsTests {
+    @MainActor
+    func testOnePlaceUnderTwoSpellingsIsOneEntry() throws {
+        let folder = try temporaryFolderForExtension()
+        let store = folder.appendingPathComponent("recents")
+        let list = RecentList(kind: .folders, directory: store)
+        // The temporary folder is under /var/folders, which is a link to
+        // /private/var/folders: one place, two spellings.
+        let short = folder.standardizedFileURL.path.replacingOccurrences(of: "/private/var/", with: "/var/")
+        list.opened(URL(fileURLWithPath: short, isDirectory: true))
+        list.opened(URL(fileURLWithPath: "/private" + short, isDirectory: true))
+        XCTAssertEqual(list.items.count, 1)
+        XCTAssertTrue(list.contains(URL(fileURLWithPath: "/private" + short)))
+    }
+
+    private func temporaryFolderForExtension() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
     }
 }

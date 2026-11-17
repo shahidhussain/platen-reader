@@ -83,6 +83,9 @@
     "Cancel" : {
 
     },
+    "Change the filter to see the other books here." : {
+
+    },
     "Choose Folder…" : {
 
     },
@@ -105,6 +108,9 @@
 
     },
     "Close Book" : {
+
+    },
+    "Cloud storage" : {
 
     },
     "Contents" : {
@@ -158,10 +164,16 @@
     "EPUB, KEPUB, MOBI, AZW3, PDF or plain text. You can also drop a book here." : {
 
     },
+    "External drive" : {
+
+    },
     "File" : {
 
     },
     "File Types" : {
+
+    },
+    "Filter" : {
 
     },
     "Find" : {
@@ -219,6 +231,9 @@
 
     },
     "Hyphenate text in paginated mode" : {
+
+    },
+    "iCloud Drive" : {
 
     },
     "In iCloud" : {
@@ -281,6 +296,9 @@
     "Narrow" : {
 
     },
+    "Network share" : {
+
+    },
     "Next Chapter" : {
 
     },
@@ -294,6 +312,9 @@
 
     },
     "No Books Here" : {
+
+    },
+    "No Books of These Kinds" : {
 
     },
     "No Recent Books" : {
@@ -314,7 +335,16 @@
     "Not available" : {
 
     },
+    "Not connected" : {
+
+    },
     "OK" : {
+
+    },
+    "On My iPhone" : {
+
+    },
+    "On this device" : {
 
     },
     "One Page" : {
@@ -367,6 +397,9 @@
 
     },
     "Picture" : {
+
+    },
+    "Plain Text" : {
 
     },
     "Plain text is left out, since most text files are not books. Use its own button to open all text files in Platen." : {

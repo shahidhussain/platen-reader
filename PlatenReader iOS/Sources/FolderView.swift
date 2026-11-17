@@ -8,52 +8,11 @@ extension Notification.Name {
     static let platenFolderShouldRefresh = Notification.Name("platenFolderShouldRefresh")
 }
 
-/// The home screen once the reader has chosen a folder: the folder the last
-/// book came from, as a grid of large covers (about three across on an
-/// iPhone), with the folders inside it first. Tapping a folder goes into it,
-/// with the usual Back button; tapping a book opens it.
-struct FolderBrowserView: View {
-    @ObservedObject var library: LibraryFolder
-    let openBook: (URL) -> Void
-    let chooseBook: () -> Void
-    let chooseFolder: () -> Void
-
-    /// The folders below the chosen one, down to the one on show.
-    @State private var path: [URL] = []
-
-    var body: some View {
-        NavigationStack(path: $path) {
-            Group {
-                if let root = library.root {
-                    grid(root)
-                }
-            }
-            .navigationDestination(for: URL.self) { grid($0) }
-        }
-        .onAppear { path = library.pathFromRoot }
-        .onChange(of: path) { _, path in
-            guard let root = library.root else { return }
-            library.show(path.last ?? root)
-        }
-        .onChange(of: library.current) { _, _ in
-            // A book opened from another folder inside the chosen one: show
-            // its folder.
-            let wanted = library.pathFromRoot
-            if wanted.map(FolderScanner.canonicalPath) != path.map(FolderScanner.canonicalPath) { path = wanted }
-        }
-    }
-
-    private func grid(_ folder: URL) -> some View {
-        // A folder inside is pushed through the stack's path, which follows
-        // the library's folder on show (onChange above).
-        FolderGridView(folder: folder, openBook: openBook, openFolder: { library.show($0) },
-                       chooseBook: chooseBook, chooseFolder: chooseFolder)
-            .id(folder) // a new model for each folder
-    }
-}
-
-/// One folder's grid. Used by the Home tab (the chosen folder and those
-/// inside it) and the Recent Folders tab.
+/// One folder's grid of covers (about three across on an iPhone), the
+/// folders inside it first, shown in the Recent Folders tab. Tapping a
+/// folder goes into it, with the usual Back button; tapping a book opens it.
+/// Search (by file name, title and author) and a filter by kind of book are
+/// in the toolbar.
 struct FolderGridView: View {
     let folder: URL
     let openBook: (URL) -> Void
@@ -65,6 +24,7 @@ struct FolderGridView: View {
     /// The search field (shown by the search button) and what is typed in it.
     @State private var query = ""
     @State private var searching = false
+    @ObservedObject private var filter = BookTypeFilter.shared
 
     init(folder: URL, openBook: @escaping (URL) -> Void, openFolder: @escaping (URL) -> Void,
          chooseBook: @escaping () -> Void, chooseFolder: @escaping () -> Void) {
@@ -80,8 +40,10 @@ struct FolderGridView: View {
     /// nothing is typed): by file name, and for books their title and
     /// authors too.
     private var shown: [FolderEntry] {
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return model.entries }
+        let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
         return model.entries.filter { entry in
+            if entry.kind == .book, !filter.shows(entry.url) { return false }
+            guard searching else { return true }
             let info = model.covers[entry.url]
             return FolderSearch.matches(query, name: entry.name, title: info?.title, authors: info?.authors ?? [])
         }
@@ -126,7 +88,12 @@ struct FolderGridView: View {
                         .foregroundStyle(.secondary)
                 }
             } else if model.entries.isEmpty == false, shown.isEmpty {
-                ContentUnavailableView.search(text: query)
+                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    ContentUnavailableView("No Books of These Kinds", systemImage: "line.3.horizontal.decrease.circle",
+                                           description: Text("Change the filter to see the other books here."))
+                } else {
+                    ContentUnavailableView.search(text: query)
+                }
             } else if model.entries.isEmpty {
                 ContentUnavailableView {
                     Label("No Books Here", systemImage: "books.vertical")
@@ -154,6 +121,21 @@ struct FolderGridView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                // The kinds of book shown, each with a tick; at least one
+                // stays ticked. The menu stays open while ticking.
+                Menu {
+                    Section("Show") {
+                        ForEach(BookFileType.allCases) { type in
+                            Toggle(type.label, isOn: Binding(get: { filter.isShown(type) }, set: { _ in filter.toggle(type) }))
+                                .menuActionDismissBehavior(.disabled)
+                        }
+                    }
+                } label: {
+                    Label("Filter", systemImage: filter.showsAll ? "line.3.horizontal.decrease.circle"
+                                                                 : "line.3.horizontal.decrease.circle.fill")
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

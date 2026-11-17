@@ -25,12 +25,80 @@ struct FolderEntry: Identifiable, Equatable, Sendable {
     var id: URL { url }
 }
 
+/// The kinds of file Platen opens (the same types as Info.plist), by
+/// extension, for the folder view's filter.
+enum BookFileType: String, CaseIterable, Identifiable, Sendable {
+    case epub, kepub, mobi, kindle, pdf, text
+
+    var id: String { rawValue }
+
+    init?(_ url: URL) {
+        let ext = url.pathExtension.lowercased()
+        let inner = url.deletingPathExtension().pathExtension.lowercased()
+        switch ext {
+        case "epub": self = inner == "kepub" ? .kepub : .epub // Name.kepub.epub
+        case "kepub": self = .kepub
+        case "mobi", "prc": self = .mobi
+        case "azw", "azw3": self = .kindle
+        case "pdf": self = .pdf
+        case "txt": self = .text
+        default: return nil
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .epub: return "EPUB"
+        case .kepub: return "KEPUB"
+        case .mobi: return "MOBI"
+        case .kindle: return "AZW and AZW3"
+        case .pdf: return "PDF"
+        case .text: return String(localized: "Plain Text")
+        }
+    }
+}
+
+/// Which kinds of book the folder view shows: all of them unless the
+/// reader turns some off (the filter button), and never none. One choice
+/// for every folder, kept with the settings.
+@MainActor
+final class BookTypeFilter: ObservableObject {
+    static let shared = BookTypeFilter(defaults: AppDefaults.store)
+
+    @Published private(set) var hidden: Set<BookFileType>
+    private let defaults: UserDefaults
+    private static let key = "hiddenBookTypes"
+
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
+        let saved = defaults.stringArray(forKey: Self.key) ?? []
+        hidden = Set(saved.compactMap(BookFileType.init(rawValue:)))
+        if hidden.count == BookFileType.allCases.count { hidden = [] }
+    }
+
+    /// True unless some kinds are hidden (the filter button shows that).
+    var showsAll: Bool { hidden.isEmpty }
+
+    func isShown(_ type: BookFileType) -> Bool { !hidden.contains(type) }
+
+    /// Whether a file in the folder is shown (folders always are).
+    func shows(_ url: URL) -> Bool { BookFileType(url).map(isShown) ?? false }
+
+    /// Shows or hides a kind; the last kind shown cannot be hidden.
+    func toggle(_ type: BookFileType) {
+        if hidden.contains(type) {
+            hidden.remove(type)
+        } else if hidden.count < BookFileType.allCases.count - 1 {
+            hidden.insert(type)
+        }
+        defaults.set(hidden.map(\.rawValue).sorted(), forKey: Self.key)
+    }
+}
+
 /// Reads what is in a folder: the books Platen opens and the folders inside
 /// it, in Finder's order (folders first, then by name, with numbers in
 /// number order).
 enum FolderScanner {
-    /// The book file extensions shown (the same types as Info.plist).
-    static let bookExtensions: Set<String> = ["epub", "kepub", "mobi", "prc", "azw", "azw3", "pdf", "txt"]
 
     static func entries(in folder: URL) -> [FolderEntry] {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isHiddenKey,
@@ -74,9 +142,7 @@ enum FolderScanner {
         }
     }
 
-    static func isBook(_ url: URL) -> Bool {
-        bookExtensions.contains(url.pathExtension.lowercased())
-    }
+    static func isBook(_ url: URL) -> Bool { BookFileType(url) != nil }
 
     /// "Middlemarch.kepub.epub" → "Middlemarch".
     static func displayName(_ url: URL) -> String {
@@ -91,106 +157,16 @@ enum FolderScanner {
         return a == b || a.hasPrefix(b.hasSuffix("/") ? b : b + "/")
     }
 
-    /// The path with symbolic links resolved, so "/var/…" and
-    /// "/private/var/…" (both seen on iOS) compare equal.
+    /// The path in one form, so "/var/…" and "/private/var/…" (both seen
+    /// on iOS for the same place) compare equal. Worked out from the text
+    /// alone: resolving links would touch the disk, which can hang on a
+    /// network share that has gone away, and this runs on the main thread.
     static func canonicalPath(_ url: URL) -> String {
-        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
-        // resolvingSymlinksInPath drops "/private" only for files that exist
-        // (a book may have gone), so do it here too.
+        let path = url.standardizedFileURL.path
         for folder in ["/private/var/", "/private/tmp/"] where path.hasPrefix(folder) {
             return String(path.dropFirst("/private".count))
         }
         return path
-    }
-}
-
-/// The folder the reader chose for the folder view, kept as a bookmark
-/// (which keeps permission to read it across launches), and the folder
-/// inside it that was last looked at.
-///
-/// Opening one book gives access to that file only, never its folder, so
-/// the reader picks the folder once ("Choose Folder…"). Access is held for
-/// as long as the app runs.
-@MainActor
-final class LibraryFolder: ObservableObject {
-    static let shared = LibraryFolder(defaults: AppDefaults.store)
-
-    /// The chosen folder, while it can be reached.
-    @Published private(set) var root: URL?
-    /// The folder on show: the one the last book was opened from, if it is
-    /// inside `root`; otherwise `root` itself.
-    @Published private(set) var current: URL?
-
-    private let defaults: UserDefaults
-    private static let bookmarkKey = "libraryFolder"
-    private static let currentKey = "libraryCurrentFolder"
-    private var accessing: URL?
-
-    init(defaults: UserDefaults) {
-        self.defaults = defaults
-        guard let data = defaults.data(forKey: Self.bookmarkKey) else { return }
-        var stale = false
-        guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
-            // Deleted, or on a share or provider that has gone away.
-            defaults.removeObject(forKey: Self.bookmarkKey)
-            return
-        }
-        startAccess(url)
-        if stale, let fresh = try? url.bookmarkData() { defaults.set(fresh, forKey: Self.bookmarkKey) }
-        root = url
-        // Back to the folder last shown, if it is still there.
-        if let path = defaults.string(forKey: Self.currentKey) {
-            let saved = URL(fileURLWithPath: path, isDirectory: true)
-            if FolderScanner.isInside(saved, folder: url),
-               (try? saved.checkResourceIsReachable()) == true {
-                current = saved
-            }
-        }
-        if current == nil { current = url }
-    }
-
-    /// The reader chose a folder (a security-scoped URL from the folder
-    /// picker).
-    func choose(_ url: URL) {
-        if let accessing { accessing.stopAccessingSecurityScopedResource() }
-        accessing = nil
-        startAccess(url)
-        guard let data = try? url.bookmarkData() else { return }
-        defaults.set(data, forKey: Self.bookmarkKey)
-        root = url
-        show(url)
-    }
-
-    /// A book was opened: if it lives inside the chosen folder, its folder is
-    /// the one shown from now on.
-    func bookOpened(_ book: URL) {
-        guard let root, FolderScanner.isInside(book, folder: root) else { return }
-        show(book.deletingLastPathComponent())
-    }
-
-    /// The folder view moved to another folder.
-    func show(_ folder: URL) {
-        current = folder
-        defaults.set(folder.path, forKey: Self.currentKey)
-    }
-
-    /// The folders from `root` down to `current`, for the navigation path
-    /// (not including `root` itself).
-    var pathFromRoot: [URL] {
-        guard let root, let current, FolderScanner.isInside(current, folder: root) else { return [] }
-        var path: [URL] = []
-        var folder = current
-        while FolderScanner.canonicalPath(folder) != FolderScanner.canonicalPath(root) {
-            path.insert(folder, at: 0)
-            let parent = folder.deletingLastPathComponent()
-            if parent == folder { return [] }
-            folder = parent
-        }
-        return path
-    }
-
-    private func startAccess(_ url: URL) {
-        if url.startAccessingSecurityScopedResource() { accessing = url }
     }
 }
 
@@ -241,7 +217,7 @@ final class FolderModel: NSObject, ObservableObject {
     func start() {
         if !watching {
             watching = true
-            NSFileCoordinator.addFilePresenter(self)
+            Self.presenterQueue.async { NSFileCoordinator.addFilePresenter(self) }
         }
         refresh()
     }
@@ -251,8 +227,14 @@ final class FolderModel: NSObject, ObservableObject {
     func stop() {
         guard watching else { return }
         watching = false
-        NSFileCoordinator.removeFilePresenter(self)
+        Self.presenterQueue.async { NSFileCoordinator.removeFilePresenter(self) }
     }
+
+    /// Adding and removing a file presenter wait for the system's file
+    /// coordination, which can hang for a network share that has gone
+    /// away (it froze the app when the folder view left the screen), so
+    /// they are done in order on a queue of their own.
+    private static let presenterQueue = DispatchQueue(label: "org.platenreader.folder-presenter", qos: .utility)
 
     /// Reads the folder again.
     func refresh() {

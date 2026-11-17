@@ -8,21 +8,22 @@ import UniformTypeIdentifiers
 ///
 /// - At launch it goes back to the book that was open when Platen was last
 ///   left (`LastOpenBook`).
-/// - Otherwise, once the reader has chosen a folder, it shows the folder the
-///   last book came from as a grid of covers (`FolderBrowserView`). Until
-///   then it shows the welcome screen (the Mac's, full screen): the app's
-///   name, "Open Book…" and "Choose Folder…".
+/// - Otherwise it shows three tabs (HomeTabs): Home (the welcome, for now:
+///   the app's name, "Open Book…" and "Choose Folder…"), Recent Books and
+///   Recent Folders.
 /// - "Open Book…" shows the system's document picker, which opens the book
 ///   where it is (Files, iCloud Drive, SMB shares, any file provider) through
 ///   a security-scoped URL. Nothing is ever copied into the app.
-///   "Choose Folder…" picks a folder the same way, kept as a bookmark
-///   (`LibraryFolder`): opening one book gives no access to its folder.
+///   "Choose Folder…" picks a folder the same way (opening one book gives no
+///   access to its folder); it joins Recent Folders, kept as a bookmark, and
+///   opens there.
 /// - Books opened from other apps go straight to the reader (SceneDelegate
 ///   calls `openBook(at:)`).
 ///
 /// Platen has no library of its own; folders are the library.
 final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
-    private let library = LibraryFolder.shared
+    /// The tab showing, and the folders open in Recent Folders.
+    let navigation = HomeNavigation()
     /// The picker on screen is choosing a folder, not a book.
     private var pickingFolder = false
 
@@ -51,7 +52,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
         view.backgroundColor = .systemBackground
         // The tabs (Home, Recent Books, Recent Folders), whose Home tab is
         // the folder view once a folder is chosen, or the welcome until then.
-        let tabs = UIHostingController(rootView: HomeTabs(library: library, actions: HomeActions(
+        let tabs = UIHostingController(rootView: HomeTabs(navigation: navigation, actions: HomeActions(
             openBook: { [weak self] in self?.openBook(at: $0) },
             chooseBook: { [weak self] in self?.chooseBook() },
             chooseFolder: { [weak self] in self?.chooseFolder() }
@@ -62,6 +63,26 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
         // Below the launch cover, if it is up.
         if let launchCover { view.insertSubview(tabs.view, belowSubview: launchCover) } else { view.addSubview(tabs.view) }
         tabs.didMove(toParent: self)
+        moveLibraryFolderToRecents()
+    }
+
+    /// Before the tabs, one chosen folder was the home screen (kept under
+    /// "libraryFolder"); it becomes a recent folder, once. Resolved in the
+    /// background, as it may be on a share that is not connected.
+    private func moveLibraryFolderToRecents() {
+        guard let data = AppDefaults.store.data(forKey: "libraryFolder") else { return }
+        AppDefaults.store.removeObject(forKey: "libraryFolder")
+        AppDefaults.store.removeObject(forKey: "libraryCurrentFolder")
+        Task {
+            let url = await Task.detached { () -> URL? in
+                var stale = false
+                return try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale)
+            }.value
+            guard let url else { return }
+            let scoped = url.startAccessingSecurityScopedResource()
+            if !RecentList.folders.contains(url) { RecentList.folders.opened(url) }
+            if scoped { url.stopAccessingSecurityScopedResource() }
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -92,14 +113,21 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: false)
         picker.delegate = self
         picker.allowsMultipleSelection = false
-        picker.directoryURL = library.root
         present(picker, animated: true)
+    }
+
+    /// A folder chosen (or, testing, named at launch): it joins Recent
+    /// Folders and opens there. Access to it is held while the app runs.
+    func showChosenFolder(_ url: URL) {
+        FolderAccess.hold(url)
+        RecentList.folders.opened(url)
+        navigation.show(folder: url)
     }
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { return }
         if pickingFolder {
-            library.choose(url)
+            showChosenFolder(url)
         } else {
             // The picker dismisses itself; the reader is presented once it has.
             present(book: url)
@@ -134,8 +162,8 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
         let show = { [weak self] in
             guard let self else { return }
             // PDFs are shown by PDFKit; everything else by the book reader.
-            let isPDF = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .pdf)) == true
-                || url.pathExtension.lowercased() == "pdf"
+            // (By name: asking the file system could wait on a network share.)
+            let isPDF = BookFileType(url) == .pdf
             let reader: ReaderBaseViewController = isPDF ? PDFReaderViewController(url: url) : ReaderViewController(url: url)
             reader.onClose = { [weak self, weak reader] in
                 LastOpenBook.forget() // closed on purpose: next launch, the home screen
@@ -144,8 +172,6 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
                 NotificationCenter.default.post(name: .platenFolderShouldRefresh, object: nil)
             }
             LastOpenBook.remember(url)
-            // Its folder is the one the folder view shows from now on.
-            self.library.bookOpened(url)
             self.addToRecents(url)
             reader.modalPresentationStyle = .fullScreen
             self.reader = reader

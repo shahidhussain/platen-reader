@@ -9,42 +9,62 @@ struct HomeActions {
     let chooseFolder: () -> Void
 }
 
+/// Which tab is showing, and the folders open in Recent Folders: kept by
+/// HomeViewController, so a folder just chosen ("Choose Folder…") opens
+/// there.
+@MainActor
+final class HomeNavigation: ObservableObject {
+    enum Tab: Hashable { case home, books, folders }
+    @Published var tab: Tab = .home
+    @Published var folderPath: [URL] = []
+
+    /// Shows a folder in the Recent Folders tab (just chosen, or tapped).
+    func show(folder: URL) {
+        FolderAccess.hold(folder)
+        tab = .folders
+        folderPath = [folder]
+    }
+}
+
+/// Folders opened from Recent Folders (or just chosen) keep their access
+/// while the app runs: their books are read from them.
+@MainActor
+enum FolderAccess {
+    private static var held: Set<URL> = []
+    static func hold(_ url: URL) {
+        guard !held.contains(url), url.startAccessingSecurityScopedResource() else { return }
+        held.insert(url)
+    }
+}
+
 /// The home screen: three tabs, whose bar stays at the bottom even inside a
 /// folder, so the reader can always get back out.
-/// - **Home:** the chosen folder as covers (FolderBrowserView), or the
-///   welcome until a folder is chosen.
+/// - **Home:** the welcome (Open Book…, Choose Folder…), for now.
 /// - **Recent Books:** books opened lately, from anywhere, newest first.
-/// - **Recent Folders:** folders looked at lately, as a list.
+/// - **Recent Folders:** folders looked at lately, as a list; a folder opens
+///   inside the tab.
 struct HomeTabs: View {
-    @ObservedObject var library: LibraryFolder
+    @ObservedObject var navigation: HomeNavigation
     let actions: HomeActions
 
-    private enum Tab: Hashable { case home, books, folders }
-    @State private var tab: Tab = .home
-
     var body: some View {
-        TabView(selection: $tab) {
-            home
-                .tabItem { Label("Home", systemImage: "house") }
-                .tag(Tab.home)
-            RecentBooksView(openBook: actions.openBook)
-                .tabItem { Label("Recent Books", systemImage: "clock") }
-                .tag(Tab.books)
-            RecentFoldersView(actions: actions)
-                .tabItem { Label("Recent Folders", systemImage: "folder") }
-                .tag(Tab.folders)
-        }
-    }
-
-    @ViewBuilder private var home: some View {
-        if library.root != nil {
-            FolderBrowserView(library: library, openBook: actions.openBook,
-                              chooseBook: actions.chooseBook, chooseFolder: actions.chooseFolder)
-        } else {
+        TabView(selection: $navigation.tab) {
             WelcomeView(open: actions.chooseBook, chooseFolder: actions.chooseFolder)
+                .tabItem { Label("Home", systemImage: "house") }
+                .tag(HomeNavigation.Tab.home)
+            RecentBooksView(actions: actions)
+                .tabItem { Label("Recent Books", systemImage: "clock") }
+                .tag(HomeNavigation.Tab.books)
+            RecentFoldersView(navigation: navigation, actions: actions)
+                .tabItem { Label("Recent Folders", systemImage: "folder") }
+                .tag(HomeNavigation.Tab.folders)
         }
     }
 }
+
+/// Whether a recent item can be reached: being checked (in the background,
+/// with a time limit), yes, or no.
+enum Reach { case checking, available, unavailable }
 
 // MARK: - Recent Books
 
@@ -52,13 +72,13 @@ struct HomeTabs: View {
 /// list, so they show even when the book cannot be reached). A book that
 /// cannot be reached now (moved, deleted, or on a drive or share that is
 /// not connected) is greyed with a mark. A long press offers Remove from
-/// Recents.
+/// Recents; + opens another book.
 struct RecentBooksView: View {
     @ObservedObject private var recents = RecentList.books
-    let openBook: (URL) -> Void
+    let actions: HomeActions
 
     @State private var images: [RecentItem.ID: CGImage] = [:]
-    @State private var unavailable: Set<RecentItem.ID> = []
+    @State private var reach: [RecentItem.ID: Reach] = [:]
     @State private var cannotOpen: RecentItem?
 
     private let columns = [GridItem(.adaptive(minimum: 100, maximum: 200), spacing: 18, alignment: .bottom)]
@@ -70,7 +90,7 @@ struct RecentBooksView: View {
                     ForEach(recents.items) { item in
                         Button { open(item) } label: {
                             BookTile(title: item.displayName, author: item.author, image: images[item.id],
-                                     badge: unavailable.contains(item.id) ? .unavailable : nil)
+                                     badge: reach[item.id] == .unavailable ? .unavailable : nil)
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
@@ -85,13 +105,23 @@ struct RecentBooksView: View {
             }
             .overlay {
                 if recents.items.isEmpty {
-                    ContentUnavailableView("No Recent Books", systemImage: "clock",
-                                           description: Text("Books you open appear here."))
+                    ContentUnavailableView {
+                        Label("No Recent Books", systemImage: "clock")
+                    } description: {
+                        Text("Books you open appear here.")
+                    } actions: {
+                        Button("Open Book…", action: actions.chooseBook)
+                    }
                 }
             }
             .navigationTitle("Recent Books")
-            // Covers and whether each book can be reached, looked up again
-            // whenever the list changes or the tab is shown.
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: actions.chooseBook) { Label("Open Book…", systemImage: "plus") }
+                }
+            }
+            // Covers, and whether each book can be reached, looked up again
+            // whenever the list changes or the app comes back.
             .task(id: recents.items.map(\.id)) { await refresh() }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 Task { await refresh() }
@@ -108,59 +138,70 @@ struct RecentBooksView: View {
     }
 
     private func open(_ item: RecentItem) {
+        reach[item.id] = .checking
         Task {
-            let url = await Task.detached { RecentList.isReachable(item) ? RecentList.resolve(item) : nil }.value
-            if let url {
-                unavailable.remove(item.id)
-                openBook(url)
+            if case .yes(let url) = await recents.reachability(of: item, timeout: 10) {
+                reach[item.id] = .available
+                actions.openBook(url)
             } else {
-                unavailable.insert(item.id)
+                reach[item.id] = .unavailable
                 cannotOpen = item
             }
         }
     }
 
-    /// Loads the covers not yet loaded, and checks each book can be reached
-    /// (in the background: a network share can be slow to answer).
+    /// Loads the covers not yet loaded, and checks each book can be reached,
+    /// all in the background (a network share can be slow to answer).
     private func refresh() async {
         let items = recents.items
         for item in items where images[item.id] == nil {
             guard let url = recents.coverURL(for: item) else { continue }
-            if let image = await Task.detached(operation: { Self.decode(url) }).value { images[item.id] = image }
+            if let image = await Task.detached(operation: { decodeImage(url) }).value { images[item.id] = image }
         }
-        let reachable = await withTaskGroup(of: (RecentItem.ID, Bool).self) { group in
-            for item in items { group.addTask { (item.id, RecentList.isReachable(item)) } }
-            var result: [RecentItem.ID: Bool] = [:]
-            for await (id, ok) in group { result[id] = ok }
-            return result
-        }
-        unavailable = Set(reachable.filter { !$0.value }.map(\.key))
+        await checkReach(items, in: recents, into: $reach)
     }
+}
 
-    nonisolated private static func decode(_ url: URL) -> CGImage? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+/// Checks each item at once, in the background, each with its own time
+/// limit: they show as being checked until they answer.
+@MainActor
+private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: Binding<[RecentItem.ID: Reach]>) async {
+    for item in items where reach.wrappedValue[item.id] == nil { reach.wrappedValue[item.id] = .checking }
+    await withTaskGroup(of: Void.self) { group in
+        for item in items {
+            group.addTask { @MainActor in
+                if case .yes = await list.reachability(of: item) {
+                    reach.wrappedValue[item.id] = .available
+                } else {
+                    reach.wrappedValue[item.id] = .unavailable
+                }
+            }
+        }
     }
+}
+
+private func decodeImage(_ url: URL) -> CGImage? {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
 }
 
 // MARK: - Recent Folders
 
-/// Folders looked at lately, as a list (name, the folder it is in, and when).
-/// Tapping one shows it, inside this tab. One that cannot be reached is
-/// greyed. A long press (or a swipe) removes it from the list.
+/// Folders looked at lately, as a list: an icon for where each is kept
+/// (this device, iCloud Drive, a network share, a drive), its name, its
+/// path (the end of it always shown) and when. Tapping one shows it inside
+/// this tab. Each is checked in the background; one that does not answer is
+/// greyed. A long press (or a swipe) removes it; + adds a folder.
 struct RecentFoldersView: View {
     @ObservedObject private var recents = RecentList.folders
+    @ObservedObject var navigation: HomeNavigation
     let actions: HomeActions
 
-    @State private var path: [URL] = []
-    @State private var unavailable: Set<RecentItem.ID> = []
+    @State private var reach: [RecentItem.ID: Reach] = [:]
     @State private var cannotOpen: RecentItem?
-    /// Folders opened from here hold their access while the app runs (their
-    /// books are read from them).
-    private static var accessing: Set<URL> = []
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: $navigation.folderPath) {
             List {
                 ForEach(recents.items) { item in
                     Button { open(item) } label: { row(item) }
@@ -180,17 +221,32 @@ struct RecentFoldersView: View {
             .listStyle(.insetGrouped)
             .overlay {
                 if recents.items.isEmpty {
-                    ContentUnavailableView("No Recent Folders", systemImage: "folder",
-                                           description: Text("Folders you look at appear here."))
+                    ContentUnavailableView {
+                        Label("No Recent Folders", systemImage: "folder")
+                    } description: {
+                        Text("Folders you look at appear here.")
+                    } actions: {
+                        Button("Choose Folder…", action: actions.chooseFolder)
+                    }
                 }
             }
             .navigationTitle("Recent Folders")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: actions.chooseFolder) { Label("Choose Folder…", systemImage: "plus") }
+                }
+            }
             .navigationDestination(for: URL.self) { folder in
-                FolderGridView(folder: folder, openBook: actions.openBook, openFolder: { path.append($0) },
+                FolderGridView(folder: folder, openBook: actions.openBook,
+                               openFolder: { navigation.folderPath.append($0) },
                                chooseBook: actions.chooseBook, chooseFolder: actions.chooseFolder)
                     .id(folder)
             }
-            .task(id: recents.items.map(\.id)) { await checkReachable() }
+            .task(id: recents.items.map(\.id)) { await checkReach(recents.items, in: recents, into: $reach) }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                reach = [:]
+                Task { await checkReach(recents.items, in: recents, into: $reach) }
+            }
             .alert(Text("This folder can’t be opened"), isPresented: Binding(
                 get: { cannotOpen != nil }, set: { if !$0 { cannotOpen = nil } }
             ), presenting: cannotOpen) { item in
@@ -203,50 +259,61 @@ struct RecentFoldersView: View {
     }
 
     private func row(_ item: RecentItem) -> some View {
-        let gone = unavailable.contains(item.id)
+        let state = reach[item.id] ?? .checking
+        let gone = state == .unavailable
+        let kind = item.storageKind
         return HStack(spacing: 14) {
-            Image(systemName: gone ? "folder.badge.questionmark" : "folder.fill")
-                .font(.title2)
+            Image(systemName: kind.symbol)
+                .font(.title3)
                 .foregroundStyle(gone ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
                 .frame(width: 32)
+                .accessibilityLabel(kind.label)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
                     .foregroundStyle(gone ? .secondary : .primary)
-                Text(gone ? String(localized: "Not available") : "\(item.place) · \(item.lastOpened.formatted(.relative(presentation: .named)))")
+                // The path, cut at the start if long: its end (the folder
+                // and those just above it) is what tells folders apart.
+                Text(item.locationText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                Group {
+                    switch state {
+                    case .unavailable:
+                        Text(kind == .network ? "Not connected" : "Not available")
+                    case .checking, .available:
+                        Text(item.lastOpened.formatted(.relative(presentation: .named)))
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
+            if state == .checking {
+                ProgressView().controlSize(.small)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
     }
 
+    /// Opens a folder once it answers (checked again, in case it has been
+    /// connected since); a share that does not answer is said to be so.
     private func open(_ item: RecentItem) {
+        reach[item.id] = .checking
         Task {
-            let url = await Task.detached { RecentList.isReachable(item) ? RecentList.resolve(item) : nil }.value
-            guard let url else {
-                unavailable.insert(item.id)
+            guard case .yes(let url) = await recents.reachability(of: item, timeout: 10) else {
+                reach[item.id] = .unavailable
                 cannotOpen = item
                 return
             }
-            unavailable.remove(item.id)
-            if !Self.accessing.contains(url), url.startAccessingSecurityScopedResource() { Self.accessing.insert(url) }
-            path = [url]
+            reach[item.id] = .available
+            navigation.show(folder: url)
         }
-    }
-
-    private func checkReachable() async {
-        let items = recents.items
-        let reachable = await withTaskGroup(of: (RecentItem.ID, Bool).self) { group in
-            for item in items { group.addTask { (item.id, RecentList.isReachable(item)) } }
-            var result: [RecentItem.ID: Bool] = [:]
-            for await (id, ok) in group { result[id] = ok }
-            return result
-        }
-        unavailable = Set(reachable.filter { !$0.value }.map(\.key))
     }
 }

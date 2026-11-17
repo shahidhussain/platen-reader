@@ -23,12 +23,104 @@ struct RecentItem: Codable, Identifiable, Equatable, Sendable {
     var lastOpened: Date
     /// A copy of the cover is kept with the list (`RecentList.coverURL`).
     var hasCover = false
+    /// Where it is stored (on this device, iCloud Drive, a network share, a
+    /// drive), for the icon; and where it is, as a reader would say it
+    /// ("iCloud Drive/Books/Kids", "smb://nas/books/Kids"). Worked out when
+    /// it was opened; older entries work them out from `path`.
+    var storage: StorageKind?
+    var location: String?
+
+    var storageKind: StorageKind { storage ?? StoragePlace(path: path).kind }
+    var locationText: String { location ?? StoragePlace(path: path).location }
 
     /// "Middlemarch" for "Middlemarch.kepub.epub"; a folder's own name.
     var displayName: String { title ?? FolderScanner.displayName(URL(fileURLWithPath: path)) }
 
     /// The folder it is in ("Kids"), to tell apart two items of one name.
     var place: String { URL(fileURLWithPath: path).deletingLastPathComponent().lastPathComponent }
+}
+
+/// Where a file or folder is kept, for the icon in Recent Folders.
+enum StorageKind: String, Codable, Sendable {
+    case device, iCloud, network, drive, otherCloud
+
+    var symbol: String {
+        switch self {
+        case .device: return "iphone"
+        case .iCloud: return "icloud"
+        case .network: return "server.rack"
+        case .drive: return "externaldrive"
+        case .otherCloud: return "cloud"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .device: return String(localized: "On this device")
+        case .iCloud: return String(localized: "iCloud Drive")
+        case .network: return String(localized: "Network share")
+        case .drive: return String(localized: "External drive")
+        case .otherCloud: return String(localized: "Cloud storage")
+        }
+    }
+}
+
+/// Where a path is, worked out from the path alone (no disk access, so it
+/// never waits on a share that has gone away): iOS keeps each kind of
+/// storage in a place of its own.
+/// - iCloud Drive: `…/Mobile Documents/com~apple~CloudDocs/…`, or an app's
+///   own iCloud folder `…/Mobile Documents/iCloud~com~app/Documents/…`.
+/// - Network shares (Files > Connect to Server):
+///   `…/LiveFiles/com.apple.filesystems.smbclientd/<mount>/<share>/…`. The
+///   server's name is not in the path; `RecentList` adds it when it can.
+/// - External drives: `…/LiveFiles/com.apple.filesystems.userfsd/…` (and
+///   other LiveFiles file systems); on the Mac, `/Volumes/<name>/…`.
+/// - This device: On My iPhone (`…/File Provider Storage/…`), or an app's
+///   own folder (`…/Containers/Data/Application/<id>/Documents/…`).
+/// - Other providers (Dropbox, Google Drive…): `…/CloudStorage/<name>/…`.
+struct StoragePlace: Equatable, Sendable {
+    var kind: StorageKind
+    /// The path as the reader would say it, ending in the folder itself.
+    var location: String
+
+    init(path: String) {
+        let parts = path.split(separator: "/").map(String.init)
+        func after(_ marker: String, skipping skip: Int = 0) -> [String]? {
+            guard let i = parts.firstIndex(of: marker) else { return nil }
+            return Array(parts.dropFirst(i + 1 + skip))
+        }
+        func join(_ head: String, _ rest: [String]) -> String { ([head] + rest).joined(separator: "/") }
+
+        if let rest = after("com~apple~CloudDocs") {
+            self.init(kind: .iCloud, location: join(String(localized: "iCloud Drive"), rest))
+        } else if let i = parts.firstIndex(of: "Mobile Documents"), parts.count > i + 1 {
+            // An app's own iCloud folder: iCloud~com~maker~App/Documents/…
+            let app = parts[i + 1].split(separator: "~").last.map(String.init) ?? parts[i + 1]
+            let rest = Array(parts.dropFirst(i + 2)).drop { $0 == "Documents" }
+            self.init(kind: .iCloud, location: join(String(localized: "iCloud Drive"), [app] + rest))
+        } else if let rest = after("com.apple.filesystems.smbclientd", skipping: 1) {
+            self.init(kind: .network, location: join("smb:/", rest))
+        } else if let i = parts.firstIndex(of: "LiveFiles"), parts.count > i + 2 {
+            // A drive: <file system>/<mount or volume>/…
+            let rest = Array(parts.dropFirst(i + 2))
+            self.init(kind: .drive, location: rest.joined(separator: "/"))
+        } else if parts.first == "Volumes", parts.count > 1 {
+            self.init(kind: .drive, location: Array(parts.dropFirst()).joined(separator: "/"))
+        } else if let rest = after("File Provider Storage") {
+            self.init(kind: .device, location: join(String(localized: "On My iPhone"), rest))
+        } else if let i = parts.firstIndex(of: "Application"), parts.count > i + 2, parts[i + 2] == "Documents" {
+            self.init(kind: .device, location: join(String(localized: "On My iPhone"), ["Platen Reader"] + parts.dropFirst(i + 3)))
+        } else if let rest = after("CloudStorage") {
+            self.init(kind: .otherCloud, location: rest.joined(separator: "/"))
+        } else {
+            self.init(kind: .device, location: path)
+        }
+    }
+
+    init(kind: StorageKind, location: String) {
+        self.kind = kind
+        self.location = location
+    }
 }
 
 /// The recent books, or the recent folders: newest first, at most `limit`,
@@ -63,8 +155,34 @@ final class RecentList: ObservableObject {
         self.limit = limit
         if let data = try? Data(contentsOf: listURL),
            let saved = try? JSONDecoder.recents.decode([RecentItem].self, from: data) {
-            items = saved
+            // One entry per place, the newest kept (lists saved by earlier
+            // versions could hold one place under two spellings of its path).
+            items = Self.merged(saved)
         }
+    }
+
+    /// One entry per place: of entries at the same place, the one opened
+    /// most lately, dated by the latest of them. Newest first.
+    private nonisolated static func merged(_ list: [RecentItem]) -> [RecentItem] {
+        var byPlace: [String: RecentItem] = [:]
+        for item in list {
+            let key = key(item.path)
+            guard var kept = byPlace[key] else { byPlace[key] = item; continue }
+            if item.lastOpened > kept.lastOpened { kept = item }
+            byPlace[key] = kept
+        }
+        return byPlace.values.sorted { $0.lastOpened > $1.lastOpened }
+    }
+
+    /// The form paths are compared in.
+    private nonisolated static func key(_ path: String) -> String {
+        FolderScanner.canonicalPath(URL(fileURLWithPath: path))
+    }
+
+    /// Whether this file or folder is on the list.
+    func contains(_ url: URL) -> Bool {
+        let path = FolderScanner.canonicalPath(url)
+        return items.contains { Self.key($0.path) == path }
     }
 
     private var listURL: URL { directory.appendingPathComponent("\(kind.rawValue).json") }
@@ -82,11 +200,15 @@ final class RecentList: ObservableObject {
     func opened(_ url: URL, title: String? = nil, author: String? = nil, now: Date = Date()) -> RecentItem? {
         guard let bookmark = try? url.bookmarkData() else { return nil }
         let path = FolderScanner.canonicalPath(url)
-        var item = items.first { $0.path == path }
+        var item = items.first { Self.key($0.path) == path }
             ?? RecentItem(bookmark: bookmark, name: url.lastPathComponent, path: path, lastOpened: now)
         item.bookmark = bookmark
+        item.path = path
         item.name = url.lastPathComponent
         item.lastOpened = now
+        let place = StoragePlace(path: path)
+        item.storage = item.storage ?? place.kind
+        item.location = item.location ?? place.location
         if let title, !title.isEmpty { item.title = title }
         if let author, !author.isEmpty { item.author = author }
         items.removeAll { $0.id == item.id }
@@ -94,7 +216,40 @@ final class RecentList: ObservableObject {
         for dropped in items.dropFirst(limit) { removeCover(of: dropped) }
         items = Array(items.prefix(limit))
         save()
+        refinePlace(of: item, url: url)
         return item
+    }
+
+    /// Asks the file system, in the background, what the path alone cannot
+    /// say: for a network share, the server's address ("smb://nas/books"),
+    /// and whether a /Volumes path is a share or a drive.
+    private func refinePlace(of item: RecentItem, url: URL) {
+        Task.detached(priority: .utility) { [weak self] in
+            let keys: Set<URLResourceKey> = [.volumeIsLocalKey, .volumeURLForRemountingKey, .volumeURLKey, .isUbiquitousItemKey]
+            guard let values = try? url.resourceValues(forKeys: keys) else { return }
+            var place: StoragePlace?
+            if values.volumeIsLocal == false || values.volumeURLForRemounting != nil,
+               let remount = values.volumeURLForRemounting, let volume = values.volume {
+                // smb://user@nas/books plus the path below the share.
+                let below = url.standardizedFileURL.path.dropFirst(volume.standardizedFileURL.path.count)
+                var server = URLComponents(url: remount, resolvingAgainstBaseURL: false)
+                server?.user = nil
+                server?.password = nil
+                let base = (server?.string ?? remount.absoluteString).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                place = StoragePlace(kind: .network, location: base + (below.hasPrefix("/") ? "" : "/") + below)
+            } else if values.isUbiquitousItem == true, StoragePlace(path: url.path).kind != .iCloud {
+                place = StoragePlace(kind: .otherCloud, location: StoragePlace(path: url.path).location)
+            }
+            guard let place else { return }
+            await self?.setPlace(place, of: item.id)
+        }
+    }
+
+    private func setPlace(_ place: StoragePlace, of id: RecentItem.ID) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        items[i].storage = place.kind
+        items[i].location = place.location
+        save()
     }
 
     /// Fills in what was learnt about a book after it was opened: its title
@@ -136,6 +291,55 @@ final class RecentList: ObservableObject {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         return (try? url.checkResourceIsReachable()) == true
+    }
+
+    /// The answer to "can this item be reached?".
+    enum Reached: Sendable {
+        /// Yes, and this is where it is now.
+        case yes(URL)
+        case no
+        /// No answer within the time allowed (a share that has gone away).
+        case noAnswer
+    }
+
+    /// Whether the item can be reached, giving up after `timeout` seconds. A
+    /// network share that has gone away can take a long time to fail; the
+    /// check carries on in the background regardless. When the item is
+    /// found, the list learns where it is now (`found`).
+    func reachability(of item: RecentItem, timeout: TimeInterval = 6) async -> Reached {
+        let answer = await withTaskGroup(of: Reached.self) { group in
+            group.addTask {
+                await Task.detached(priority: .userInitiated) { () -> Reached in
+                    guard RecentList.isReachable(item), let url = RecentList.resolve(item) else { return .no }
+                    return .yes(url)
+                }.value
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(timeout))
+                return .noAnswer
+            }
+            let first = await group.next() ?? .noAnswer
+            group.cancelAll()
+            return first
+        }
+        if case .yes(let url) = answer { found(item.id, at: url) }
+        return answer
+    }
+
+    /// An item was found at `url`. Its stored path is brought up to date (an
+    /// app's own folder moves when the app is updated, for one), and
+    /// entries that turn out to be the same place are merged, keeping the
+    /// newest.
+    func found(_ id: RecentItem.ID, at url: URL) {
+        let path = FolderScanner.canonicalPath(url)
+        guard let i = items.firstIndex(where: { $0.id == id }), Self.key(items[i].path) != path else { return }
+        items[i].path = path
+        let place = StoragePlace(path: path)
+        if items[i].storage != .network { items[i].storage = place.kind; items[i].location = place.location }
+        let merged = Self.merged(items)
+        for gone in items where !merged.contains(where: { $0.id == gone.id }) { removeCover(of: gone) }
+        items = merged
+        save()
     }
 
     private func removeCover(of item: RecentItem) {
