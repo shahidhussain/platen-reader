@@ -14,9 +14,18 @@ struct HomeActions {
 /// there.
 @MainActor
 final class HomeNavigation: ObservableObject {
-    enum Tab: Hashable { case home, books, folders }
+    enum Tab: Int, Hashable, CaseIterable { case home, books, folders }
     @Published var tab: Tab = .home
     @Published var folderPath: [URL] = []
+
+    /// A sideways swipe on a tab's main screen moves to the tab beside it:
+    /// left for the next, right for the one before. Inside a folder, a swipe
+    /// right goes back instead (SwipeBack), so tabs do not change there.
+    func swiped(left: Bool) {
+        guard tab != .folders || folderPath.isEmpty,
+              let next = Tab(rawValue: tab.rawValue + (left ? 1 : -1)) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { tab = next }
+    }
 
     /// Shows a folder in the Recent Folders tab (just chosen, or tapped).
     func show(folder: URL) {
@@ -50,15 +59,36 @@ struct HomeTabs: View {
     var body: some View {
         TabView(selection: $navigation.tab) {
             WelcomeView(open: actions.chooseBook, chooseFolder: actions.chooseFolder)
+                .contentShape(Rectangle())
+                .tabSwipe(navigation)
                 .tabItem { Label("Home", systemImage: "house") }
                 .tag(HomeNavigation.Tab.home)
             RecentBooksView(actions: actions)
+                .tabSwipe(navigation)
                 .tabItem { Label("Recent Books", systemImage: "clock") }
                 .tag(HomeNavigation.Tab.books)
             RecentFoldersView(navigation: navigation, actions: actions)
+                .tabSwipe(navigation)
                 .tabItem { Label("Recent Folders", systemImage: "folder") }
                 .tag(HomeNavigation.Tab.folders)
         }
+    }
+}
+
+extension View {
+    /// Switches tabs on a clear sideways swipe (see HomeNavigation.swiped),
+    /// alongside the screen's own scrolling and taps.
+    func tabSwipe(_ navigation: HomeNavigation) -> some View {
+        simultaneousGesture(
+            DragGesture(minimumDistance: 30)
+                .onEnded { drag in
+                    let dx = drag.translation.width, dy = drag.translation.height
+                    // Mostly sideways, and far enough (or quick enough).
+                    guard abs(dx) > abs(dy) * 2,
+                          abs(dx) > 90 || abs(drag.predictedEndTranslation.width) > 200 else { return }
+                    navigation.swiped(left: dx < 0)
+                }
+        )
     }
 }
 
