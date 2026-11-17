@@ -115,6 +115,33 @@ const tapTarget = (x, y) => {
     return 'page'
 }
 
+// iOS: a finger held on a picture offers to save or share it. Finds the
+// picture under (x, y) in window coordinates (an <img>, or an SVG <image>
+// as cover pages often use) and sends it to Swift as an 'image' message,
+// with where it is on screen. Returns whether there was one.
+const pictureAt = (x, y) => {
+    for (const { doc } of reader.view?.renderer?.getContents?.() ?? []) {
+        const frame = doc?.defaultView?.frameElement
+        if (!frame) continue
+        const rect = frame.getBoundingClientRect()
+        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
+        const scale = frame.offsetWidth ? rect.width / frame.offsetWidth : 1
+        const target = doc.elementFromPoint((x - rect.left) / scale, (y - rect.top) / scale)
+        const picture = target?.closest?.('img, image')
+        if (!picture) return false
+        const r = picture.getBoundingClientRect()
+        const onScreen = { x: rect.left + r.left * scale, y: rect.top + r.top * scale,
+                           width: r.width * scale, height: r.height * scale }
+        const src = picture.localName === 'image'
+            ? picture.getAttribute('href') ?? picture.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+            : (picture.currentSrc || picture.src)
+        if (!src) return false
+        zoomImage({ currentSrc: src, alt: picture.getAttribute('alt') ?? '' }, onScreen)
+        return true
+    }
+    return false
+}
+
 // Sends a picture's bytes and on-screen position to Swift, which shows it
 // full size (with Copy and Save) in a native view. The image's src is a
 // blob: URL made by foliate-js, so reading it stays inside the page.
@@ -184,4 +211,4 @@ const swipe = {
     },
 }
 
-export { attachPointerHandlers, swipe, tapTarget }
+export { attachPointerHandlers, pictureAt, swipe, tapTarget }

@@ -50,8 +50,11 @@ check low-contrast.epub       "'recoloured:'+(platen.view.renderer.getContents()
 # serif by default, and the poem's line breaks kept.
 check gutenberg.txt           "(d=>'title:'+platen.view.book.metadata.title+' toc:'+platen.view.book.toc.length+' font:'+getComputedStyle(d.body).fontFamily.split(',')[0]+' poem:'+d.querySelectorAll('p.lines').length)(platen.view.renderer.getContents()[0].doc)" "title:A Plain Tale toc:3 font:\"Iowan Old Style\""
 check windows-1252.txt        "$TEXT"                                  "Café notes"
-# An EPUB 2 cover page first in the spine (its picture is the folder view's cover).
-check cover-page.epub         "-"                                      "First page visible"
+# An EPUB 2 cover page first in the spine (its picture is the folder view's
+# cover), shown as a page that is one picture (as large as the page).
+check cover-page.epub         "'lone:'+platen.view.renderer.getContents()[0].doc.documentElement.classList.contains('platen-lone-picture')" "lone:true"
+# Body text set at 75% by the book still comes out at the size chosen.
+check small-body-text.epub    "(d=>'body:'+(Math.abs(parseFloat(getComputedStyle(d.querySelector('p')).fontSize)-platen.fontSize())<0.1))(platen.view.renderer.getContents()[0].doc)" "body:true"
 # PDF (PDFKit): its pages and its outline as Contents.
 check outline.pdf             "-"                                      "PDF: 6 pages, 3 contents entries"
 check pictures.pdf            "-"                                      "PDF: 4 pages, 2 contents entries"

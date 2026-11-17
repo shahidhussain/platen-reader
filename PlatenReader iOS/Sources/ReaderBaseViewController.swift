@@ -171,8 +171,9 @@ class ReaderBaseViewController: UIViewController {
     private func hideOpeningProgress() {
         guard let host = openingHost else { return }
         openingHost = nil
-        // A moment for the bar to fill, then fade.
-        UIView.animate(withDuration: 0.25, delay: 0.15) { host.view.alpha = 0 } completion: { _ in
+        // Gone as the page appears: a quick fade, no pause (a pause left
+        // the bar over the book).
+        UIView.animate(withDuration: 0.12) { host.view.alpha = 0 } completion: { _ in
             host.willMove(toParent: nil)
             host.view.removeFromSuperview()
             host.removeFromParent()

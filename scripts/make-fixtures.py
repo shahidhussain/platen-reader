@@ -428,6 +428,13 @@ def main():
     simple_pdf(p, "Sample Report", ["Introduction", "Methods", "Results"])
     made.append(p)
 
+    # Body text set smaller by the book's CSS (body at 75%): it must still
+    # come out at the text size chosen (bookfixes.js, normaliseBodyTextSize).
+    rng2 = random.Random(7)
+    small = xhtml("Small print", "<h1>Small print</h1>" + "".join(f"<p>{paragraph(rng2)}</p>" for _ in range(8)),
+                  extra_head="<style>body { font-size: 75%; } h1 { font-size: 1.6em; }</style>")
+    made.append(simple("small-body-text.epub", "Small Body Text", [("ch1.xhtml", small)]))
+
     # A PDF with pictures (long press: save and share) and a landscape last
     # page (One Page layout).
     p = os.path.join(OUT, "pictures.pdf")

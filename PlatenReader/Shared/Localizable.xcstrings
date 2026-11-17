@@ -14,6 +14,9 @@
     "%@, page %lld" : {
 
     },
+    "%@, picture" : {
+
+    },
     "%lld pages left in chapter" : {
 
     },
@@ -30,6 +33,9 @@
 
     },
     "Advanced" : {
+
+    },
+    "Ambient Light" : {
 
     },
     "Appearance" : {
@@ -75,6 +81,12 @@
 
     },
     "Books you open appear here." : {
+
+    },
+    "Breaks long words at the ends of lines, so justified text has fewer wide gaps between words." : {
+
+    },
+    "Breaks long words at the ends of lines. Not used in this book: its pages are laid out by the publisher." : {
 
     },
     "Bring All to Front" : {

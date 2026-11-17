@@ -11,6 +11,8 @@ import UIKit
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
     private var home: HomeViewController?
+    /// The start-up animation, while it is up (LaunchSplash).
+    private var splash: LaunchSplash?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
@@ -32,10 +34,22 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Back to the book that was open, if there was one. (The book is
         // presented once the home screen is in the window; until then a page
         // in the theme's colour stands in, so the welcome does not flash.)
-        if !launchedWithBook, !debugBook, let reopen = LastOpenBook.url {
-            home.openBook(at: reopen)
-        }
+        let reopen = launchedWithBook || debugBook ? nil : LastOpenBook.url
+        if let reopen { home.openBook(at: reopen) }
         window.makeKeyAndVisible()
+
+        // The start-up animation. Going straight into a book, it stays up
+        // with the book's progress until the first page is on screen.
+        let splash = LaunchSplash(in: window)
+        self.splash = splash
+        if reopen != nil || launchedWithBook || debugBook {
+            home.onReaderCreated = { [weak splash, weak home] reader in
+                splash?.follow(reader.state)
+                home?.onReaderCreated = nil
+            }
+        } else {
+            splash.finishSoon()
+        }
 
         if let context = connectionOptions.urlContexts.first {
             home.openBook(at: context.url)

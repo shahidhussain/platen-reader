@@ -28,11 +28,11 @@
 import './foliate/view.js'
 import { EPUB } from './foliate/epub.js'
 import { reader } from './modules/state.js'
-import { ensureReadableColours, fitWideTables, rescalePublisherFontSizes } from './modules/bookfixes.js'
+import { ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes } from './modules/bookfixes.js'
 import { pagesOnScreen, scheduleRibbons, setBookmarkList, toggleBookmark } from './modules/bookmarks.js'
 import { post } from './modules/bridge.js'
 import { sendContents } from './modules/contents.js'
-import { attachPointerHandlers, swipe, tapTarget } from './modules/input.js'
+import { attachPointerHandlers, pictureAt, swipe, tapTarget } from './modules/input.js'
 import { goBack, jump, noteMovement, rememberJumpOrigin } from './modules/jumps.js'
 import { applyLayout } from './modules/layout.js'
 import { nameBook, nameSection, pageChanged, readPage, setVoiceOver } from './modules/accessibility.js'
@@ -166,6 +166,10 @@ window.platen = {
                 if (!reader.isFixedLayout) {
                     rescalePublisherFontSizes(doc)
                     ensureReadableColours(doc)
+                    // Body text at the size chosen, whatever the book's CSS.
+                    normaliseBodyTextSize(doc, reader.settings?.fontSize ?? 16)
+                    // A page that is one picture, as large as the page.
+                    fitLonePicture(doc)
                 }
                 attachPointerHandlers(doc, index)
                 nameSection(doc, reader.view.getProgressOf?.(index)?.tocItem?.label?.trim())
@@ -266,6 +270,10 @@ window.platen = {
     swipeEnd: direction => swipe.end(direction),
     // iOS: what is under a tap (see tapTarget in input.js).
     tapTarget,
+    // iOS: the picture under a held finger, sent as an 'image' message.
+    pictureAt,
+    // The text size chosen, in pixels (for checks: body text should be it).
+    fontSize: () => reader.settings?.fontSize,
     // Esc closes an open note pop-up; says whether there was one.
     closeNote,
     // iOS: the controls are up (or not). Their location line covers the

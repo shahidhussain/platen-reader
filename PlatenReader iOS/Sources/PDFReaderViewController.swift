@@ -733,7 +733,9 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// The ambient background for the pages on screen, faded in over the
     /// last one. Remade only when the pages or the theme change.
     private func updateAmbient() {
-        guard let document = pdfView.document else { return }
+        // Off (Aa > Ambient Light): the theme's plain colour shows through.
+        ambient.isHidden = !settings.ambientLight
+        guard settings.ambientLight, let document = pdfView.document else { return }
         let indexes = visiblePages
         let theme = currentTheme.uiBackground
         let key = ambientKey(indexes, theme)
