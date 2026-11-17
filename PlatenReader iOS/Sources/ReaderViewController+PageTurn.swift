@@ -13,10 +13,11 @@ import WebKit
 extension ReaderViewController {
     func makePageTurnAnimator() -> PageTurnAnimator {
         let animator = PageTurnAnimator(
-            host: self, pageView: webView,
+            host: self, pageView: pageArea,
             snapshot: { [weak self] done in
                 guard let self else { return done(nil) }
-                self.webView.takeSnapshot(with: nil) { image, _ in done(image) }
+                // The page with its native picture, if it has one.
+                self.pageSnapshot(nil, done: done)
             },
             turnUnderneath: { [weak self] request, done in
                 guard let self else { return done(false) }

@@ -32,6 +32,9 @@ protocol BookSessionHost: AnyObject {
     func sessionClicked(_ zone: ClickZone)
     /// A click on a picture: show it full size.
     func sessionShowPicture(_ picture: ReaderMessage.Picture)
+    /// The page on screen is just one picture (its bytes), or nil when it
+    /// no longer is (iOS shows it natively).
+    func sessionShowLonePicture(_ data: Data?)
     /// The text on screen, for VoiceOver; `speak` when it should be read out.
     func sessionPageText(_ text: String, speak: Bool)
     /// Something to tell VoiceOver users ("Bookmark added").
@@ -47,6 +50,7 @@ extension BookSessionHost {
     func sessionDidJump() {}
     func sessionDidChangeFlow() {}
     func sessionShowPicture(_ picture: ReaderMessage.Picture) {}
+    func sessionShowLonePicture(_ data: Data?) {}
     func sessionPageText(_ text: String, speak: Bool) {}
 }
 
@@ -292,6 +296,9 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
 
         case .image(let picture):
             host?.sessionShowPicture(picture)
+
+        case .lonePicture(let data):
+            host?.sessionShowLonePicture(data)
 
         case .externalLink(let url):
             // Links to the web open in the browser, never in the reader.

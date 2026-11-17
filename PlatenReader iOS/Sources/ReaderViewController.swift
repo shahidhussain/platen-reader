@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import PlatenCore
 import SwiftUI
@@ -38,6 +39,11 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     override var commands: ReaderCommands { session }
     override var pageView: UIView { webView }
+    /// The page view and the native picture together (what page turns move).
+    private(set) var pageArea: UIView!
+    /// A page that is just one picture, shown as large as the screen
+    /// allows, touching its sides or its top and bottom, with no bars.
+    private(set) var lonePictureView: UIImageView!
     /// The glow behind the page (ambient light), and its next renewal.
     private(set) var ambient: UIImageView!
     private var ambientWork: DispatchWorkItem?
@@ -74,7 +80,20 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         #if DEBUG
         webView.isInspectable = true // Safari > Develop can inspect the shell
         #endif
-        root.addSubview(webView)
+        // The page and, over it, a page that is just one picture shown
+        // natively (sessionShowLonePicture): together, so page turns move
+        // and photograph them as one.
+        pageArea = UIView()
+        pageArea.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(pageArea)
+        pageArea.addSubview(webView)
+        lonePictureView = UIImageView()
+        lonePictureView.translatesAutoresizingMaskIntoConstraints = false
+        lonePictureView.contentMode = .scaleAspectFit
+        lonePictureView.isUserInteractionEnabled = false // taps reach the page
+        lonePictureView.isAccessibilityElement = false
+        lonePictureView.isHidden = true
+        pageArea.addSubview(lonePictureView)
 
         // Taps on the page are recognised here, natively, rather than from
         // the page's click events: WebKit does not turn every tap into a
@@ -99,10 +118,18 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
             ambient.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             ambient.topAnchor.constraint(equalTo: root.topAnchor),
             ambient.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            webView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: root.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            pageArea.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            pageArea.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            pageArea.topAnchor.constraint(equalTo: root.topAnchor),
+            pageArea.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            webView.leadingAnchor.constraint(equalTo: pageArea.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: pageArea.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: pageArea.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: pageArea.bottomAnchor),
+            lonePictureView.leadingAnchor.constraint(equalTo: pageArea.leadingAnchor),
+            lonePictureView.trailingAnchor.constraint(equalTo: pageArea.trailingAnchor),
+            lonePictureView.topAnchor.constraint(equalTo: pageArea.topAnchor),
+            lonePictureView.bottomAnchor.constraint(equalTo: pageArea.bottomAnchor),
         ])
         installChrome(in: root)
         // While the controls are up, the page number steps aside for their
@@ -141,6 +168,33 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     @objc private func pagePressed(_ recogniser: UILongPressGestureRecognizer) {
         guard recogniser.state == .began, session.hasRendered else { return }
         session.pictureAt(recogniser.location(in: webView)) { _ in }
+    }
+
+    /// The page on screen is just one picture: shown natively over the page
+    /// (whose own, smaller copy the page hides), or taken away.
+    func sessionShowLonePicture(_ data: Data?) {
+        let image = data.flatMap(UIImage.init(data:))
+        lonePictureView.image = image
+        lonePictureView.isHidden = image == nil
+        updateAmbient()
+    }
+
+    /// A picture of the page area as it is: the web view's snapshot, with
+    /// the native picture drawn over it when it is showing (page turns and
+    /// the ambient glow use this).
+    func pageSnapshot(_ configuration: WKSnapshotConfiguration?, done: @escaping (UIImage?) -> Void) {
+        webView.takeSnapshot(with: configuration) { [weak self] image, _ in
+            guard let self, let image, !self.lonePictureView.isHidden, let picture = self.lonePictureView.image else {
+                return done(image)
+            }
+            let bounds = CGRect(origin: .zero, size: image.size)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = image.scale
+            done(UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
+                image.draw(in: bounds)
+                picture.draw(in: AVMakeRect(aspectRatio: picture.size, insideRect: bounds))
+            })
+        }
     }
 
     func sessionShowPicture(_ picture: ReaderMessage.Picture) {
@@ -236,7 +290,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
             let config = WKSnapshotConfiguration()
             config.snapshotWidth = 48
             let theme = self.currentTheme.uiBackground
-            self.webView.takeSnapshot(with: config) { [weak self] image, _ in
+            self.pageSnapshot(config) { [weak self] image in
                 guard let self, let image else { return }
                 PDFAmbientBackground.make(from: image, theme: theme) { [weak self] glow in
                     guard let self, let glow, self.usesAmbientLight else { return }

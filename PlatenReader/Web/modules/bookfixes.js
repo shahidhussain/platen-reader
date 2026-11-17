@@ -196,7 +196,11 @@ function fitLonePicture(doc) {
     doc.documentElement.classList.add('platen-lone-picture')
     const style = doc.createElement('style')
     style.textContent = `
-        /* platen-styles: a page that is one picture (bookfixes.js) */
+        /* platen-styles: a page that is one picture (bookfixes.js). On iOS
+           the picture is shown natively, full screen, and the page's own
+           copy is hidden once it has been sent (platen-native-picture). */
+        html.platen-native-picture img,
+        html.platen-native-picture svg { visibility: hidden !important; }
         html.platen-lone-picture body,
         html.platen-lone-picture body * {
             margin-top: 0 !important; margin-bottom: 0 !important;
@@ -210,6 +214,9 @@ function fitLonePicture(doc) {
             max-height: 100vh !important;
             object-fit: contain !important;
             margin: 0 auto !important;
+            /* No backing: dark themes give pictures a light one, which here
+               filled the whole box with grey bars. */
+            background-color: transparent !important;
         }`
     doc.head?.append(style)
 }

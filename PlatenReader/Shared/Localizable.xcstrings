@@ -380,10 +380,10 @@
     "Open Recent" : {
 
     },
-    "Opening the book…" : {
+    "Open…" : {
 
     },
-    "Open…" : {
+    "Opening the book…" : {
 
     },
     "or press C" : {
@@ -468,9 +468,6 @@
     "Recent Folders" : {
 
     },
-    "Remove" : {
-
-    },
     "Remove Bookmark" : {
 
     },
@@ -483,10 +480,10 @@
     "Save Image…" : {
 
     },
-    "Save to Photos" : {
+    "Save to Files…" : {
 
     },
-    "Save to Files…" : {
+    "Save to Photos" : {
 
     },
     "Saved to Photos" : {

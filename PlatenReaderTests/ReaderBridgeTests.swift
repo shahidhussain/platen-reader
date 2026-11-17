@@ -20,6 +20,12 @@ final class ReaderMessageTests: XCTestCase {
         XCTAssertEqual(message("firstRender"), .firstRender)
     }
 
+    func testLonePictureCarriesItsBytesOrNothing() {
+        XCTAssertEqual(message("lonePicture", ["data": Data("pic".utf8).base64EncodedString(), "mimeType": "image/png"]),
+                       .lonePicture(Data("pic".utf8)))
+        XCTAssertEqual(message("lonePicture"), .lonePicture(nil))
+    }
+
     func testUnknownOrMalformedMessagesAreDropped() {
         XCTAssertNil(message("somethingNew"))
         XCTAssertNil(ReaderMessage("not a dictionary"))

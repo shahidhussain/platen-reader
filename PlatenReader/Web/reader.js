@@ -98,6 +98,48 @@ const sendFirstRender = force => {
     firstRenderSent = true
     post('firstRender')
 }
+// iOS: a page that is just one picture is shown natively, as large as the
+// screen allows (bookfixes.js marks such chapters). Its bytes go to Swift
+// once per chapter; an empty message says the page on screen no longer is
+// one. Only with one page across, in paginated mode, and not in fixed
+// layout books (whose pages are drawn as the publisher made them).
+let lonePictureSection = null
+async function reportLonePicture() {
+    const r = reader.view?.renderer
+    const { doc, index } = r?.getContents?.()[0] ?? {}
+    const usable = reader.settings?.touch && !reader.isFixedLayout && reader.settings?.flow !== 'scrolled'
+        && (r?.feet?.length ?? 1) === 1
+    const picture = usable && doc?.documentElement.classList.contains('platen-lone-picture')
+        ? doc.querySelector('img, image') : null
+    if (!picture) {
+        if (lonePictureSection !== null) {
+            lonePictureSection = null
+            post('lonePicture', {})
+            // The page's own copy shows again (Scroll, two pages…).
+            for (const { doc } of r?.getContents?.() ?? []) doc?.documentElement.classList.remove('platen-native-picture')
+        }
+        return
+    }
+    if (lonePictureSection === index) return
+    lonePictureSection = index
+    try {
+        const src = picture.localName === 'image'
+            ? picture.getAttribute('href') ?? picture.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+            : (picture.currentSrc || picture.src)
+        const blob = await (await fetch(src)).blob()
+        const bytes = new Uint8Array(await blob.arrayBuffer())
+        let binary = ''
+        for (let i = 0; i < bytes.length; i += 0x8000)
+            binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+        if (lonePictureSection !== index) return // moved on meanwhile
+        post('lonePicture', { data: btoa(binary), mimeType: blob.type })
+        doc.documentElement.classList.add('platen-native-picture')
+    } catch (e) {
+        lonePictureSection = null
+        post('log', { level: 'error', message: `lone picture: ${e}` })
+    }
+}
+
 let lastReason = null
 const onRelocate = ({ detail }) => {
     const { cfi, fraction, tocItem, pageItem, location, section } = detail
@@ -113,6 +155,7 @@ const onRelocate = ({ detail }) => {
         // Keep the frame's name on the chapter being read (for VoiceOver).
         for (const { doc } of reader.view.renderer.getContents?.() ?? []) nameSection(doc, tocItem?.label?.trim())
         pageChanged(lastReason)
+        reportLonePicture()
         // Page width changes with the layout; re-check tables each time.
         if (!reader.isFixedLayout && reader.settings?.flow !== 'scrolled')
             for (const { doc } of reader.view.renderer.getContents?.() ?? []) if (doc) fitWideTables(doc)
