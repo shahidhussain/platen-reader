@@ -500,10 +500,16 @@ struct TypographyPopover: View {
             }
             LabeledContent("Appearance") { appearancePicker.labelsHidden() }
                 .popoverRow()
+            PopoverDivider()
+            // The glow of the page's own colours around it (books and PDFs;
+            // not in the Black theme, whose point is a black screen).
+            Toggle("Ambient Light", isOn: $settings.ambientLight)
+                .tint(Color(uiColor: .systemGreen))
+                .popoverRow()
             if state.isPDF {
                 PopoverDivider()
-                // The glow of the page's own colours around it.
-                Toggle("Ambient Light", isOn: $settings.ambientLight)
+                // White pages dark, for reading in the dark.
+                Toggle("Invert Colours", isOn: $settings.invertPDF)
                     .tint(Color(uiColor: .systemGreen))
                     .popoverRow()
             }

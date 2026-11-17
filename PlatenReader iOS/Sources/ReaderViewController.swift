@@ -38,12 +38,24 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     override var commands: ReaderCommands { session }
     override var pageView: UIView { webView }
+    /// The glow behind the page (ambient light), and its next renewal.
+    private(set) var ambient: UIImageView!
+    private var ambientWork: DispatchWorkItem?
+    private var ambientMaskSize: CGSize = .zero
     override var hasShownPage: Bool { session.hasRendered }
 
     // MARK: - View setup
 
     override func loadView() {
         let root = UIView()
+
+        // Ambient light: a soft glow of the page's own colours behind the
+        // book, whose page is then see-through (`usesAmbientLight`).
+        ambient = UIImageView()
+        ambient.translatesAutoresizingMaskIntoConstraints = false
+        ambient.contentMode = .scaleToFill
+        ambient.isAccessibilityElement = false
+        root.addSubview(ambient)
 
         // Web view, configured as on the Mac (BookSession.makeConfiguration).
         let config = session.makeConfiguration()
@@ -83,6 +95,10 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         installSwipeRecogniser()
 
         NSLayoutConstraint.activate([
+            ambient.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            ambient.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            ambient.topAnchor.constraint(equalTo: root.topAnchor),
+            ambient.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             webView.topAnchor.constraint(equalTo: root.topAnchor),
@@ -170,6 +186,70 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     override func applySettings() {
         super.applySettings()
         session.pushSettings()
+        updateAmbient()
+    }
+
+    // MARK: - Ambient light
+
+    /// Ambient light (Aa > Ambient Light) in every theme but Black, whose
+    /// point is a black screen: the page is see-through, and a glow of what
+    /// is on it (its pictures; text pages stay near the theme's colour)
+    /// lies behind it, as for PDFs.
+    var usesAmbientLight: Bool { settings.ambientLight && currentTheme != .black }
+
+    /// The glow shows only towards the screen's edges, as light spilling
+    /// from behind a television: strongest at the edge, gone some way in,
+    /// so the text sits on the theme's own colour.
+    func updateAmbientMask() {
+        let size = view.bounds.size
+        guard size.width > 0, size.height > 0, ambientMaskSize != size else { return }
+        ambientMaskSize = size
+        let edge: CGFloat = 70
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            let cg = context.cgContext
+            let colours = [UIColor.white.cgColor, UIColor.white.withAlphaComponent(0).cgColor] as CFArray
+            guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colours,
+                                            locations: [0, 1]) else { return }
+            // Four edges, each fading inwards; corners get both.
+            let w = size.width, h = size.height
+            for (start, end) in [(CGPoint(x: 0, y: 0), CGPoint(x: edge, y: 0)),
+                                 (CGPoint(x: w, y: 0), CGPoint(x: w - edge, y: 0)),
+                                 (CGPoint(x: 0, y: 0), CGPoint(x: 0, y: edge)),
+                                 (CGPoint(x: 0, y: h), CGPoint(x: 0, y: h - edge))] {
+                cg.drawLinearGradient(gradient, start: start, end: end, options: [])
+            }
+        }
+        let mask = UIImageView(image: image)
+        mask.frame = CGRect(origin: .zero, size: size)
+        ambient.mask = mask
+    }
+
+    /// Makes the glow from a small picture of the page as it is now, after a
+    /// moment (turns come in runs), and fades it in.
+    func updateAmbient() {
+        ambient.isHidden = !usesAmbientLight
+        updateAmbientMask()
+        guard usesAmbientLight, session.hasRendered else { return }
+        ambientWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let config = WKSnapshotConfiguration()
+            config.snapshotWidth = 48
+            let theme = self.currentTheme.uiBackground
+            self.webView.takeSnapshot(with: config) { [weak self] image, _ in
+                guard let self, let image else { return }
+                PDFAmbientBackground.make(from: image, theme: theme) { [weak self] glow in
+                    guard let self, let glow, self.usesAmbientLight else { return }
+                    let fade = UIAccessibility.isReduceMotionEnabled ? 0 : 0.35
+                    UIView.transition(with: self.ambient, duration: fade,
+                                      options: [.transitionCrossDissolve, .allowUserInteraction]) {
+                        self.ambient.image = glow
+                    }
+                }
+            }
+        }
+        ambientWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
     override func savePositionNow() { session.savePositionNow() }
@@ -185,6 +265,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     ///   clear of the Dynamic Island, the status bar and the home indicator.
     func adjust(_ web: inout WebSettings) {
         web.touch = true
+        web.transparent = usesAmbientLight
         // iPhone: one page always, in either orientation (spec, "Layout").
         // iPad: the Two Pages rule decides by width, as on the Mac, so two
         // pages appear in landscape and in wide Split View windows.
@@ -214,6 +295,11 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         }
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateAmbientMask() // the glow's edges follow the window's size
+    }
+
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         session.pushSettings() // margins follow the notch, rotation and Split View
@@ -237,6 +323,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     }
 
     func sessionDidRenderFirstPage() {
+        updateAmbient()
         spinner.stopAnimating()
         #if DEBUG
         runDebugStepsIfAny()
@@ -246,6 +333,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     func sessionDidOpen() {}
 
     func sessionDidRelocate() {
+        updateAmbient()
         log.info("relocate \(self.session.record?.lastCFI ?? "", privacy: .public)")
     }
 

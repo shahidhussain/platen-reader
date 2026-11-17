@@ -109,13 +109,14 @@ struct RecentBooksView: View {
 
     @State private var reach: [RecentItem.ID: Reach] = [:]
     @State private var cannotOpen: RecentItem?
-
-    private let columns = [GridItem(.adaptive(minimum: 100, maximum: 200), spacing: 18, alignment: .bottom)]
+    @ObservedObject private var options = BookTypeFilter.shared
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+                LazyVGrid(columns: CoverColumns.items(options, sizeClass), alignment: .leading,
+                          spacing: CoverColumns.spacing(options, sizeClass) + 6) {
                     ForEach(recents.items) { item in
                         Button { open(item) } label: {
                             BookTile(title: item.displayName, author: item.author, imageFile: recents.coverURL(for: item),
@@ -132,6 +133,7 @@ struct RecentBooksView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            .coverPinch(options, sizeClass)
             .overlay {
                 if recents.items.isEmpty {
                     ContentUnavailableView {
@@ -167,6 +169,7 @@ struct RecentBooksView: View {
     }
 
     private func open(_ item: RecentItem) {
+        guard !options.justPinched else { return } // the end of a pinch, not a tap
         reach[item.id] = .checking
         Task {
             if case .yes(let url) = await recents.reachability(of: item, timeout: 10) {

@@ -41,7 +41,7 @@ struct FolderGridView: View {
     /// authors too.
     private var shown: [FolderEntry] {
         let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
-        return model.entries.filter { entry in
+        return filter.sort.sorted(model.entries).filter { entry in
             if entry.kind == .book, !filter.shows(entry.url) { return false }
             guard searching else { return true }
             let info = model.covers[entry.url]
@@ -49,13 +49,12 @@ struct FolderGridView: View {
         }
     }
 
-    /// At least 100 points wide: three across on every iPhone in portrait
-    /// (even the smallest), more on iPad and in landscape.
-    private let columns = [GridItem(.adaptive(minimum: 100, maximum: 200), spacing: 18, alignment: .bottom)]
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+            LazyVGrid(columns: CoverColumns.items(filter, sizeClass), alignment: .leading,
+                      spacing: CoverColumns.spacing(filter, sizeClass) + 6) {
                 ForEach(shown) { entry in
                     Button {
                         tapped(entry)
@@ -77,6 +76,7 @@ struct FolderGridView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
+        .coverPinch(filter, sizeClass)
         .overlay {
             if !model.hasLoaded {
                 // Reading the folder (slow for a large one or a network
@@ -130,6 +130,13 @@ struct FolderGridView: View {
                 // The kinds of book shown, each with a tick; at least one
                 // stays ticked. The menu stays open while ticking.
                 Menu {
+                    Section("Sort By") {
+                        Picker("Sort By", selection: $filter.sort) {
+                            ForEach(FolderSort.allCases) { Text($0.label).tag($0) }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
                     Section("Show") {
                         ForEach(BookFileType.allCases) { type in
                             Toggle(type.label, isOn: Binding(get: { filter.isShown(type) }, set: { _ in filter.toggle(type) }))
@@ -165,6 +172,7 @@ struct FolderGridView: View {
     }
 
     private func tapped(_ entry: FolderEntry) {
+        guard !filter.justPinched else { return } // the end of a pinch, not a tap
         switch entry.kind {
         case .folder:
             openFolder(entry.url)
@@ -174,6 +182,47 @@ struct FolderGridView: View {
             // In iCloud only: fetch it first; it opens when it arrives.
             model.download(entry)
         }
+    }
+}
+
+/// How many covers fit across a grid (folders, Recent Books): the reader's
+/// choice, made by pinching (out for fewer and bigger, in for more and
+/// smaller), or three on an iPhone and five on an iPad.
+enum CoverColumns {
+    static func range(_ sizeClass: UserInterfaceSizeClass?) -> ClosedRange<Int> {
+        sizeClass == .regular ? 3...8 : 2...5
+    }
+
+    @MainActor static func count(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> Int {
+        let range = range(sizeClass)
+        return min(max(options.columns ?? (sizeClass == .regular ? 5 : 3), range.lowerBound), range.upperBound)
+    }
+
+    @MainActor static func spacing(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> CGFloat {
+        count(options, sizeClass) > 3 ? 12 : 18
+    }
+
+    @MainActor static func items(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: spacing(options, sizeClass), alignment: .bottom),
+              count: count(options, sizeClass))
+    }
+}
+
+extension View {
+    /// A pinch on a cover grid changes how many covers fit across.
+    @MainActor func coverPinch(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> some View {
+        simultaneousGesture(
+            MagnifyGesture()
+                .onChanged { _ in options.lastPinch = Date() }
+                .onEnded { value in
+                options.lastPinch = Date()
+                let now = CoverColumns.count(options, sizeClass)
+                let next = value.magnification > 1.15 ? now - 1 : value.magnification < 0.87 ? now + 1 : now
+                let range = CoverColumns.range(sizeClass)
+                guard next != now, range.contains(next) else { return }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { options.columns = next }
+            }
+        )
     }
 }
 

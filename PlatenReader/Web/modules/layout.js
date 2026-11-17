@@ -27,7 +27,7 @@ const bookCSS = s => `
         font-size: ${s.fontSize}px !important;
     }
     html, body {
-        background-color: ${s.theme.background} !important;
+        background-color: ${s.transparent ? 'transparent' : s.theme.background} !important;
         color: ${s.theme.foreground} !important;
     }
     a:link, a:visited { color: ${s.theme.link} !important; }
@@ -85,7 +85,9 @@ const columnCount = s => {
 const applyLayout = () => {
     const r = reader.view?.renderer
     if (!r || !reader.settings) return
-    document.documentElement.style.setProperty('--platen-bg', reader.settings.theme.background)
+    // iOS ambient light: no background, so the glow behind the page shows.
+    document.documentElement.style.setProperty('--platen-bg',
+        reader.settings.transparent ? 'transparent' : reader.settings.theme.background)
     document.documentElement.style.setProperty('--platen-fg', reader.settings.theme.foreground)
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
     r.toggleAttribute('animated', reader.settings.animated && !reduceMotion)

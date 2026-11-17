@@ -149,6 +149,12 @@
     "Dark" : {
 
     },
+    "Date Created" : {
+
+    },
+    "Date Modified" : {
+
+    },
     "Default Text Size" : {
 
     },
@@ -251,6 +257,9 @@
     "In iCloud" : {
 
     },
+    "Invert Colours" : {
+
+    },
     "It may have been moved or deleted, or it is on a drive or network share that is not connected." : {
 
     },
@@ -303,6 +312,9 @@
 
     },
     "More" : {
+
+    },
+    "Name" : {
 
     },
     "Narrow" : {
@@ -540,10 +552,16 @@
     "Shows the click zones again for the next five books you open." : {
 
     },
+    "Size" : {
+
+    },
     "Slide" : {
 
     },
     "Smaller Text" : {
+
+    },
+    "Sort By" : {
 
     },
     "Start of book" : {

@@ -19,8 +19,11 @@ struct FolderEntry: Identifiable, Equatable, Sendable, Codable {
     /// only). Its cover cannot be read until it is downloaded.
     var isDownloaded: Bool = true
     /// When the file last changed, so an edited or replaced book gets a new
-    /// cover.
+    /// cover (and for sorting).
     var modified: Date?
+    /// When it was made, and its size in bytes, for sorting.
+    var created: Date?
+    var size: Int64?
 
     var id: URL { url }
 }
@@ -58,22 +61,67 @@ enum BookFileType: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Which kinds of book the folder view shows: all of them unless the
-/// reader turns some off (the filter button), and never none. One choice
-/// for every folder, kept with the settings.
+/// How the folder view orders its books (folders always come first, by
+/// name).
+enum FolderSort: String, CaseIterable, Identifiable, Sendable {
+    case name, modified, created, size
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .name: return String(localized: "Name")
+        case .modified: return String(localized: "Date Modified")
+        case .created: return String(localized: "Date Created")
+        case .size: return String(localized: "Size")
+        }
+    }
+
+    /// Names A to Z; dates newest first; sizes largest first. Ties by name.
+    func sorted(_ entries: [FolderEntry]) -> [FolderEntry] {
+        entries.sorted { a, b in
+            if a.kind != b.kind { return a.kind == .folder }
+            if a.kind == .book, self != .name {
+                switch self {
+                case .modified where a.modified != b.modified:
+                    return (a.modified ?? .distantPast) > (b.modified ?? .distantPast)
+                case .created where a.created != b.created:
+                    return (a.created ?? .distantPast) > (b.created ?? .distantPast)
+                case .size where a.size != b.size:
+                    return (a.size ?? 0) > (b.size ?? 0)
+                default: break
+                }
+            }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+    }
+}
+
+/// How the folder view shows a folder, one choice for every folder, kept
+/// with the settings: which kinds of book (all unless the reader turns some
+/// off with the filter button, never none), in what order, and how many
+/// covers across (a pinch changes it).
 @MainActor
 final class BookTypeFilter: ObservableObject {
     static let shared = BookTypeFilter(defaults: AppDefaults.store)
 
     @Published private(set) var hidden: Set<BookFileType>
+    @Published var sort: FolderSort { didSet { defaults.set(sort.rawValue, forKey: "folderSort") } }
+    /// Covers across, when the reader has pinched (nil: the default for the
+    /// screen).
+    @Published var columns: Int? { didSet { defaults.set(columns, forKey: "folderColumns") } }
+    /// When a pinch on a grid last moved: a tap that ends a pinch must not
+    /// open the book under the fingers.
+    var lastPinch: Date = .distantPast
+    var justPinched: Bool { Date().timeIntervalSince(lastPinch) < 0.4 }
     private let defaults: UserDefaults
     private static let key = "hiddenBookTypes"
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
-        let saved = defaults.stringArray(forKey: Self.key) ?? []
-        hidden = Set(saved.compactMap(BookFileType.init(rawValue:)))
-        if hidden.count == BookFileType.allCases.count { hidden = [] }
+        let saved = Set((defaults.stringArray(forKey: Self.key) ?? []).compactMap(BookFileType.init(rawValue:)))
+        hidden = saved.count == BookFileType.allCases.count ? [] : saved
+        sort = defaults.string(forKey: "folderSort").flatMap(FolderSort.init) ?? .name
+        columns = defaults.object(forKey: "folderColumns") as? Int
     }
 
     /// True unless some kinds are hidden (the filter button shows that).
@@ -103,7 +151,7 @@ enum FolderScanner {
     static func entries(in folder: URL) -> [FolderEntry] {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isHiddenKey,
                                       .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
-                                      .contentModificationDateKey]
+                                      .contentModificationDateKey, .creationDateKey, .fileSizeKey]
         // Hidden files are not skipped here, because iCloud's stand-ins for
         // files not yet downloaded are hidden (".Book.epub.icloud").
         guard let urls = try? FileManager.default.contentsOfDirectory(
@@ -133,7 +181,8 @@ enum FolderScanner {
                 let status = values?.ubiquitousItemDownloadingStatus
                 let downloaded = values?.isUbiquitousItem != true || status == nil || status == .current || status == .downloaded
                 entries.append(FolderEntry(url: url, name: displayName(url), kind: .book, isDownloaded: downloaded,
-                                           modified: values?.contentModificationDate))
+                                           modified: values?.contentModificationDate,
+                                           created: values?.creationDate, size: values?.fileSize.map(Int64.init)))
             }
         }
         return entries.sorted { a, b in

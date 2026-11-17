@@ -257,3 +257,23 @@ final class FolderSpeedTests: XCTestCase {
         XCTAssertEqual(answer, "time limit")
     }
 }
+
+/// The folder view's sort orders (FolderSort).
+final class FolderSortTests: XCTestCase {
+    private func book(_ name: String, modified: Double, created: Double, size: Int64) -> FolderEntry {
+        FolderEntry(url: URL(fileURLWithPath: "/b/\(name).epub"), name: name, kind: .book,
+                    modified: Date(timeIntervalSince1970: modified), created: Date(timeIntervalSince1970: created), size: size)
+    }
+
+    func testEachOrderFoldersFirst() {
+        let folder = FolderEntry(url: URL(fileURLWithPath: "/b/Z"), name: "Z", kind: .folder)
+        let a = book("Book 10", modified: 1, created: 3, size: 50)
+        let b = book("Book 2", modified: 3, created: 1, size: 10)
+        let c = book("Alpha", modified: 2, created: 2, size: 99)
+        let all = [a, b, folder, c]
+        XCTAssertEqual(FolderSort.name.sorted(all).map(\.name), ["Z", "Alpha", "Book 2", "Book 10"])
+        XCTAssertEqual(FolderSort.modified.sorted(all).map(\.name), ["Z", "Book 2", "Alpha", "Book 10"])
+        XCTAssertEqual(FolderSort.created.sorted(all).map(\.name), ["Z", "Book 10", "Alpha", "Book 2"])
+        XCTAssertEqual(FolderSort.size.sorted(all).map(\.name), ["Z", "Alpha", "Book 10", "Book 2"])
+    }
+}

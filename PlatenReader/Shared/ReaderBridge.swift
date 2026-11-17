@@ -83,6 +83,9 @@ struct WebSettings: Equatable {
     var sideMargin: Double?
     /// Room above and below the text, in points (nil: the shell's default).
     var verticalMargin: Double?
+    /// The page paints no background of its own, so a glow drawn behind the
+    /// web view shows through (iOS ambient light).
+    var transparent = false
 
     /// As the plain values WebKit can pass to JavaScript.
     var payload: [String: Any] {
@@ -106,6 +109,7 @@ struct WebSettings: Equatable {
         if nativeSwipe { payload["nativeSwipe"] = true }
         if let sideMargin { payload["sideMargin"] = sideMargin }
         if let verticalMargin { payload["verticalMargin"] = verticalMargin }
+        if transparent { payload["transparent"] = true }
         return payload
     }
 }

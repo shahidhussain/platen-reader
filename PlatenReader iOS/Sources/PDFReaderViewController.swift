@@ -47,6 +47,11 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// a swipe moves them together: a new page arrives with its own
     /// background (and ribbon) rather than having them change after it.
     private var pageArea: UIView!
+    /// Invert Colours: white, laid over the pages with a difference blend,
+    /// which turns every colour beneath it into its opposite (white paper
+    /// dark, black text light). The background behind the pages is set to
+    /// the opposite of the theme's colour, so it comes out as the theme's.
+    private var inverter: UIView!
     /// Ambient backgrounds already made, by pages and theme, so the next and
     /// previous pages' are ready before they are turned to.
     private var ambientCache: [String: UIImage] = [:]
@@ -139,6 +144,14 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         // The bookmark ribbon over the top edge of a bookmarked page, near
         // its right corner (placed by placeRibbon, as the page moves).
         ribbon = BookmarkRibbonView(frame: CGRect(origin: .zero, size: BookmarkRibbonView.size))
+        inverter = UIView()
+        inverter.translatesAutoresizingMaskIntoConstraints = false
+        inverter.backgroundColor = .white
+        inverter.isUserInteractionEnabled = false
+        inverter.layer.compositingFilter = "differenceBlendMode"
+        inverter.isHidden = true
+        pageArea.addSubview(inverter)
+
         ribbon.isHidden = true
         pageArea.addSubview(ribbon)
 
@@ -151,7 +164,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         configurePageTurner()
 
         var constraints: [NSLayoutConstraint] = []
-        for (inner, outer) in [(pageArea!, root), (ambient!, pageArea!), (pdfView!, pageArea!)] as [(UIView, UIView)] {
+        for (inner, outer) in [(pageArea!, root), (ambient!, pageArea!), (pdfView!, pageArea!), (inverter!, pageArea!)] as [(UIView, UIView)] {
             constraints += [
                 inner.leadingAnchor.constraint(equalTo: outer.leadingAnchor),
                 inner.trailingAnchor.constraint(equalTo: outer.trailingAnchor),
@@ -193,6 +206,13 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                 }
                 .store(in: &cancellables)
         }
+        // Invert Colours turned on or off.
+        settings.$invertPDF
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.applyInversion() } }
+            .store(in: &cancellables)
         // One Page or Two Pages changed (here or in another reader).
         settings.$pageLayout
             .dropFirst()
@@ -230,6 +250,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                     DispatchQueue.main.async {
                         if let page = loaded.document.page(at: model.startPage) { self.pdfView.go(to: page) }
                         if let zoom = model.savedZoom {
+                            self.readerZoom = CGFloat(zoom)
                             self.pdfView.scaleFactor = self.pdfView.scaleFactorForSizeToFit * zoom
                         }
                         self.restoring = false
@@ -273,6 +294,18 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// starts from the screen's fit: the scale left from the old layout is
     /// not a zoom the reader chose.
     private var keepsSavedZoom = true
+    /// The reader's zoom as a share of the fit (1: fitted), and whether the
+    /// scale is being set here (not by the reader).
+    private var readerZoom: CGFloat = 1
+    private var settingScale = false
+    /// PDFKit's pinch recognisers already followed (they are new after each
+    /// change of layout).
+    private var followedPinches: Set<ObjectIdentifier> = []
+    /// A centre tap waiting to see whether a second follows (centreTapped).
+    private var pendingCentreTap: DispatchWorkItem?
+    /// The next fit starts from the screen's fit (after a change of layout)
+    /// rather than keeping the reader's zoom (after a page turn).
+    private var nextFitResets = false
 
     private func layoutForOrientation(force: Bool, keepPage: Int?) {
         guard let document = pdfView.document else { return }
@@ -328,6 +361,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         pdfView.autoScales = true
         fitScale = nil
         lastFittedPages = []
+        nextFitResets = true
         if let page = document.page(at: current) { pdfView.go(to: page) }
         // Switching modes gives PDFKit's inner views their own (grey)
         // background and scroll bars; the theme colour goes back on. They
@@ -359,6 +393,41 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     // MARK: - Taps and turns
 
+    /// A tap in the centre shows or hides the controls; two in quick
+    /// succession bring a zoomed page back to its fitted size instead. So
+    /// the first waits a moment for a second (taps at the sides do not).
+    private func centreTapped() {
+        if let pending = pendingCentreTap {
+            pending.cancel()
+            pendingCentreTap = nil
+            zoomToFit()
+            return
+        }
+        let toggle = DispatchWorkItem { [weak self] in
+            self?.pendingCentreTap = nil
+            self?.chrome.toggle()
+        }
+        pendingCentreTap = toggle
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: toggle)
+    }
+
+    /// The reader pinched: their zoom, as a share of the fit, is kept for the
+    /// pages that follow.
+    @objc private func pinched(_ pinch: UIPinchGestureRecognizer) {
+        guard pinch.state == .ended || pinch.state == .changed, let fit = fitScale, fit > 0 else { return }
+        readerZoom = max(1, pdfView.scaleFactor / fit)
+    }
+
+    /// Back to the page's fitted size (the "1×" of a PDF here: the page or
+    /// spread touching the screen's sides or its top and bottom).
+    func zoomToFit() {
+        readerZoom = 1
+        guard let fit = fitScale, pdfView.scaleFactor > fit * 1.01 else { return }
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.25) {
+            self.pdfView.scaleFactor = fit
+        }
+    }
+
     @objc private func pageTapped(_ recogniser: UITapGestureRecognizer) {
         guard recogniser.state == .ended, model != nil else { return }
         if hadSelection { hadSelection = false; return } // the tap cleared it
@@ -378,7 +447,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             switch ClickZone(x: point.x, width: width) {
             case .left: turn(.left)
             case .right: turn(.right)
-            case .centre: chrome.toggle()
+            case .centre: centreTapped()
             }
         }
     }
@@ -391,6 +460,12 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         } else if step.hasPrefix("@doubleturn:"), let turn = PageTurn(rawValue: String(step.dropFirst(12))) {
             self.turn(turn)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.turn(turn) }
+        } else if step.hasPrefix("@zoom:"), let factor = Double(step.dropFirst(6)), let fit = fitScale {
+            pdfView.scaleFactor = fit * factor // as a pinch would
+            readerZoom = CGFloat(factor)
+            reportPage()
+        } else if step == "@fit" {
+            zoomToFit()
         } else if step.hasPrefix("@swipe:") {
             // A finger drawn across the page: left brings the next page.
             let towardsLeft = step.hasSuffix("left")
@@ -465,11 +540,17 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         pageTurner.curlRegion = { [weak self] in self?.pageRegion }
         pageTurner.curlBackColour = { UIColor(white: 0.94, alpha: 1) }
         // In a spread, the curl turns one page about the spine, as in a book.
+        // A wide page alone in landscape (a picture book's spread on one PDF
+        // page) curls the same way, about its middle.
         pageTurner.curlSpine = { [weak self] in
-            guard let self, self.isSpread, let document = self.pdfView.document else { return nil }
+            guard let self, let document = self.pdfView.document else { return nil }
             let pages = self.visiblePages.compactMap { document.page(at: $0) }
-            guard pages.count == 2 else { return nil }
-            return self.pdfView.convert(pages[0].bounds(for: self.pdfView.displayBox), from: pages[0]).maxX
+            let rects = pages.map { self.pdfView.convert($0.bounds(for: self.pdfView.displayBox), from: $0) }
+            if self.isSpread, rects.count == 2 { return rects[0].maxX }
+            if self.isLandscape, self.state.flow == .paginated, rects.count == 1, rects[0].width > rects[0].height {
+                return rects[0].midX
+            }
+            return nil
         }
     }
 
@@ -519,11 +600,23 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         var visible = visiblePages
         if !visible.contains(index) { visible.insert(index, at: 0) }
         model.pageChanged(to: visible.first ?? index, visible: visible, zoom: zoom > 1.05 ? zoom : nil)
+        // Two Pages in landscape pairs pages only while they are taller than
+        // wide; turning from a wide page to tall ones (or back) changes the
+        // layout. (It was decided only on rotating, so a PDF reopened on a
+        // wide page stayed single for the tall pages before it.)
+        if isLandscape, state.flow == .paginated, settings.pageLayout == .two,
+           pagesArePortrait(around: index, in: document) != isSpread {
+            DispatchQueue.main.async { self.layoutForOrientation(force: true, keepPage: index) }
+            return
+        }
         // New pages on show: fit them (dropping a pinch zoom, except the
         // saved one at opening).
         if state.flow == .paginated, visible != lastFittedPages {
             lastFittedPages = visible
-            fillScreen(resetZoom: !keepsSavedZoom)
+            // A turn keeps the zoom; a new layout (rotating, Layout) starts
+            // fitted, except the zoom saved with the PDF at opening.
+            fillScreen(resetZoom: nextFitResets && !keepsSavedZoom)
+            nextFitResets = false
             keepsSavedZoom = false
         }
         updateRibbon()
@@ -591,6 +684,23 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         for scroll in scrollViews(in: pdfView) where scroll.contentInsetAdjustmentBehavior != .never {
             scroll.contentInsetAdjustmentBehavior = .never
         }
+        // The reader's pinches are followed (pinched), so their zoom is kept
+        // as the page turns: PDFKit resets the scale when the page changes.
+        for scroll in scrollViews(in: pdfView) {
+            if let pinch = scroll.pinchGestureRecognizer, !followedPinches.contains(ObjectIdentifier(pinch)) {
+                followedPinches.insert(ObjectIdentifier(pinch))
+                pinch.addTarget(self, action: #selector(pinched(_:)))
+            }
+        }
+        // PDFKit's own double tap zooms in; here a double tap in the centre
+        // goes back to the fitted size (centreTapped), so PDFKit's is off.
+        func allViews(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(allViews) }
+        for view in allViews(pdfView) {
+            for recogniser in view.gestureRecognizers ?? [] {
+                if let tap = recogniser as? UITapGestureRecognizer, tap.numberOfTapsRequired == 2,
+                   tap.view !== pdfView { tap.isEnabled = false }
+            }
+        }
     }
 
     /// Pages as large as the screen allows: in One Page and Two Pages, the
@@ -599,8 +709,9 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// free (the Dynamic Island, the home indicator), which put a margin
     /// round every page; the controls float over the page anyway, so the
     /// fit is worked out here against the whole screen. A zoom of the
-    /// reader's own (pinching in, or the one saved with the PDF) is kept
-    /// unless `resetZoom` (a page turn, a new window size).
+    /// reader's own (pinching in, or the one saved with the PDF) is kept,
+    /// as a share of the fit, unless `resetZoom` (a new layout or window
+    /// size).
     ///
     /// Scroll keeps PDFKit's fit: pages as wide as the screen.
     private func fillScreen(resetZoom: Bool = false) {
@@ -622,14 +733,18 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         let height = sizes.map(\.height).max() ?? 0
         guard width > 0, height > 0 else { return }
         let fit = min(pdfView.bounds.width / width, pdfView.bounds.height / height)
-        let previous = fitScale ?? pdfView.scaleFactorForSizeToFit
-        let zoomedIn = !resetZoom && pdfView.scaleFactor > previous * 1.01
+        // The reader's zoom, as a share of the fit (readerZoom): kept when
+        // the page turns, so text they made bigger stays that size on the
+        // next page.
+        if resetZoom { readerZoom = 1 }
         fitScale = fit
         lastFittedSize = pdfView.bounds.size
+        settingScale = true
         pdfView.autoScales = false
-        pdfView.minScaleFactor = fit
         pdfView.maxScaleFactor = fit * 8
-        if !zoomedIn { pdfView.scaleFactor = fit }
+        pdfView.minScaleFactor = fit
+        pdfView.scaleFactor = readerZoom < 1.01 ? fit : min(fit * readerZoom, fit * 8)
+        settingScale = false
     }
 
     /// Follows the PDF view's scroll view (found inside it), so the ribbon
@@ -734,8 +849,11 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// last one. Remade only when the pages or the theme change.
     private func updateAmbient() {
         // Off (Aa > Ambient Light): the theme's plain colour shows through.
-        ambient.isHidden = !settings.ambientLight
-        guard settings.ambientLight, let document = pdfView.document else { return }
+        // Also off with Invert Colours: the glow is of the page's own colours,
+        // which would not match the inverted page.
+        let glow = settings.ambientLight && !settings.invertPDF
+        ambient.isHidden = !glow
+        guard glow, let document = pdfView.document else { return }
         let indexes = visiblePages
         let theme = currentTheme.uiBackground
         let key = ambientKey(indexes, theme)
@@ -783,11 +901,26 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         }
     }
 
+    /// Invert Colours on or off (see `inverter`).
+    private func applyInversion() {
+        let inverted = settings.invertPDF
+        inverter.isHidden = !inverted
+        if inverted {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            currentTheme.uiBackground.getRed(&r, green: &g, blue: &b, alpha: &a)
+            pageArea.backgroundColor = UIColor(red: 1 - r, green: 1 - g, blue: 1 - b, alpha: 1)
+        } else {
+            pageArea.backgroundColor = .clear
+        }
+        updateAmbient()
+    }
+
     /// Themes colour the background around the page (spec, "PDF"), here
     /// mixed with the page's own colours (updateAmbient), so the PDF view
     /// and its inner views are see-through.
     override func applyTheme() {
         super.applyTheme()
+        if pageArea != nil { applyInversion() } // its background follows the theme
         if pdfView?.document != nil { updateAmbient() }
         if let pdfView {
             pdfView.backgroundColor = .clear
