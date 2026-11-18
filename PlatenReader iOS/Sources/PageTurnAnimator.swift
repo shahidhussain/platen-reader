@@ -107,7 +107,11 @@ final class PageTurnAnimator {
     /// The picture of the old page, laid over the live page.
     private var cover: UIView?
     /// The system's page curl, while one runs.
-    private var pager: UIPageViewController?
+    private var pager: UIPageViewController? {
+        didSet { if pager != nil, oldValue == nil { curlBegan = CACurrentMediaTime() } }
+    }
+    /// When the curl on screen began (see `turn`).
+    private var curlBegan: CFTimeInterval = 0
     /// True once `pager` has started its animated turn. UIKit turns
     /// autorotation off for the whole app while a page view controller
     /// animates, and back on only when the animation completes; a pager
@@ -123,7 +127,18 @@ final class PageTurnAnimator {
     /// Turns a page in the given style. `leafMovesLeft`: the old page leaves
     /// towards the left (a forward turn in a left-to-right book).
     func turn(_ request: PageTurn, leafMovesLeft: Bool, style: Style) {
-        // A turn asked for while another is drawn (fast taps, a held arrow
+        // A turn asked for during a page curl is dropped: the curl plays
+        // out, and only taps after it turn. (Cutting curls short to turn
+        // at once, as slides do below, lost some quick taps anyway, at
+        // random: UIKit ignores touches while a curl animates. One page per
+        // curl is the same every time.) A curl still there well after it
+        // should have ended is stuck, and is cleared as before rather than
+        // blocking every turn.
+        if isCurling, CACurrentMediaTime() - curlBegan < Self.curlDuration * 3 {
+            log.info("page turn dropped during a curl")
+            return
+        }
+        // A turn asked for while a slide is drawn (fast taps, a held arrow
         // key) skips the rest of that one and turns at once.
         if isBusy {
             finishNow()
