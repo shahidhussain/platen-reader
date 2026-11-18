@@ -28,8 +28,13 @@ struct WelcomeView: View {
                 .font(.system(size: 56, weight: .light))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true) // decoration: VoiceOver should start on the title
-            Text("Platen Reader")
-                .font(.largeTitle.weight(.semibold))
+            VStack(spacing: 4) {
+                Text("Platen Reader")
+                    .font(.largeTitle.weight(.semibold))
+                Text(verbatim: AppVersion.line)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             Button(action: open) {
                 Text("Open Book…")
                     .font(.title3.weight(.medium))
@@ -55,14 +60,11 @@ struct WelcomeView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
             Spacer()
-            // A little whimsy.
-            VStack(spacing: 2) {
-                Text(verbatim: "Poo-tee-weet?")
-                    .font(.system(.title3, design: .serif).italic())
-                Text(verbatim: "— Kurt Vonnegut")
-                    .font(.callout)
-            }
-            .foregroundStyle(.secondary)
+            // A little whimsy, unattributed: an Easter egg for those who
+            // know where it is from (Slaughterhouse-Five).
+            Text(verbatim: "Poo-tee-weet?")
+                .font(.system(.footnote, design: .serif).italic())
+                .foregroundStyle(.tertiary)
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

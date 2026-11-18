@@ -17,6 +17,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
+        // The start-up animation, first, so it is set going before the
+        // rest of start-up (see LaunchSplash).
+        let splash = LaunchSplash(in: windowScene)
+        self.splash = splash
         let home = HomeViewController()
         let window = UIWindow(windowScene: windowScene)
         window.rootViewController = home
@@ -38,10 +42,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let reopen { home.openBook(at: reopen) }
         window.makeKeyAndVisible()
 
-        // The start-up animation. Going straight into a book, it stays up
-        // with the book's progress until the first page is on screen.
-        let splash = LaunchSplash(in: window)
-        self.splash = splash
+        // Going straight into a book, the start-up animation stays up with
+        // the book's progress until the first page is on screen.
         if reopen != nil || launchedWithBook || debugBook {
             home.onReaderCreated = { [weak splash, weak home] reader in
                 splash?.follow(reader.state)

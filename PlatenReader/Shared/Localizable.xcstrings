@@ -624,6 +624,17 @@
     "Untitled" : {
 
     },
+    "Version %@" : {
+      "comment" : "The app's version on the start-up screens, such as “Version 0.1 (1) · 3f2a9c1”.",
+      "localizations" : {
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %@"
+          }
+        }
+      }
+    },
     "View" : {
 
     },

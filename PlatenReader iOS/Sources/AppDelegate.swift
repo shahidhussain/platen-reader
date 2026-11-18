@@ -12,7 +12,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         Self.updateDefaultTextSize()
         // Start WebKit's content process now, so the first book opened does
         // not pay for it (spec: "Warm the WebKit content process at launch").
-        WebViewWarmer.warm()
+        // Just after the first frame, not before: it holds the main thread
+        // for a few tenths of a second, which kept the launch screen up that
+        // much longer.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { WebViewWarmer.warm() }
         NotificationCenter.default.addObserver(forName: UIContentSizeCategory.didChangeNotification,
                                                object: nil, queue: .main) { _ in
             Self.updateDefaultTextSize()
