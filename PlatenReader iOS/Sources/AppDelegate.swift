@@ -10,12 +10,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // 20 points at the standard size, like Apple Books, scaled with the
         // system's text size until the reader picks a size of their own.
         Self.updateDefaultTextSize()
-        // Start WebKit's content process now, so the first book opened does
-        // not pay for it (spec: "Warm the WebKit content process at launch").
-        // Just after the first frame, not before: it holds the main thread
-        // for a few tenths of a second, which kept the launch screen up that
-        // much longer.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { WebViewWarmer.warm() }
+        // WebKit is warmed once the start-up animation is up (SceneDelegate).
         NotificationCenter.default.addObserver(forName: UIContentSizeCategory.didChangeNotification,
                                                object: nil, queue: .main) { _ in
             Self.updateDefaultTextSize()

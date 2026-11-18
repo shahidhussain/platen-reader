@@ -17,10 +17,20 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
-        // The start-up animation, first, so it is set going before the
-        // rest of start-up (see LaunchSplash).
+        // The start-up animation goes up alone, and the rest of start-up
+        // waits until it is on screen. Its first frame is then cheap to
+        // draw, so it replaces the launch screen at once and starts moving;
+        // building the home screen (and warming WebKit) first held that
+        // frame back by a second or more on a phone, so the mark sat still.
         let splash = LaunchSplash(in: windowScene)
         self.splash = splash
+        splash.whenShown { [weak self] in self?.start(windowScene, connectionOptions) }
+    }
+
+    /// Everything else at launch: the home screen, and the book to go back
+    /// to, if any.
+    private func start(_ windowScene: UIWindowScene, _ connectionOptions: UIScene.ConnectionOptions) {
+        guard let splash else { return }
         let home = HomeViewController()
         let window = UIWindow(windowScene: windowScene)
         window.rootViewController = home
@@ -53,9 +63,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             splash.finishSoon()
         }
 
-        if let context = connectionOptions.urlContexts.first {
-            home.openBook(at: context.url)
+        if let url = connectionOptions.urlContexts.first?.url ?? pendingURL {
+            home.openBook(at: url)
         }
+        pendingURL = nil
         #if DEBUG
         // Testing: PLATEN_FOLDER_PATH chooses the folder for the folder view
         // without the picker (see DebugHooks.swift).
@@ -71,14 +82,26 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
         }
         #endif
+
+        // Start WebKit's content process now, so the first book opened does
+        // not pay for it (spec: "Warm the WebKit content process at launch").
+        // It holds the main thread for a few tenths of a second, so it comes
+        // after everything above; the start-up animation plays on regardless
+        // (Core Animation draws it).
+        DispatchQueue.main.async { WebViewWarmer.warm() }
     }
+
+    /// A book opened from another app before the home screen was built
+    /// (see `start`).
+    private var pendingURL: URL?
 
     /// A book opened from another app while Platen is running. With
     /// LSSupportsOpeningDocumentsInPlace, the URL is the original file
     /// (security-scoped) where the provider allows it, not a copy in our
     /// Inbox.
     func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
-        if let context = contexts.first { home?.openBook(at: context.url) }
+        guard let context = contexts.first else { return }
+        if let home { home.openBook(at: context.url) } else { pendingURL = context.url }
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

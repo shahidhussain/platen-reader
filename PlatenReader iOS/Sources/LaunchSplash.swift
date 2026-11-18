@@ -8,8 +8,10 @@ import UIKit
 /// rises in beneath it and the version line fades in. If Platen is going
 /// straight back to a book, the splash stays, with the loading bar and a
 /// line saying what is happening, until the book's first page is on screen;
-/// then it grows a little and fades, revealing the page. Otherwise it fades
-/// after about a second, onto the home screen.
+/// then it grows a little and fades, revealing the page. Otherwise, after
+/// about a second, the mark, name and version glide to where the welcome
+/// screen has them, and the splash fades onto it (or simply fades, if the
+/// home screen is a folder's covers).
 ///
 /// iOS shows the launch screen, a still picture, until the app's own code
 /// runs; nothing can move before then. Making that picture the animation's
@@ -31,12 +33,16 @@ final class LaunchSplash {
     }
 
     private var window: UIWindow?
-    private let root = UIViewController()
+    private let root = SplashRoot()
     private let mark = UIImageView()
     private let name = UILabel()
     private let version = UILabel()
     private var cancellables: Set<AnyCancellable> = []
     private var gone = false
+    /// True while a book is opening under the splash (`follow`).
+    private var following = false
+    /// The text lines on the book's pages (`writeOnPages`).
+    private var lineLayers: [CAShapeLayer] = []
 
     init(in scene: UIWindowScene) {
         let view = root.view!
@@ -211,6 +217,7 @@ final class LaunchSplash {
             layer.lineCap = .round
             layer.opacity = 0.75
             mark.layer.addSublayer(layer)
+            lineLayers.append(layer)
 
             let group = CAAnimationGroup()
             if reduce {
@@ -238,6 +245,25 @@ final class LaunchSplash {
         }
     }
 
+    /// Calls `action` once the splash is on screen (its first frame handed
+    /// to the screen), for the rest of start-up to begin.
+    func whenShown(_ action: @escaping () -> Void) {
+        var done = false
+        let once = {
+            guard !done else { return }
+            done = true
+            action()
+        }
+        root.onAppear = {
+            // Hand the first frame over now, then carry on in the next turn
+            // of the run loop, so nothing that follows can hold it back.
+            CATransaction.flush()
+            DispatchQueue.main.async(execute: once)
+        }
+        // Should the splash never appear (it always does), start anyway.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: once)
+    }
+
     /// No book to wait for: go once the animation has played.
     func finishSoon() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.finish() }
@@ -246,6 +272,7 @@ final class LaunchSplash {
     /// A book is opening: show its progress, and go when its first page is
     /// on screen (but not before the animation has played).
     func follow(_ state: ReaderState) {
+        following = true
         let progress = UIHostingController(rootView: OpeningProgressView(state: state))
         progress.view.backgroundColor = .clear
         progress.view.translatesAutoresizingMaskIntoConstraints = false
@@ -280,6 +307,7 @@ final class LaunchSplash {
         let view = root.view!
         view.isUserInteractionEnabled = false
         let reduce = UIAccessibility.isReduceMotionEnabled
+        if !following, !reduce, glideToWelcome() { return }
         // In two steps: the mark and words go first (growing a little), then
         // the plain background, revealing what is underneath. Fading all at
         // once showed the splash's title over the home screen's own, a
@@ -297,5 +325,74 @@ final class LaunchSplash {
             self.window?.isHidden = true
             self.window = nil
         }
+    }
+
+    /// Ends on the welcome screen: the mark, name and version glide to where
+    /// the welcome has its own (the mark shrinking to the welcome's smaller
+    /// one, its lines of text fading), and then the splash fades, showing
+    /// the same things in the same places, and the rest of the welcome
+    /// around them. False if the welcome is not on screen.
+    private func glideToWelcome() -> Bool {
+        let targets = WelcomeLayout.current
+        guard let window, let markTarget = targets.mark, markTarget.width > 0 else { return false }
+        let view = root.view!
+        view.isUserInteractionEnabled = false
+
+        /// The transform that puts `item` over `target` (window
+        /// coordinates), scaled to the target's width if `scale`.
+        func transform(_ item: UIView, to target: CGRect?, scale: Bool) -> CGAffineTransform? {
+            guard let target, target.width > 0 else { return nil }
+            let frame = item.convert(item.bounds, to: window)
+            let factor = scale ? target.width / max(frame.width, 1) : 1
+            return CGAffineTransform(translationX: target.midX - frame.midX, y: target.midY - frame.midY)
+                .scaledBy(x: factor, y: factor)
+        }
+        // Settled first (the nod may still be springing), so the sums use
+        // the mark at its own size.
+        for item in [mark, name, version] { item.layer.removeAllAnimations(); item.transform = .identity }
+        let moves: [(UIView, CGAffineTransform)] = [
+            (mark, transform(mark, to: markTarget, scale: true)),
+            (name, transform(name, to: targets.title, scale: true)),
+            (version, transform(version, to: targets.version, scale: false)),
+        ].compactMap { item, move in move.map { (item, $0) } }
+
+        // The lines fade from wherever they have got to.
+        for layer in lineLayers {
+            if let now = layer.presentation() {
+                layer.strokeEnd = now.strokeEnd
+                layer.opacity = now.opacity
+            }
+            layer.removeAllAnimations()
+        }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.25)
+        for layer in lineLayers { layer.opacity = 0 }
+        CATransaction.commit()
+
+        UIView.animate(withDuration: 0.55, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0) {
+            for (item, move) in moves {
+                item.transform = move
+                item.alpha = 1
+            }
+        } completion: { _ in
+            UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseInOut]) {
+                view.alpha = 0
+            } completion: { _ in
+                self.window?.isHidden = true
+                self.window = nil
+            }
+        }
+        return true
+    }
+}
+
+/// The splash's root, which says when it has first appeared.
+private final class SplashRoot: UIViewController {
+    var onAppear: (() -> Void)?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        onAppear?()
+        onAppear = nil
     }
 }
