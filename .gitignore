@@ -12,3 +12,5 @@ Fixtures/local/
 samples/
 # Personal signing settings (see Config/Shared.xcconfig).
 Config/Local.xcconfig
+# Screen recordings and screenshots of bugs, for hand testing.
+bugreports/
