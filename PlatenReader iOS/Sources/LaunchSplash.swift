@@ -94,6 +94,7 @@ final class LaunchSplash {
     }
 
     private func play() {
+        writeOnPages()
         if UIAccessibility.isReduceMotionEnabled {
             UIView.animate(withDuration: 0.3, delay: 0.05, options: [.allowUserInteraction]) {
                 self.name.alpha = 1
@@ -118,6 +119,85 @@ final class LaunchSplash {
         // Then the version, quietly.
         UIView.animate(withDuration: 0.3, delay: 0.3, options: [.curveEaseOut]) {
             self.version.alpha = 1
+        }
+    }
+
+    /// Platen's loading throbber: lines of text write themselves across the
+    /// book's pages, the left page and then the right, line by line, as a
+    /// reader's eye goes; they rest a moment, fade, and start again, for as
+    /// long as the splash is up. Under Reduce Motion the lines only fade in
+    /// and out.
+    ///
+    /// The lines are drawn over the symbol's picture, placed by where its
+    /// pages are within it (measured from the "book" symbol: the picture is
+    /// 85 × 68 at this size, the pages' insides run from x 12 to 40.5 and 44.5
+    /// to 77, and from y 16 to 52), as fractions, so they follow the picture
+    /// whatever its exact size.
+    private func writeOnPages() {
+        guard let image = mark.image else { return }
+        // The whole picture in the mark's coordinates: the image view is
+        // the size of the symbol's alignment rectangle, and the picture
+        // reaches past it by the alignment insets.
+        let insets = image.alignmentRectInsets
+        let picture = mark.bounds.inset(by: UIEdgeInsets(top: -insets.top, left: -insets.left,
+                                                         bottom: -insets.bottom, right: -insets.right))
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: picture.minX + picture.width * x / 85, y: picture.minY + picture.height * y / 68)
+        }
+        // Four lines a page, the last one short, as at a paragraph's end.
+        let rows: [CGFloat] = [22.5, 29, 35.5, 42]
+        let pages: [(from: CGFloat, to: CGFloat)] = [(16.5, 36.5), (48.5, 72.5)]
+        var lines: [(CGPoint, CGPoint)] = []
+        for page in pages {
+            for (i, y) in rows.enumerated() {
+                let end = i == rows.count - 1 ? page.from + (page.to - page.from) * 0.55 : page.to
+                lines.append((point(page.from, y), point(end, y)))
+            }
+        }
+
+        let colour = UIColor.secondaryLabel.resolvedColor(with: mark.traitCollection).cgColor
+        let reduce = UIAccessibility.isReduceMotionEnabled
+        let cycle: CFTimeInterval = 2.2
+        // Each cycle starts with the page blank for `lead` seconds (the
+        // first time, while the mark nods). The animations begin when the
+        // splash is first drawn (a begin time of 0), however long start-up
+        // keeps that waiting, so the writing is always seen from its start.
+        let lead = 0.3
+        for (i, line) in lines.enumerated() {
+            let layer = CAShapeLayer()
+            let path = UIBezierPath()
+            path.move(to: line.0)
+            path.addLine(to: line.1)
+            layer.path = path.cgPath
+            layer.strokeColor = colour
+            layer.lineWidth = 2
+            layer.lineCap = .round
+            layer.opacity = 0.75
+            mark.layer.addSublayer(layer)
+
+            let group = CAAnimationGroup()
+            if reduce {
+                let fade = CAKeyframeAnimation(keyPath: "opacity")
+                fade.values = [0, 0.75, 0.75, 0]
+                fade.keyTimes = [0, 0.3, 0.75, 1]
+                group.animations = [fade]
+                group.duration = cycle * 1.2
+            } else {
+                // Written in 0.12 s, one after another; all rest, then fade
+                // together, and the page is blank briefly before the next.
+                let begins = lead + Double(i) * 0.15
+                let write = CAKeyframeAnimation(keyPath: "strokeEnd")
+                write.values = [0, 0, 1, 1]
+                write.keyTimes = [0, begins / cycle, (begins + 0.12) / cycle, 1].map { NSNumber(value: $0) }
+                let fade = CAKeyframeAnimation(keyPath: "opacity")
+                fade.values = [0.75, 0.75, 0, 0]
+                fade.keyTimes = [0, (lead + 1.45) / cycle, (lead + 1.7) / cycle, 1].map { NSNumber(value: $0) }
+                group.animations = [write, fade]
+                group.duration = cycle
+                layer.strokeEnd = 0
+            }
+            group.repeatCount = .infinity
+            layer.add(group, forKey: "write")
         }
     }
 
