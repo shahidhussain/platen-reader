@@ -414,8 +414,38 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// The reader pinched: their zoom, as a share of the fit, is kept for the
     /// pages that follow.
     @objc private func pinched(_ pinch: UIPinchGestureRecognizer) {
+        // Zooming in: the page can be moved about again (see
+        // updatePDFScrolling); back at the fit, it cannot.
+        if pinch.state == .began { setPDFScrolling(true) }
         guard pinch.state == .ended || pinch.state == .changed, let fit = fitScale, fit > 0 else { return }
         readerZoom = max(1, pdfView.scaleFactor / fit)
+        if pinch.state == .ended { updatePDFScrolling() }
+    }
+
+    /// PDFKit's own scroll views, inside the PDF view (new ones after each
+    /// change of layout).
+    private var pdfScrollViews: [UIScrollView] {
+        func scrollViews(in view: UIView) -> [UIScrollView] {
+            view.subviews.flatMap { sub in ((sub as? UIScrollView).map { [$0] } ?? []) + scrollViews(in: sub) }
+        }
+        return scrollViews(in: pdfView)
+    }
+
+    /// At the fitted size (One Page or Two Pages, not zoomed in) the page
+    /// needs no scrolling of PDFKit's own: a sideways drag turns the page,
+    /// which PageTurnAnimator moves with the finger. Left on, PDFKit's scroll
+    /// view moved the new page as well (by the finger's distance again, in
+    /// PDFs whose page is a hair wider than its view), so it outran the
+    /// finger and slid over the old page, then sprang back as the finger
+    /// lifted. Zoomed in, or in Scroll, the pages scroll as usual. (Pinches
+    /// still zoom with scrolling off.)
+    private func updatePDFScrolling() {
+        let zoomed = fitScale.map { pdfView.scaleFactor > $0 * 1.01 } ?? true
+        setPDFScrolling(state.flow == .scrolled || zoomed)
+    }
+
+    private func setPDFScrolling(_ on: Bool) {
+        for scroll in pdfScrollViews where scroll.isScrollEnabled != on { scroll.isScrollEnabled = on }
     }
 
     /// Back to the page's fitted size (the "1×" of a PDF here: the page or
@@ -425,6 +455,8 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         guard let fit = fitScale, pdfView.scaleFactor > fit * 1.01 else { return }
         UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.25) {
             self.pdfView.scaleFactor = fit
+        } completion: { _ in
+            self.updatePDFScrolling()
         }
     }
 
@@ -518,6 +550,22 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         default:
             break
         }
+    }
+
+    /// A finger touched the page: PDFKit's own double tap (which zooms in,
+    /// or back out) may only work in the centre. At the sides taps turn the
+    /// page, and quick taps there were taken as double taps, zooming in
+    /// midway through the turns. Switching it off resets it, so a tap at a
+    /// side followed by one in the centre is not a double tap either.
+    func gestureRecognizer(_ recogniser: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        let x = touch.location(in: pdfView).x
+        let allowed = state.flow == .scrolled || ClickZone(x: x, width: pdfView.bounds.width) == .centre
+        for zoom in pdfView.gestureRecognizers ?? [] {
+            if let tap = zoom as? UITapGestureRecognizer, tap.numberOfTapsRequired == 2, tap.isEnabled != allowed {
+                tap.isEnabled = allowed
+            }
+        }
+        return true
     }
 
     func gestureRecognizerShouldBegin(_ recogniser: UIGestureRecognizer) -> Bool {
@@ -681,22 +729,23 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// whole screen (the controls float over it), so they do not. They are
     /// new views after each change of layout, so this runs then.
     private func ignoreSafeAreaInScrolling() {
-        func scrollViews(in view: UIView) -> [UIScrollView] {
-            view.subviews.flatMap { sub in ((sub as? UIScrollView).map { [$0] } ?? []) + scrollViews(in: sub) }
-        }
-        for scroll in scrollViews(in: pdfView) where scroll.contentInsetAdjustmentBehavior != .never {
+        let scrollViews = pdfScrollViews
+        for scroll in scrollViews where scroll.contentInsetAdjustmentBehavior != .never {
             scroll.contentInsetAdjustmentBehavior = .never
         }
+        updatePDFScrolling()
         // The reader's pinches are followed (pinched), so their zoom is kept
         // as the page turns: PDFKit resets the scale when the page changes.
-        for scroll in scrollViews(in: pdfView) {
+        for scroll in scrollViews {
             if let pinch = scroll.pinchGestureRecognizer, !followedPinches.contains(ObjectIdentifier(pinch)) {
                 followedPinches.insert(ObjectIdentifier(pinch))
                 pinch.addTarget(self, action: #selector(pinched(_:)))
             }
         }
-        // PDFKit's own double tap zooms in; here a double tap in the centre
-        // goes back to the fitted size (centreTapped), so PDFKit's is off.
+        // The PDF view's own double tap zooms in and out, in the centre only
+        // (see gestureRecognizer(_:shouldReceive:)); a centre double tap also
+        // brings a zoomed page back to its fitted size (centreTapped). The
+        // double taps of PDFKit's inner views are off.
         func allViews(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(allViews) }
         for view in allViews(pdfView) {
             for recogniser in view.gestureRecognizers ?? [] {
@@ -723,6 +772,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             pdfView.minScaleFactor = 0.05
             pdfView.autoScales = true
             fitScale = nil
+            updatePDFScrolling()
             return
         }
         // The pages on show, and the space they take side by side.
@@ -741,6 +791,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         // next page.
         if resetZoom { readerZoom = 1 }
         fitScale = fit
+        defer { updatePDFScrolling() }
         lastFittedSize = pdfView.bounds.size
         settingScale = true
         pdfView.autoScales = false
