@@ -21,8 +21,10 @@ PRODUCT_MODULE_NAME = PlatenReader
 // PDFs with its own home screen; still to come are the DMG, Sparkle, the
 // VoiceOver pass and App Store submission. 0.9 marks the release candidates
 // (TestFlight and the last Mac betas). Bump the second number for each
-// release with something new, the third for fixes alone.
-MARKETING_VERSION = 0.8.0
+// release with something new. Meanwhile the third number goes up by one with
+// every change made (each request's commit), so a build on a test device can
+// be matched to it: 0.8.1 is the first of these.
+MARKETING_VERSION = 0.8.1
 CURRENT_PROJECT_VERSION = 1
 
 // The minimum systems from the spec's "Decisions made".

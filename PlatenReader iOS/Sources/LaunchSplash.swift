@@ -128,11 +128,19 @@ final class LaunchSplash {
     /// long as the splash is up. Under Reduce Motion the lines only fade in
     /// and out.
     ///
-    /// The lines are drawn over the symbol's picture, placed by where its
-    /// pages are within it (measured from the "book" symbol: the picture is
-    /// 85 × 68 at this size, the pages' insides run from x 12 to 40.5 and 44.5
-    /// to 77, and from y 16 to 52), as fractions, so they follow the picture
-    /// whatever its exact size.
+    /// The lines are drawn over the symbol's picture, as curves that follow
+    /// its pages. Each page of the "book" symbol is an arch: its top and
+    /// bottom edges rise towards the middle of the page and fall towards the
+    /// spine and the outer edge. Measured from the symbol (its picture is
+    /// 85 × 68 at this size), the insides of the left page's edges are close
+    /// to the parabolas y = 9.6 + 0.0285 (x − 26)² (top) and
+    /// y = 51.45 + 0.0212 (x − 26)² (bottom), between x 12 and 40.5; the
+    /// right page is its mirror image (x → 85 − x). A line of text a fraction
+    /// `t` of the way down the page lies that fraction of the way from one
+    /// edge to the other, so it bends a little less than the top and a little
+    /// more than the bottom, as text on an open book's page does. Everything
+    /// is in the picture's units, scaled to the picture on screen, so the
+    /// lines follow it whatever its exact size.
     private func writeOnPages() {
         guard let image = mark.image else { return }
         // The whole picture in the mark's coordinates: the image view is
@@ -144,14 +152,45 @@ final class LaunchSplash {
         func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
             CGPoint(x: picture.minX + picture.width * x / 85, y: picture.minY + picture.height * y / 68)
         }
-        // Four lines a page, the last one short, as at a paragraph's end.
-        let rows: [CGFloat] = [22.5, 29, 35.5, 42]
-        let pages: [(from: CGFloat, to: CGFloat)] = [(16.5, 36.5), (48.5, 72.5)]
-        var lines: [(CGPoint, CGPoint)] = []
-        for page in pages {
-            for (i, y) in rows.enumerated() {
-                let end = i == rows.count - 1 ? page.from + (page.to - page.from) * 0.55 : page.to
-                lines.append((point(page.from, y), point(end, y)))
+        // A line's height on the left page at x, `t` of the way down; and
+        // its slope there (for the curve's control point).
+        let peak: CGFloat = 26
+        func height(_ x: CGFloat, _ t: CGFloat) -> CGFloat {
+            let d = (x - peak) * (x - peak)
+            return (9.6 + 0.0285 * d) * (1 - t) + (51.45 + 0.0212 * d) * t
+        }
+        func slope(_ x: CGFloat, _ t: CGFloat) -> CGFloat {
+            2 * (x - peak) * (0.0285 * (1 - t) + 0.0212 * t)
+        }
+        /// One line on the left page from x0 to x1, as a quadratic Bézier
+        /// curve, which draws a parabola exactly: its control point is where
+        /// the tangents at the two ends meet, halfway across.
+        func leftLine(_ x0: CGFloat, _ x1: CGFloat, _ t: CGFloat) -> (CGPoint, CGPoint, CGPoint) {
+            let y0 = height(x0, t)
+            let mid = (x0 + x1) / 2
+            return (CGPoint(x: x0, y: y0), CGPoint(x: mid, y: y0 + slope(x0, t) * (mid - x0)),
+                    CGPoint(x: x1, y: height(x1, t)))
+        }
+
+        // Four lines a page (how far down each sits), the last one short, as
+        // at a paragraph's end. Each runs from the side text starts on: the
+        // outer edge on the left page, the spine on the right.
+        let rows: [CGFloat] = [0.31, 0.46, 0.62, 0.77]
+        let from: CGFloat = 16.5, to: CGFloat = 36.5
+        var lines: [UIBezierPath] = []
+        for rightPage in [false, true] {
+            for (i, t) in rows.enumerated() {
+                let short = i == rows.count - 1
+                // On the right page text starts at the spine, which mirrors
+                // to the left page's inner end.
+                let (x0, x1) = rightPage ? (to, short ? to - (to - from) * 0.55 : from)
+                                         : (from, short ? from + (to - from) * 0.55 : to)
+                let (a, c, b) = leftLine(x0, x1, t)
+                func place(_ p: CGPoint) -> CGPoint { point(rightPage ? 85 - p.x : p.x, p.y) }
+                let path = UIBezierPath()
+                path.move(to: place(a))
+                path.addQuadCurve(to: place(b), controlPoint: place(c))
+                lines.append(path)
             }
         }
 
@@ -163,13 +202,11 @@ final class LaunchSplash {
         // splash is first drawn (a begin time of 0), however long start-up
         // keeps that waiting, so the writing is always seen from its start.
         let lead = 0.3
-        for (i, line) in lines.enumerated() {
+        for (i, path) in lines.enumerated() {
             let layer = CAShapeLayer()
-            let path = UIBezierPath()
-            path.move(to: line.0)
-            path.addLine(to: line.1)
             layer.path = path.cgPath
             layer.strokeColor = colour
+            layer.fillColor = nil // a curve has an inside, filled black by default
             layer.lineWidth = 2
             layer.lineCap = .round
             layer.opacity = 0.75
