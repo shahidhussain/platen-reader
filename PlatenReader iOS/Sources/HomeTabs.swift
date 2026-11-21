@@ -434,8 +434,7 @@ struct RecentFoldersView: View {
             }
             .navigationDestination(for: URL.self) { folder in
                 FolderGridView(folder: folder, openBook: actions.openBook,
-                               openFolder: { navigation.folderPath.append($0) },
-                               chooseBook: actions.chooseBook, chooseFolder: actions.chooseFolder)
+                               openFolder: { navigation.folderPath.append($0) })
                     .id(folder)
             }
             .task(id: recents.items.map(\.id)) { await checkReach(recents.items, in: recents, into: $reach) }

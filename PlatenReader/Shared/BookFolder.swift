@@ -101,16 +101,49 @@ enum FolderSort: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// What the words under each cover in a folder say.
+enum CoverLabel: String, CaseIterable, Identifiable, Sendable {
+    /// The file's name without its extension ("Middlemarch").
+    case fileName
+    /// The book's title, with its author below.
+    case titleThenAuthor
+    /// The author, with the book's title below.
+    case authorThenTitle
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .fileName: return String(localized: "File Name")
+        case .titleThenAuthor: return String(localized: "Title, then Author")
+        case .authorThenTitle: return String(localized: "Author, then Title")
+        }
+    }
+
+    /// The first and second lines under a cover. A book not read yet (or
+    /// only in iCloud) has no title or author known: its file name stands
+    /// in for the title.
+    func lines(fileName: String, title: String?, author: String?) -> (String, String?) {
+        let title = title ?? fileName
+        switch self {
+        case .fileName: return (fileName, nil)
+        case .titleThenAuthor: return (title, author)
+        case .authorThenTitle: return author.map { ($0, title) } ?? (title, nil)
+        }
+    }
+}
+
 /// How the folder view shows a folder, one choice for every folder, kept
 /// with the settings: which kinds of book (all unless the reader turns some
-/// off with the filter button, never none), in what order, and how many
-/// covers across (a pinch changes it).
+/// off in the View Options sheet, never none), in what order, what the
+/// words under each cover say, and how many covers across (a pinch changes
+/// it).
 @MainActor
 final class BookTypeFilter: ObservableObject {
     static let shared = BookTypeFilter(defaults: AppDefaults.store)
 
     @Published private(set) var hidden: Set<BookFileType>
     @Published var sort: FolderSort { didSet { defaults.set(sort.rawValue, forKey: "folderSort") } }
+    @Published var coverLabel: CoverLabel { didSet { defaults.set(coverLabel.rawValue, forKey: "folderCoverLabel") } }
     /// Covers across, when the reader has pinched (nil: the default for the
     /// screen).
     @Published var columns: Int? { didSet { defaults.set(columns, forKey: "folderColumns") } }
@@ -126,6 +159,7 @@ final class BookTypeFilter: ObservableObject {
         let saved = Set((defaults.stringArray(forKey: Self.key) ?? []).compactMap(BookFileType.init(rawValue:)))
         hidden = saved.count == BookFileType.allCases.count ? [] : saved
         sort = defaults.string(forKey: "folderSort").flatMap(FolderSort.init) ?? .name
+        coverLabel = defaults.string(forKey: "folderCoverLabel").flatMap(CoverLabel.init) ?? .titleThenAuthor
         columns = defaults.object(forKey: "folderColumns") as? Int
     }
 

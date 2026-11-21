@@ -18,23 +18,19 @@ struct FolderGridView: View {
     let openBook: (URL) -> Void
     /// A folder inside this one was tapped.
     let openFolder: (URL) -> Void
-    let chooseBook: () -> Void
-    let chooseFolder: () -> Void
     @StateObject private var model: FolderModel
     /// The search field (shown by the search button) and what is typed in it.
     @State private var query = ""
     @State private var searching = false
     /// The book whose Get Info sheet is showing.
     @State private var infoFor: FolderEntry?
+    @State private var showingOptions = false
     @ObservedObject private var filter = BookTypeFilter.shared
 
-    init(folder: URL, openBook: @escaping (URL) -> Void, openFolder: @escaping (URL) -> Void,
-         chooseBook: @escaping () -> Void, chooseFolder: @escaping () -> Void) {
+    init(folder: URL, openBook: @escaping (URL) -> Void, openFolder: @escaping (URL) -> Void) {
         self.folder = folder
         self.openBook = openBook
         self.openFolder = openFolder
-        self.chooseBook = chooseBook
-        self.chooseFolder = chooseFolder
         _model = StateObject(wrappedValue: FolderModel(folder: folder))
     }
 
@@ -66,10 +62,13 @@ struct FolderGridView: View {
                             FolderTile(name: entry.name)
                         case .book:
                             let info = model.covers[entry.url]
+                            let lines = filter.coverLabel.lines(fileName: entry.name, title: info?.title,
+                                                                author: info?.authors.first)
                             BookTile(title: info?.title ?? entry.name, author: info?.authors.first,
                                      imageFile: model.coverFiles[entry.url],
                                      badge: entry.isDownloaded ? nil
-                                         : model.downloading.contains(entry.url) ? .downloading : .inCloud)
+                                         : model.downloading.contains(entry.url) ? .downloading : .inCloud,
+                                     caption: lines.0, subcaption: lines.1)
                         }
                     }
                     .buttonStyle(.plain)
@@ -146,35 +145,16 @@ struct FolderGridView: View {
                 Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                // The kinds of book shown, each with a tick; at least one
-                // stays ticked. The menu stays open while ticking.
-                Menu {
-                    Section("Sort By") {
-                        Picker("Sort By", selection: $filter.sort) {
-                            ForEach(FolderSort.allCases) { Text($0.label).tag($0) }
-                        }
-                        .pickerStyle(.inline)
-                        .labelsHidden()
-                    }
-                    Section("Show") {
-                        ForEach(BookFileType.allCases) { type in
-                            Toggle(type.label, isOn: Binding(get: { filter.isShown(type) }, set: { _ in filter.toggle(type) }))
-                                .menuActionDismissBehavior(.disabled)
-                        }
-                    }
-                } label: {
-                    Label("Filter", systemImage: filter.showsAll ? "line.3.horizontal.decrease.circle"
-                                                                 : "line.3.horizontal.decrease.circle.fill")
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button(action: chooseFolder) { Label("Choose Folder…", systemImage: "folder.badge.plus") }
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
+                // View Options: the order, the kinds of book shown and the
+                // words under each cover, in a sheet (filled in when some
+                // kinds are hidden).
+                Button { showingOptions = true } label: {
+                    Label("View Options", systemImage: filter.showsAll ? "line.3.horizontal.decrease.circle"
+                                                                       : "line.3.horizontal.decrease.circle.fill")
                 }
             }
         }
+        .sheet(isPresented: $showingOptions) { FolderViewOptions() }
         .refreshable { model.refresh() }
         .onAppear {
             model.onDownloaded = openBook
@@ -214,6 +194,53 @@ struct FolderGridView: View {
             // In iCloud only: fetch it first; it opens when it arrives.
             model.download(entry)
         }
+    }
+}
+
+/// View Options, a sheet from the folder view's filter button: the order of
+/// the books, the kinds shown (at least one stays ticked), and the words
+/// under each cover. One choice for every folder.
+struct FolderViewOptions: View {
+    @ObservedObject private var filter = BookTypeFilter.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Sort By") {
+                    Picker("Sort By", selection: $filter.sort) {
+                        ForEach(FolderSort.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
+                Section {
+                    Picker("Under Each Cover", selection: $filter.coverLabel) {
+                        ForEach(CoverLabel.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("Under Each Cover")
+                } footer: {
+                    Text("A book’s title and author are known once Platen has read it; until then, and for books only in iCloud, its file name is shown.")
+                }
+                Section {
+                    ForEach(BookFileType.allCases) { type in
+                        Toggle(type.label, isOn: Binding(get: { filter.isShown(type) }, set: { _ in filter.toggle(type) }))
+                            .disabled(filter.isShown(type) && BookFileType.allCases.filter(filter.isShown).count == 1)
+                    }
+                } header: {
+                    Text("Show")
+                }
+            }
+            .navigationTitle("View Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -307,6 +334,10 @@ struct BookTile: View {
     /// while the tile is on screen (CoverImages).
     let imageFile: URL?
     var badge: Badge?
+    /// The words under the cover (the folder view's View Options choose
+    /// them): one or two lines; the title alone when not given.
+    var caption: String? = nil
+    var subcaption: String? = nil
     @State private var image: CGImage?
 
     var body: some View {
@@ -314,10 +345,19 @@ struct BookTile: View {
             Color.clear
                 .aspectRatio(2 / 3, contentMode: .fit)
                 .overlay(alignment: .bottom) { cover }
-            Text(title)
+            // Two lines either way, so the rows of covers line up.
+            if let subcaption {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(caption ?? title).foregroundStyle(.primary.opacity(0.75)).lineLimit(1)
+                    Text(subcaption).foregroundStyle(.secondary).lineLimit(1)
+                }
                 .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2, reservesSpace: true)
+            } else {
+                Text(caption ?? title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2, reservesSpace: true)
+            }
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
