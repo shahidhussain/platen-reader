@@ -266,6 +266,9 @@
     "Invert Colours" : {
 
     },
+    "It is in iCloud and not yet on this device. Connect to the internet to download it." : {
+
+    },
     "It may have been moved or deleted, or it is on a drive or network share that is not connected." : {
 
     },
@@ -369,6 +372,9 @@
 
     },
     "Not connected" : {
+
+    },
+    "Offline" : {
 
     },
     "OK" : {

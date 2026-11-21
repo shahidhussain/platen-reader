@@ -80,10 +80,12 @@ struct OverlayBar: View {
     var part: Part = .whole
 
     /// The Mac draws the whole bar as one panel at the bottom of the window.
-    /// iOS splits it, in the way of Apple's own iOS 26 apps: the buttons are
-    /// a small glass group at the bottom right, just above the slider, which
-    /// floats at the bottom with ‹ and › at its ends.
-    enum Part { case whole, buttons, scrubber }
+    /// iOS splits it, in the way of Apple's own iOS 26 apps: two small glass
+    /// groups just above the slider, which floats at the bottom with ‹ and ›
+    /// at its ends. At the left, the marks ("get me back here"): the
+    /// favourite heart and the bookmark. At the right, the views of the
+    /// book: Contents, Layout and Aa.
+    enum Part { case whole, marks, buttons, scrubber }
 
     @State private var dragFraction: Double?
     /// The popover that is open, if any: one at a time.
@@ -110,6 +112,7 @@ struct OverlayBar: View {
     var body: some View {
         switch part {
         case .whole: wholeBar
+        case .marks: marksGroup
         case .buttons: buttonGroup
         case .scrubber: scrubber
         }
@@ -117,16 +120,30 @@ struct OverlayBar: View {
 
     // MARK: - iOS: the buttons, and the floating slider
 
-    /// Contents, bookmark, layout, Aa and the favourite heart, side by side on one
-    /// piece of glass.
+    /// The favourite heart and the bookmark, side by side on one piece of
+    /// glass, at the left.
+    private var marksGroup: some View {
+        HStack(spacing: 0) {
+            if actions.toggleFavourite != nil { favouriteButton.frame(width: 44, height: 44) }
+            // The system's bookmark symbol is narrow beside the others.
+            bookmarkButton.scaleEffect(x: 1.2, y: 1).frame(width: 44, height: 44)
+        }
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .font(.body.weight(.medium))
+        .imageScale(.large)
+        .padding(.horizontal, 4)
+        .overlaySurface(Capsule())
+        .tint(.primary)
+    }
+
+    /// Contents, Layout and Aa, side by side on one piece of glass, at the
+    /// right.
     private var buttonGroup: some View {
         HStack(spacing: 0) {
             contentsButton.frame(width: 44, height: 44)
-            // The system's bookmark symbol is narrow beside the others.
-            bookmarkButton.scaleEffect(x: 1.2, y: 1).frame(width: 44, height: 44)
             layoutButton.frame(width: 44, height: 44)
             typographyButton.frame(width: 44, height: 44)
-            if actions.toggleFavourite != nil { favouriteButton.frame(width: 44, height: 44) }
         }
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
