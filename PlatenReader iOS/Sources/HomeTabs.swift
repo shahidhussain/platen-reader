@@ -43,11 +43,12 @@ enum FolderAccess {
 /// recent books, no favourites), it is the welcome alone: Open Book… and
 /// Choose Folder…. As soon as a book is opened or a folder chosen, the
 /// welcome is gone for good and the home screen is three tabs:
-/// - **Home:** the reader's folders (the ones they chose), as a list; a
-///   folder opens inside the tab. The gear for Settings is at its foot.
+/// - **Home:** the reader's folders (the ones they chose), as a list (a
+///   folder opens inside the tab), and the first few favourites, in the
+///   order the reader puts them (HomeSections.swift). Settings is the gear.
 /// - **Recent Books:** books opened lately, from anywhere, newest first.
-/// - **Favourites:** books the reader marked with the heart in the reader,
-///   "what I am reading now".
+/// - **Favourites:** books the reader marked as favourites (a cover's
+///   long-press menu), "what I am reading now".
 struct HomeTabs: View {
     @ObservedObject var navigation: HomeNavigation
     let actions: HomeActions
@@ -397,31 +398,32 @@ struct RecentFoldersView: View {
     @State private var cannotOpen: RecentItem?
     @State private var editMode: EditMode = .inactive
     @State private var showingSettings = false
+    @ObservedObject private var favourites = RecentList.favorites
+    @ObservedObject private var sectionOrder = HomeSectionOrder.shared
+
+    /// The Favourites section shows once there is a favourite.
+    private var showsFavourites: Bool { !favourites.items.isEmpty }
 
     var body: some View {
         NavigationStack(path: $navigation.folderPath) {
             List {
-                Section {
-                ForEach(recents.items) { item in
-                    Button { open(item) } label: { row(item) }
-                        .buttonStyle(.plain) // ordinary text, not the tint
-                        // While editing, rows are only moved or deleted (not
-                        // greyed, as disabling them would make them look gone).
-                        .allowsHitTesting(!editMode.isEditing)
-                        .contextMenu {
-                            Button(role: .destructive) { recents.remove(item) } label: {
-                                Label("Remove from Recents", systemImage: "minus.circle")
-                            }
+                // While editing: the sections' order, with drag handles.
+                if editMode.isEditing && showsFavourites {
+                    Section {
+                        ForEach(sectionOrder.order) { section in
+                            Label(section.label, systemImage: section.symbol)
                         }
+                        .onMove { sectionOrder.move(fromOffsets: $0, toOffset: $1) }
+                        .deleteDisabled(true)
+                    } header: {
+                        Text("Sections")
+                    }
                 }
-                .onMove { recents.move(fromOffsets: $0, toOffset: $1) }
-                .onDelete { offsets in
-                    for item in offsets.map({ recents.items[$0] }) { recents.remove(item) }
-                }
-                } header: {
-                    Text("Folders")
-                } footer: {
-                    if recents.items.isEmpty { emptyFolders }
+                ForEach(sectionOrder.order) { section in
+                    switch section {
+                    case .folders: foldersSection
+                    case .favourites: if showsFavourites { favouritesSection }
+                    }
                 }
             }
             .listStyle(.insetGrouped)
@@ -429,12 +431,12 @@ struct RecentFoldersView: View {
             .contentMargins(.top, 16, for: .scrollContent)
             .sheet(isPresented: $showingSettings) { ReaderSettingsView() }
             .environment(\.editMode, $editMode)
-            .onChange(of: recents.items.isEmpty) { _, empty in if empty { editMode = .inactive } }
+            .onChange(of: recents.items.isEmpty && !showsFavourites) { _, empty in if empty { editMode = .inactive } }
             // The app's name heads the home screen (the tab below still
             // says Home). Its version is in Settings, under About.
             .navigationTitle(Text(verbatim: "Platen Reader"))
             .toolbar {
-                if !recents.items.isEmpty {
+                if !recents.items.isEmpty || showsFavourites {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(editMode.isEditing ? "Done" : "Edit") {
                             withAnimation { editMode = editMode.isEditing ? .inactive : .active }
@@ -471,6 +473,53 @@ struct RecentFoldersView: View {
                 Button("OK", role: .cancel) {}
             } message: { _ in
                 Text("It may have been moved or deleted, or it is on a drive or network share that is not connected.")
+            }
+        }
+    }
+
+    private var foldersSection: some View {
+        Section {
+            ForEach(recents.items) { item in
+                Button { open(item) } label: { row(item) }
+                    .buttonStyle(.plain) // ordinary text, not the tint
+                    // While editing, rows are only moved or deleted (not
+                    // greyed, as disabling them would make them look gone).
+                    .allowsHitTesting(!editMode.isEditing)
+                    .contextMenu {
+                        Button(role: .destructive) { recents.remove(item) } label: {
+                            Label("Remove from Recents", systemImage: "minus.circle")
+                        }
+                    }
+            }
+            .onMove { recents.move(fromOffsets: $0, toOffset: $1) }
+            .onDelete { offsets in
+                for item in offsets.map({ recents.items[$0] }) { recents.remove(item) }
+            }
+        } header: {
+            Text("Folders")
+        } footer: {
+            if recents.items.isEmpty { emptyFolders }
+        }
+    }
+
+    /// The first few favourites, three across, with See All (the iOS way
+    /// to the whole list, as in Music or the App Store) going to the
+    /// Favourites tab.
+    private var favouritesSection: some View {
+        Section {
+            FavouritesStrip(actions: actions)
+                .allowsHitTesting(!editMode.isEditing)
+                .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 12, trailing: 16))
+                .deleteDisabled(true)
+                .moveDisabled(true)
+        } header: {
+            HStack {
+                Text("Favourites")
+                Spacer()
+                Button("See All") { navigation.tab = .favourites }
+                    .font(.subheadline)
+                    .textCase(nil)
+                    .disabled(editMode.isEditing)
             }
         }
     }

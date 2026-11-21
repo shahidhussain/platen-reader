@@ -24,7 +24,7 @@ PRODUCT_MODULE_NAME = PlatenReader
 // release with something new. Meanwhile the third number goes up by one with
 // every change made (each request's commit), so a build on a test device can
 // be matched to it: 0.8.1 is the first of these.
-MARKETING_VERSION = 0.8.18
+MARKETING_VERSION = 0.8.19
 CURRENT_PROJECT_VERSION = 1
 
 // The minimum systems from the spec's "Decisions made".
@@ -33,12 +33,12 @@ IPHONEOS_DEPLOYMENT_TARGET = 17.0
 
 SWIFT_VERSION = 5.0
 
-// The app's accent: a warm honey, from the Honey background of the app icon
-// (design/icon/make-icons.py), darkened in light mode so it reads on white
-// and sepia pages, brighter in dark mode. Defined once, in
-// PlatenReader/Shared/Colours.xcassets, which both apps include. Code that
-// must be honey whatever the Mac's own accent colour is uses `Color.honey`.
-ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = Honey
+// The app's accent: a bright warm orange, the icon's honey turned up into
+// a design statement (light #F0861A, dark #FF9F0A, iOS's own dark orange).
+// Defined once, in PlatenReader/Shared/Colours.xcassets ("Accent"), which
+// both apps include. Code that must use it whatever the Mac's own accent
+// colour is uses `Color.platenAccent`.
+ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = Accent
 
 // Your own signing team, for running the iOS app on a real iPhone or iPad.
 // It is personal, so it is kept out of the repository: create

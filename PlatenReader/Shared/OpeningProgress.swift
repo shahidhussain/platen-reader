@@ -41,7 +41,7 @@ enum OpeningStage: Int, Comparable {
 /// A slim loading bar with a line saying what is happening, shown in the
 /// middle of the page while a book opens (only if that takes a moment: the
 /// reader shows it after about a third of a second). The bar fills by the
-/// steps actually done: plain and thin, in the app's honey.
+/// steps actually done: plain and thin, in the app's accent.
 struct OpeningProgressView: View {
     @ObservedObject var state: ReaderState
     @State private var progress = 0.0
@@ -82,7 +82,7 @@ struct ThinProgressBar: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.primary.opacity(0.12))
                 Capsule()
-                    .fill(Color.honey)
+                    .fill(Color.platenAccent)
                     .frame(width: max(geo.size.height, geo.size.width * progress))
             }
         }
