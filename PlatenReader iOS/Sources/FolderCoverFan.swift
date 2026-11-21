@@ -95,10 +95,14 @@ struct FolderRowPicture: View {
 /// For each folder (by its entry's id, which outlives a change of path) a
 /// small record is kept in Caches: the day the covers were chosen, and
 /// copies of the three pictures. Until the day changes they are shown as
-/// they are. On a new day three others are drawn at random from the books
-/// in the folder's saved listing whose covers are real pictures (avoiding
-/// yesterday's where the folder has enough); if none can be found (the
-/// folder has not been opened lately), yesterday's stay.
+/// they are; if fewer than three were found (the folder was only glanced
+/// at, so few covers had been read), more are added as they become known.
+/// On a new day three others are drawn at random from the books whose
+/// covers are real pictures (avoiding yesterday's where the folder has
+/// enough): books in the folder's saved listing, in its subfolders' if
+/// those were opened, and books only in iCloud (by iCloud's thumbnail of
+/// them). If none can be found (the folder has not been opened lately),
+/// yesterday's stay. Each choice is logged with its counts ("folder fan:").
 @MainActor
 enum FolderFans {
     static let count = 3
@@ -110,6 +114,17 @@ enum FolderFans {
         var day: String
         /// The cover keys chosen (CoverCache keys), to avoid them next day.
         var keys: [String]
+        /// Their titles, so a fan topped up later never shows one twice.
+        var titles: [String]? = nil
+    }
+
+    /// A book whose saved cover might go in a fan: where its cover is kept
+    /// in `CoverCache`, and whether it is a PDF (whose first page may be
+    /// text).
+    private struct Candidate: Sendable {
+        let name: String
+        let key: String
+        let isPDF: Bool
     }
 
     private static var directory: URL {
@@ -133,35 +148,42 @@ enum FolderFans {
 
     static func covers(for item: RecentItem) async -> [CGImage] {
         let id = item.id
+        let today = day()
         let record = (try? Data(contentsOf: recordURL(id))).flatMap { try? JSONDecoder().decode(Record.self, from: $0) }
-        var files = (0..<count).map { pictureURL(id, $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let saved = (0..<count).map { pictureURL(id, $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
+        var files = saved
 
-        if record?.day != day() || files.isEmpty {
-            // Time for a fresh three (or the first).
-            if let listing = FolderListingCache.listing(of: RecentItem.pathURL(item.path)) {
-                // Text files have no cover. PDFs do (their first page),
-                // unless it is a page of text (checked in `pick`).
-                let books = listing.filter {
-                    $0.kind == .book && $0.isDownloaded && BookFileType($0.url) != .text
+        // A new day (or none yet): a fresh three. The same day with fewer
+        // than three (chosen before many covers had been read, say): topped
+        // up, keeping those already shown.
+        let newDay = record?.day != today || saved.isEmpty
+        let wanted = newDay ? count : count - saved.count
+        if wanted > 0 {
+            let books = candidates(of: item)
+            let keep = newDay ? [] : (record?.keys ?? [])
+            let keepTitles = newDay ? [] : (record?.titles ?? [])
+            let avoid = newDay ? Set(record?.keys ?? []) : []
+            let picked: [Pick] = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .utility).async {
+                    continuation.resume(returning: pick(wanted, from: books, excluding: Set(keep),
+                                                        titles: Set(keepTitles), avoiding: avoid))
                 }
-                let avoid = Set(record?.keys ?? [])
-                let picked: [(key: String, file: URL)] = await withCheckedContinuation { continuation in
-                    DispatchQueue.global(qos: .utility).async {
-                        continuation.resume(returning: pick(from: books, avoiding: avoid))
-                    }
-                }
-                if !picked.isEmpty {
-                    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            }
+            log.info("folder fan: \(books.count, privacy: .public) books to look at, \(picked.count, privacy: .public) picked, \(saved.count, privacy: .public) kept, \(newDay ? "new day" : "topping up", privacy: .public)")
+            if !picked.isEmpty {
+                try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                if newDay {
                     for index in 0..<count { try? FileManager.default.removeItem(at: pictureURL(id, index)) }
                     files = []
-                    for (index, choice) in picked.enumerated() {
-                        let copy = pictureURL(id, index)
-                        if (try? FileManager.default.copyItem(at: choice.file, to: copy)) != nil { files.append(copy) }
-                    }
-                    CoverImages.shared.forget(files)
-                    let saved = Record(day: day(), keys: picked.map(\.key))
-                    if let data = try? JSONEncoder().encode(saved) { try? data.write(to: recordURL(id), options: .atomic) }
                 }
+                for choice in picked {
+                    let copy = pictureURL(id, files.count)
+                    if (try? FileManager.default.copyItem(at: choice.file, to: copy)) != nil { files.append(copy) }
+                }
+                CoverImages.shared.forget(files)
+                let record = Record(day: today, keys: keep + picked.map(\.key),
+                                    titles: keepTitles + picked.map(\.title))
+                if let data = try? JSONEncoder().encode(record) { try? data.write(to: recordURL(id), options: .atomic) }
             }
         }
 
@@ -173,30 +195,68 @@ enum FolderFans {
         return images
     }
 
-    /// Three books at random whose saved covers are real pictures, not
-    /// yesterday's if the folder has enough others. Reads only the cover
-    /// cache's small records, never the books.
-    private nonisolated static func pick(from books: [FolderEntry], avoiding avoid: Set<String>) -> [(key: String, file: URL)] {
+    /// The books whose covers may have been saved: those in the folder's
+    /// saved listing and, if they were opened too, its folders' (two levels
+    /// down: a folder of comics kept in one folder per series has none of
+    /// its own). A book only in iCloud counts as well: its cover is iCloud's
+    /// thumbnail of it, saved under a key of its own (FolderModel). Text
+    /// files have no cover.
+    private static func candidates(of item: RecentItem) -> [Candidate] {
+        var found: [Candidate] = []
+        var folders: [(URL, Int)] = [(RecentItem.pathURL(item.path), 0)]
+        while let (folder, depth) = folders.popLast(), found.count < 2000 {
+            guard let listing = FolderListingCache.listing(of: folder) else { continue }
+            for entry in listing {
+                if entry.kind == .folder {
+                    if depth < 2 { folders.append((entry.url, depth + 1)) }
+                    continue
+                }
+                guard let type = BookFileType(entry.url), type != .text else { continue }
+                let key: String
+                if entry.isDownloaded {
+                    guard let size = entry.size, let modified = entry.modified else { continue }
+                    key = CoverCache.key(path: entry.url.standardizedFileURL.path, size: size, modified: modified)
+                } else {
+                    key = CoverCache.key(path: "icloud-thumbnail:" + FolderScanner.canonicalPath(entry.url), size: 0,
+                                         modified: entry.modified ?? .distantPast)
+                }
+                found.append(Candidate(name: entry.name, key: key, isPDF: type == .pdf))
+            }
+        }
+        return found
+    }
+
+    private struct Pick: Sendable {
+        let key: String
+        let title: String
+        let file: URL
+    }
+
+    /// Up to `wanted` books at random whose saved covers are real pictures
+    /// (a PDF's not a page of text), one per title, none already chosen,
+    /// and not yesterday's if the folder has enough others. Reads only the
+    /// cover cache's small records, never the books.
+    private nonisolated static func pick(_ wanted: Int, from books: [Candidate], excluding chosen: Set<String>,
+                                         titles chosenTitles: Set<String>, avoiding avoid: Set<String>) -> [Pick] {
         let cache = CoverCache.standard()
-        var fresh: [(String, URL)] = []
-        var seen: [(String, URL)] = []
+        var fresh: [Pick] = []
+        var seen: [Pick] = []
         // One cover per title: the same book kept twice (an EPUB and its
         // KEPUB, say) would show the same picture twice.
-        var titles: Set<String> = []
-        // At most a couple of hundred looked at, in random order, so a
-        // very large folder costs no more than a small one.
-        for book in books.shuffled().prefix(200) {
-            guard let size = book.size, let modified = book.modified else { continue }
-            let key = CoverCache.key(path: book.url.standardizedFileURL.path, size: size, modified: modified)
-            guard let entry = cache.cached(key: key), let image = entry.imageURL else { continue }
+        var titles = chosenTitles
+        // At most a few hundred looked at, in random order, so a very
+        // large folder costs no more than a small one.
+        for book in books.shuffled().prefix(400) where !chosen.contains(book.key) {
+            guard let entry = cache.cached(key: book.key), let image = entry.imageURL else { continue }
             // A PDF's "cover" is its first page: left out when that is a
             // page of text, which would show as a blank card.
-            if BookFileType(book.url) == .pdf, CoverLook.isTextLike(file: image) { continue }
+            if book.isPDF, CoverLook.isTextLike(file: image) { continue }
             let title = (entry.info.title ?? book.name).lowercased()
             guard titles.insert(title).inserted else { continue }
-            if avoid.contains(key) { seen.append((key, image)) } else { fresh.append((key, image)) }
-            if fresh.count == count { break }
+            let pick = Pick(key: book.key, title: title, file: image)
+            if avoid.contains(book.key) { seen.append(pick) } else { fresh.append(pick) }
+            if fresh.count == wanted { break }
         }
-        return Array((fresh + seen).prefix(count))
+        return Array((fresh + seen).prefix(wanted))
     }
 }
