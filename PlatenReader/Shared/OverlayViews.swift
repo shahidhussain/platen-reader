@@ -424,6 +424,25 @@ struct ProgressSlider: View {
     private var restOfTrack: Color { Color.primary.opacity(colorScheme == .dark ? 0.35 : 0.15) }
     private var tickColour: Color { Color.primary.opacity(colorScheme == .dark ? 0.5 : 0.3) }
 
+    /// The least room between two chapter ticks, in points. Many short
+    /// chapters together (front matter, a run of brief sections) otherwise
+    /// draw as a solid bar of ticks.
+    static let minimumTickSpacing: CGFloat = 6
+
+    /// The chapter starts to mark on a track `width` points long: not the
+    /// book's start or end, and none closer than `minimumTickSpacing` to
+    /// the last one kept (or to the track's ends).
+    static func spaced(_ ticks: [Double], width: CGFloat) -> [Double] {
+        let gap = Double(minimumTickSpacing / max(width, 1))
+        var kept: [Double] = []
+        var last = 0.0
+        for tick in ticks.sorted() where tick - last >= gap && 1 - tick >= gap {
+            kept.append(tick)
+            last = tick
+        }
+        return kept
+    }
+
     var body: some View {
         GeometryReader { geo in
             let usable = max(geo.size.width - knob, 1)
@@ -440,7 +459,7 @@ struct ProgressSlider: View {
                     .fill(Color.honey)
                     .frame(width: max(0, abs(position(value) - position(0))), height: track)
                     .offset(x: rightToLeft ? position(value) : knob / 2)
-                ForEach(Array(ticks.dropFirst().dropLast().enumerated()), id: \.offset) { _, tick in
+                ForEach(Array(Self.spaced(ticks, width: usable).enumerated()), id: \.offset) { _, tick in
                     Rectangle()
                         .fill(tickColour)
                         .frame(width: 1, height: 10)

@@ -157,6 +157,15 @@ final class BridgeTypesTests: XCTestCase {
         XCTAssertFalse(PageTurn.prev.isForward)
     }
 
+    /// Chapter ticks on the progress slider: never at the very ends, and
+    /// never bunched closer than the minimum spacing.
+    func testSliderTicksAreSpacedOut() {
+        // A 300-point track: 6 points is 2% of it.
+        let ticks = [0, 0.005, 0.01, 0.015, 0.03, 0.06, 0.061, 0.5, 0.99, 1]
+        XCTAssertEqual(ProgressSlider.spaced(ticks, width: 300), [0.03, 0.06, 0.5])
+        XCTAssertEqual(ProgressSlider.spaced([], width: 300), [])
+    }
+
     func testWebSettingsPayload() {
         var web = WebSettings(flow: .scrolled, pageLayout: .two, animated: true, fontSize: 18, lineHeight: 1.5,
                               lineWidth: .wide, fontFamily: "Georgia", hyphenate: false, theme: .sepia)

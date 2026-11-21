@@ -175,9 +175,13 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     }
 
     /// The page on screen is just one picture: shown natively over the page
-    /// (whose own, smaller copy the page hides), or taken away.
+    /// (whose own, smaller copy the page hides), or taken away. The room
+    /// around it (above and below a cover on a tall phone) is the page's
+    /// own colour, plain, so the picture sits on the page rather than in a
+    /// strip of glow (design review, 21 Nov 2026).
     func sessionShowLonePicture(_ data: Data?) {
         let image = data.flatMap(UIImage.init(data:))
+        lonePictureView.backgroundColor = currentTheme.uiBackground
         lonePictureView.image = image
         lonePictureView.isHidden = image == nil
         if let waiting = lonePictureWaiter {
@@ -424,6 +428,11 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         case .medium: return 30
         case .wide: return 18
         }
+    }
+
+    override func applyTheme() {
+        super.applyTheme()
+        lonePictureView?.backgroundColor = currentTheme.uiBackground
     }
 
     override func viewDidLayoutSubviews() {

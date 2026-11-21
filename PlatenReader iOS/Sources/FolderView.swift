@@ -74,6 +74,7 @@ struct FolderGridView: View {
                                      badge: entry.isDownloaded ? nil
                                          : model.downloading.contains(entry.url) ? .downloading : .inCloud,
                                      caption: lines.0, subcaption: lines.1,
+                                     titleOnTop: filter.coverLabel != .authorThenTitle || info?.authors.first == nil,
                                      isFavourite: favourites.contains(entry.url),
                                      heartbeats: heartbeats[entry.url, default: 0])
                         }
@@ -350,6 +351,9 @@ struct BookTile: View {
     /// them): one or two lines; the title alone when not given.
     var caption: String? = nil
     var subcaption: String? = nil
+    /// Whether the first line is the title. The title is always in the
+    /// main colour and the author in grey, whichever comes first.
+    var titleOnTop = true
     /// A favourite shows a small heart on its cover (not in Favourites,
     /// where every book is one).
     var isFavourite = false
@@ -365,8 +369,12 @@ struct BookTile: View {
             // Two lines either way, so the rows of covers line up.
             if let subcaption {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(caption ?? title).foregroundStyle(.primary.opacity(0.75)).lineLimit(1)
-                    Text(subcaption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(caption ?? title)
+                        .foregroundStyle(titleOnTop ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .lineLimit(1)
+                    Text(subcaption)
+                        .foregroundStyle(titleOnTop ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                        .lineLimit(1)
                 }
                 .font(.caption)
             } else {

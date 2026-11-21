@@ -10,7 +10,7 @@ import SwiftUI
 /// the rest (about 3 s) is WebKit loading the first chapter's frame, which
 /// is slow the first time after launch (docs/m3-ios-plan.md, "Phase 1
 /// findings"). The bar fills only as steps finish, so it rests at three
-/// quarters through that stretch while its stripes keep moving.
+/// quarters through that stretch.
 enum OpeningStage: Int, Comparable {
     /// The file is in iCloud (or another provider) and not on the device.
     case downloading
@@ -34,15 +34,14 @@ enum OpeningStage: Int, Comparable {
 
     /// How much of the bar is filled during this stage: the share of the
     /// steps already done, nothing more. A slow step simply takes a while;
-    /// the stripes moving along the bar show that it is still working.
+    /// the line under the bar says what it is.
     var progress: Double { Double(rawValue) / 4 }
 }
 
 /// A slim loading bar with a line saying what is happening, shown in the
 /// middle of the page while a book opens (only if that takes a moment: the
 /// reader shows it after about a third of a second). The bar fills by the
-/// steps actually done; diagonal stripes move along it all the while, so a
-/// long step never looks stuck.
+/// steps actually done: plain and thin, in the app's honey.
 struct OpeningProgressView: View {
     @ObservedObject var state: ReaderState
     @State private var progress = 0.0
@@ -51,8 +50,8 @@ struct OpeningProgressView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            StripedProgressBar(progress: progress)
-                .frame(width: 180, height: 6)
+            ThinProgressBar(progress: progress)
+                .frame(width: 180, height: 3)
             Text(shown.label)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -72,42 +71,20 @@ struct OpeningProgressView: View {
     }
 }
 
-/// A rounded bar, filled to `progress`, with faint diagonal stripes moving
-/// steadily along it (a barber's pole), still under Reduce Motion.
-struct StripedProgressBar: View {
+/// A thin rounded bar, filled to `progress` in the app's accent over a
+/// faint track (design review, 21 Nov 2026: plain, in place of the moving
+/// stripes it had).
+struct ThinProgressBar: View {
     let progress: Double
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { geo in
-            let width = geo.size.width, height = geo.size.height
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.primary.opacity(0.12))
                 Capsule()
-                    .fill(Color.primary.opacity(0.45))
-                    .frame(width: max(height, width * progress))
-                TimelineView(.animation(paused: reduceMotion)) { timeline in
-                    Canvas { context, size in
-                        // Stripes 8 points apart, leaning back, moving right
-                        // at 16 points a second.
-                        let spacing: CGFloat = 8
-                        let shift = reduceMotion ? 0 : CGFloat(timeline.date.timeIntervalSinceReferenceDate * 16)
-                            .truncatingRemainder(dividingBy: spacing)
-                        var x = -size.height - spacing + shift
-                        while x < size.width + size.height {
-                            var stripe = Path()
-                            stripe.move(to: CGPoint(x: x, y: size.height))
-                            stripe.addLine(to: CGPoint(x: x + size.height, y: 0))
-                            stripe.addLine(to: CGPoint(x: x + size.height + spacing / 2, y: 0))
-                            stripe.addLine(to: CGPoint(x: x + spacing / 2, y: size.height))
-                            stripe.closeSubpath()
-                            context.fill(stripe, with: .color(.primary.opacity(0.18)))
-                            x += spacing
-                        }
-                    }
-                }
+                    .fill(Color.honey)
+                    .frame(width: max(geo.size.height, geo.size.width * progress))
             }
-            .clipShape(Capsule())
         }
         .accessibilityHidden(true)
     }
