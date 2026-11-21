@@ -24,6 +24,8 @@ struct FolderGridView: View {
     /// The search field (shown by the search button) and what is typed in it.
     @State private var query = ""
     @State private var searching = false
+    /// The book whose Get Info sheet is showing.
+    @State private var infoFor: FolderEntry?
     @ObservedObject private var filter = BookTypeFilter.shared
 
     init(folder: URL, openBook: @escaping (URL) -> Void, openFolder: @escaping (URL) -> Void,
@@ -71,12 +73,21 @@ struct FolderGridView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    // A long press on a book: Get Info.
+                    .contextMenu {
+                        if entry.kind == .book {
+                            Button { infoFor = entry } label: { Label("Get Info", systemImage: "info.circle") }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
         .coverPinch(filter, sizeClass)
+        .sheet(item: $infoFor) { entry in
+            BookInfoView(entry: entry, info: model.covers[entry.url])
+        }
         .overlay {
             if !model.hasLoaded {
                 // Reading the folder (slow for a large one or a network

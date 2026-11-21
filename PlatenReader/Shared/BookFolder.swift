@@ -71,7 +71,10 @@ enum FolderSort: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .name: return String(localized: "Name")
+        // The file's name (without its extension), not the book's title:
+        // the folder knows every file's name at once, but titles only once
+        // each book has been read (and never for one only in iCloud).
+        case .name: return String(localized: "File Name")
         case .modified: return String(localized: "Date Modified")
         case .created: return String(localized: "Date Created")
         case .size: return String(localized: "Size")
