@@ -613,6 +613,11 @@ final class CoverImages: @unchecked Sendable {
 
     func cached(_ file: URL) -> CGImage? { cache.object(forKey: file as NSURL) }
 
+    /// Drops these files' pictures (they have been replaced on disk).
+    func forget(_ files: [URL]) {
+        for file in files { cache.removeObject(forKey: file as NSURL) }
+    }
+
     func image(_ file: URL) async -> CGImage? {
         if let image = cached(file) { return image }
         return await withCheckedContinuation { continuation in

@@ -5,7 +5,7 @@ import UIKit
 /// folder or in Recent Books (not from inside the reader: the reader's
 /// buttons are all about reading). Marking one is a small moment of "I love
 /// this book", so a heart beats twice over the cover (lub-dub, lub-dub),
-/// with a soft ring going out from it on each beat, and the phone taps in
+/// with a soft ring going out from it on the second beat, and the phone taps in
 /// time. Taking one off is quiet. With Reduce Motion the heart only shows.
 @MainActor
 enum Favourites {
@@ -128,11 +128,11 @@ private struct HeartbeatOverlay: ViewModifier {
                         LinearKeyframe(0.8, duration: 0.07)
                         CubicKeyframe(1.8, duration: 0.6)
                     }
+                    // One soft ring, on the second beat only (a ring on the
+                    // first beat too was one too many).
                     KeyframeTrack(\.ringOpacity) {
-                        LinearKeyframe(0, duration: 0.3)
-                        LinearKeyframe(reduceMotion ? 0 : 0.5, duration: 0.01)
-                        CubicKeyframe(0, duration: 0.6)
-                        LinearKeyframe(reduceMotion ? 0 : 0.45, duration: 0.07)
+                        LinearKeyframe(0, duration: 0.98)
+                        LinearKeyframe(reduceMotion ? 0 : 0.45, duration: 0.01)
                         CubicKeyframe(0, duration: 0.6)
                     }
                 }

@@ -552,16 +552,13 @@ struct RecentFoldersView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.head)
-                Group {
-                    switch state {
-                    case .unavailable:
-                        Text(kind == .network ? "Not connected" : "Not available")
-                    case .checking, .available, .inCloud:
-                        Text(item.lastOpened.formatted(.relative(presentation: .named)))
-                    }
+                // Said only when the folder cannot be reached (when it was
+                // last opened is not shown: it told the reader little).
+                if state == .unavailable {
+                    Text(kind == .network ? "Not connected" : "Not available")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 8)
             if state == .checking {

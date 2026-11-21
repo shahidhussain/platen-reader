@@ -477,9 +477,6 @@ struct BookTile: View {
 struct PlainCover: View {
     let title: String
     let author: String?
-    /// False for a cover too small to read (the Home tab's folder fans):
-    /// its colour only.
-    var showsText = true
 
     private static let colours: [Color] = [
         Color(red: 0.36, green: 0.42, blue: 0.52), Color(red: 0.50, green: 0.36, blue: 0.33),
@@ -497,9 +494,7 @@ struct PlainCover: View {
         RoundedRectangle(cornerRadius: 3, style: .continuous)
             .fill(colour.gradient)
             .aspectRatio(2 / 3, contentMode: .fit)
-            .overlay {
-                if showsText { words }
-            }
+            .overlay { words }
             .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
     }
 

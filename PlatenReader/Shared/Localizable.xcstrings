@@ -101,7 +101,7 @@
     "Books you open appear here." : {
 
     },
-    "Breaks long words at the ends of lines, so justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher." : {
+    "Breaks long words at the ends of lines, so lines are more even and justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher." : {
 
     },
     "Bring All to Front" : {
@@ -209,6 +209,9 @@
     "External drive" : {
 
     },
+    "Favourite" : {
+
+    },
     "Favourites" : {
 
     },
@@ -299,7 +302,13 @@
     "It is in iCloud and not yet on this device. Connect to the internet to download it." : {
 
     },
+    "It may have been moved or deleted, or it is on a drive or network share that is not connected, or in iCloud while this device is offline." : {
+
+    },
     "It may have been moved or deleted, or it is on a drive or network share that is not connected." : {
+
+    },
+    "Justify Text" : {
 
     },
     "Kind" : {
@@ -336,6 +345,9 @@
 
     },
     "Line Width" : {
+
+    },
+    "Lines flush at both sides, where the book asks for it. Off, lines end where their words do (ragged right), which leaves no wide gaps between words on a narrow screen." : {
 
     },
     "Location" : {
@@ -558,6 +570,12 @@
     "Search Book for Selection" : {
 
     },
+    "Sections" : {
+
+    },
+    "See All" : {
+
+    },
     "Select All" : {
 
     },
@@ -630,9 +648,6 @@
     "Stored" : {
 
     },
-    "Tap the heart while reading a book to keep it here." : {
-
-    },
     "Text" : {
 
     },
@@ -685,6 +700,9 @@
 
     },
     "Title, then Author" : {
+
+    },
+    "Touch and hold a book’s cover, in a folder or in Recent Books, and choose Add to Favourites." : {
 
     },
     "Two Pages" : {
