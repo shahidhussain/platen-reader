@@ -413,15 +413,16 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     }
 
     /// Room at each side of the text. Line width (Narrow, Medium, Wide)
-    /// caps a line at about 55, 66 or 80 characters, which on a phone are all
+    /// caps a line at about 58, 68 or 80 characters, which on a phone are all
     /// wider than the screen; there it sets the margins instead, so the
-    /// setting still visibly changes the line. Medium is the Books-like 24.
+    /// setting still visibly changes the line. Medium is 30, a little more
+    /// than Apple Books, so the text does not crowd the screen's edges.
     private func sideMargin(compact: Bool) -> CGFloat {
         guard compact else { return 44 }
         switch settings.lineWidth {
-        case .narrow: return 44
-        case .medium: return 24
-        case .wide: return 12
+        case .narrow: return 46
+        case .medium: return 30
+        case .wide: return 18
         }
     }
 

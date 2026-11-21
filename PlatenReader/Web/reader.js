@@ -28,7 +28,7 @@
 import './foliate/view.js'
 import { EPUB } from './foliate/epub.js'
 import { reader } from './modules/state.js'
-import { ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes } from './modules/bookfixes.js'
+import { applyJustification, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes } from './modules/bookfixes.js'
 import { pagesOnScreen, scheduleRibbons, setBookmarkList, toggleBookmark } from './modules/bookmarks.js'
 import { post } from './modules/bridge.js'
 import { sendContents } from './modules/contents.js'
@@ -269,6 +269,8 @@ window.platen = {
                     normaliseBodyTextSize(doc, reader.settings?.fontSize ?? 16)
                     // A page that is one picture, as large as the page.
                     fitLonePicture(doc)
+                    // Ragged right, if Justify Text is off.
+                    applyJustification(doc, reader.settings?.justify !== false)
                 }
                 attachPointerHandlers(doc, index)
                 nameSection(doc, reader.view.getProgressOf?.(index)?.tocItem?.label?.trim())

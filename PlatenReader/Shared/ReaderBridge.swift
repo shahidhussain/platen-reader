@@ -74,6 +74,8 @@ struct WebSettings: Equatable {
     var lineWidth: LineWidth
     var fontFamily: String
     var hyphenate: Bool
+    /// Justified text where the book asks for it; false: ragged right.
+    var justify = true
     var theme: Theme
     /// Taps are recognised natively, so the page reports no click zones.
     var touch = false
@@ -98,6 +100,7 @@ struct WebSettings: Equatable {
             "lineWidth": lineWidth.rawValue,
             "fontFamily": fontFamily,
             "hyphenate": hyphenate,
+            "justify": justify,
             "theme": [
                 "background": theme.background,
                 "foreground": theme.foreground,

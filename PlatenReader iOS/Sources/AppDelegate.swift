@@ -10,6 +10,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // 20 points at the standard size, like Apple Books, scaled with the
         // system's text size until the reader picks a size of their own.
         Self.updateDefaultTextSize()
+        // A phone's narrow column reads better ragged right (Justify Text
+        // starts off there; on an iPad it starts on, as on the Mac).
+        ReaderSettings.justifyByDefault = UIDevice.current.userInterfaceIdiom != .phone
         // WebKit is warmed once the start-up animation is up (SceneDelegate).
         NotificationCenter.default.addObserver(forName: UIContentSizeCategory.didChangeNotification,
                                                object: nil, queue: .main) { _ in

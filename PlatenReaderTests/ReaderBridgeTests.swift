@@ -164,6 +164,11 @@ final class BridgeTypesTests: XCTestCase {
         XCTAssertEqual(payload["flow"] as? String, "scrolled")
         XCTAssertEqual(payload["pageLayout"] as? String, "two")
         XCTAssertEqual(payload["lineWidth"] as? String, "wide")
+        // Justified unless asked otherwise (phones start ragged right).
+        XCTAssertEqual(payload["justify"] as? Bool, true)
+        web.justify = false
+        XCTAssertEqual(web.payload["justify"] as? Bool, false)
+        web.justify = true
         XCTAssertEqual((payload["theme"] as? [String: Any])?["background"] as? String, Theme.sepia.background)
         // The Mac sends none of the touch settings.
         XCTAssertNil(payload["touch"])

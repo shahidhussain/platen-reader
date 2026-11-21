@@ -192,6 +192,14 @@ final class ReaderSettings: ObservableObject {
     @Published var lineWidth: LineWidth { didSet { save("lineWidth", lineWidth.rawValue) } }
     @Published var fontFamily: String { didSet { save("fontFamily", fontFamily) } }
     @Published var hyphenate: Bool { didSet { save("hyphenate", hyphenate) } }
+    /// Justified text (lines flush at both sides), where the book asks for
+    /// it; off: ragged right. On a phone's narrow column justification
+    /// leaves wide gaps between words even with hyphenation, so phones
+    /// start ragged right (`justifyByDefault`, set by the iOS app).
+    @Published var justify: Bool { didSet { save("justify", justify) } }
+    /// Whether text is justified until the reader chooses: true, except on
+    /// an iPhone (the iOS app sets it at launch, before the settings load).
+    static var justifyByDefault = true
     /// The soft glow of a PDF's own colours around its pages (iOS). Off:
     /// the theme's plain colour.
     @Published var ambientLight: Bool { didSet { save("ambientLight", ambientLight) } }
@@ -217,6 +225,7 @@ final class ReaderSettings: ObservableObject {
         lineWidth = string("lineWidth").flatMap(LineWidth.init) ?? .medium
         fontFamily = string("fontFamily") ?? ""
         hyphenate = bool("hyphenate", true)
+        justify = bool("justify", Self.justifyByDefault)
         ambientLight = bool("ambientLight", true)
         invertPDF = bool("invertPDF", false)
         showPagesLeftInChapter = bool("showPagesLeftInChapter", false)
@@ -280,6 +289,6 @@ final class ReaderSettings: ObservableObject {
     func webSettings(theme: Theme, flow: ReadingFlow) -> WebSettings {
         WebSettings(flow: flow, pageLayout: pageLayout, animated: pageTurnStyle == .slide,
                     fontSize: fontSize, lineHeight: lineHeight, lineWidth: lineWidth,
-                    fontFamily: fontFamily, hyphenate: hyphenate, theme: theme)
+                    fontFamily: fontFamily, hyphenate: hyphenate, justify: justify, theme: theme)
     }
 }

@@ -233,4 +233,31 @@ function fitWideTables(doc) {
             table.style.setProperty('width', '100%', 'important')
 }
 
-export { applyBodyTextSize, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes }
+// Ragged right (Justify Text off): paragraphs the book justifies end their
+// lines where their words do instead. Only justified text changes (centred
+// or right-aligned lines stay as the book has them), so each element's own
+// alignment is looked at, once per chapter; turning Justify Text back on
+// puts them back.
+function applyJustification(doc, justify) {
+    if (!doc?.body) return
+    if (justify) {
+        for (const el of doc.querySelectorAll('[data-platen-ragged]')) {
+            el.style.removeProperty('text-align')
+            el.removeAttribute('data-platen-ragged')
+        }
+        return
+    }
+    const view = doc.defaultView
+    for (const el of doc.body.querySelectorAll('p, li, blockquote, dd, dt, div, section, article, body')) {
+        if (el.hasAttribute('data-platen-ragged')) continue
+        if (view.getComputedStyle(el).textAlign !== 'justify') continue
+        el.style.setProperty('text-align', 'start', 'important')
+        el.setAttribute('data-platen-ragged', '')
+    }
+    if (view.getComputedStyle(doc.body).textAlign === 'justify') {
+        doc.body.style.setProperty('text-align', 'start', 'important')
+        doc.body.setAttribute('data-platen-ragged', '')
+    }
+}
+
+export { applyBodyTextSize, applyJustification, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes }

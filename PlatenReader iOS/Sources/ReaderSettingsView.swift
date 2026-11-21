@@ -25,8 +25,14 @@ struct ReaderSettingsView: View {
                     }
                     Toggle("Show Pages Left in Chapter", isOn: $settings.showPagesLeftInChapter)
                     VStack(alignment: .leading, spacing: 2) {
+                        Toggle("Justify Text", isOn: $settings.justify)
+                        Text("Lines flush at both sides, where the book asks for it. Off, lines end where their words do (ragged right), which leaves no wide gaps between words on a narrow screen.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
                         Toggle("Hyphenate Text", isOn: $settings.hyphenate)
-                        Text("Breaks long words at the ends of lines, so justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher.")
+                        Text("Breaks long words at the ends of lines, so lines are more even and justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
