@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// The heart's size and its ring, as the heartbeat animation moves them.
-struct Heartbeat {
-    var scale = 1.0
-    var ring = 0.8
-    var ringOpacity = 0.0
-}
-
 /// Callbacks from the overlay to the reader.
 struct OverlayActions {
     var previousPage: () -> Void
@@ -19,12 +12,54 @@ struct OverlayActions {
     /// Called whenever the user interacts, so the overlay does not auto-hide
     /// while it is being used.
     var interacted: () -> Void
-    /// iOS: marks the book as a favourite, or no longer (the heart button;
-    /// the home screen's Favourites tab lists them). The Mac has no home
-    /// screen to list them on, so leaves this out and shows no heart.
-    /// Settings are not among the reader's buttons: every button there is
-    /// about the book being read; Settings are on the home screen.
-    var toggleFavourite: (() -> Void)? = nil
+}
+
+/// The band behind the controls at the top or bottom of the page: the
+/// page's own colour, solid at the screen's edge and fading into the page
+/// towards the text (as Apple Books does), so no letter is ever seen behind
+/// a control, in any theme. `fade` is how tall the fading part is; it is
+/// drawn inside the view, at the side facing the page.
+struct PageBand: View {
+    let colour: String
+    let edge: VerticalEdge
+    var fade: CGFloat = 24
+
+    var body: some View {
+        let page = Color(hex: colour)
+        VStack(spacing: 0) {
+            if edge == .bottom {
+                LinearGradient(colors: [page.opacity(0), page], startPoint: .top, endPoint: .bottom)
+                    .frame(height: fade)
+                page
+            } else {
+                page
+                LinearGradient(colors: [page, page.opacity(0)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: fade)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// `PageBand` in the colour of the reader's page, following the theme.
+struct ReaderPageBand: View {
+    @ObservedObject var state: ReaderState
+    let edge: VerticalEdge
+    var fade: CGFloat = 24
+
+    var body: some View {
+        PageBand(colour: state.pageColour, edge: edge, fade: fade)
+    }
+}
+
+extension Color {
+    /// "#rrggbb" → Color (sRGB), for the themes' colours.
+    init(hex: String) {
+        let value = UInt32(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0
+        self.init(.sRGB, red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255,
+                  blue: Double(value & 0xFF) / 255)
+    }
 }
 
 extension View {
@@ -76,8 +111,9 @@ extension View {
 /// The overlay's controls: location line, progress slider with chapter
 /// ticks, page buttons, Contents, Back and the Aa (typography) button. On the
 /// Mac they are one bar at the bottom, and the top part is the real window
-/// title bar, faded in by the view controller. On iOS they are split (see
-/// `Part`), beside a floating Close button and the title (ReaderChrome).
+/// title bar, faded in by the view controller. On iOS they are the bottom
+/// bar (`Part.bottomBar`), under the top bar of Close and the title
+/// (ReaderChrome).
 struct OverlayBar: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
@@ -87,20 +123,16 @@ struct OverlayBar: View {
     var part: Part = .whole
 
     /// The Mac draws the whole bar as one panel at the bottom of the window.
-    /// iOS splits it, in the way of Apple's own iOS 26 apps: two small glass
-    /// groups just above the slider, which floats at the bottom with ‹ and ›
-    /// at its ends. At the left, the marks ("get me back here"): the
-    /// favourite heart and the bookmark. At the right, the views of the
-    /// book: Contents, Layout and Aa.
-    enum Part { case whole, marks, buttons, scrubber }
+    /// iOS draws a bottom bar across the screen, on a band of the page's
+    /// colour: where the reader is (or "Back to …" after a jump), the
+    /// slider, then one row of buttons. Pages turn by tapping or swiping the
+    /// page's edges, so there are no ‹ › buttons on iOS.
+    enum Part { case whole, bottomBar }
 
     @State private var dragFraction: Double?
     /// The popover that is open, if any: one at a time.
     @State private var openPopover: Popover?
     private enum Popover { case typography, layout }
-    /// Counts favourites marked, to start the heart's beats.
-    @State private var heartbeats = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The bar is slightly see-through, and solid while the pointer is on it.
     @State private var hovering = false
     #if os(iOS)
@@ -122,65 +154,17 @@ struct OverlayBar: View {
     var body: some View {
         switch part {
         case .whole: wholeBar
-        case .marks: marksGroup
-        case .buttons: buttonGroup
-        case .scrubber: scrubber
+        case .bottomBar: bottomBar
         }
     }
 
-    // MARK: - iOS: the buttons, and the floating slider
+    // MARK: - iOS: the bottom bar
 
-    /// The favourite heart and the bookmark, side by side on one piece of
-    /// glass, at the left.
-    private var marksGroup: some View {
-        HStack(spacing: 0) {
-            if actions.toggleFavourite != nil { favouriteButton.frame(width: 44, height: 44) }
-            // The system's bookmark symbol is narrow beside the others.
-            bookmarkButton.scaleEffect(x: 1.2, y: 1).frame(width: 44, height: 44)
-        }
-        .buttonStyle(.borderless)
-        .labelStyle(.iconOnly)
-        .font(.body.weight(.medium))
-        .imageScale(.large)
-        .padding(.horizontal, 4)
-        .overlaySurface(Capsule())
-        .tint(.primary)
-    }
-
-    /// Contents, Layout and Aa, side by side on one piece of glass, at the
-    /// right.
-    private var buttonGroup: some View {
-        HStack(spacing: 0) {
-            contentsButton.frame(width: 44, height: 44)
-            layoutButton.frame(width: 44, height: 44)
-            typographyButton.frame(width: 44, height: 44)
-        }
-        .buttonStyle(.borderless)
-        .labelStyle(.iconOnly)
-        .font(.body.weight(.medium))
-        .imageScale(.large)
-        .padding(.horizontal, 4)
-        .overlaySurface(Capsule())
-        .tint(.primary)
-        .popoverBookkeeping(state: state, actions: actions, openPopover: $openPopover)
-    }
-
-    /// The slider between round ‹ › buttons, with where the reader is in
-    /// small text below. Only the buttons are on glass: the slider and the
-    /// text sit straight on the page.
-    private var scrubber: some View {
+    /// Where the reader is, the slider, and the buttons, on the page's own
+    /// colour (ReaderChrome puts the band behind it). The buttons are plain
+    /// symbols on the band, as in Apple Books, not pieces of glass.
+    private var bottomBar: some View {
         VStack(spacing: 2) {
-            HStack(spacing: 8) {
-                previousButton
-                    .frame(width: 44, height: 44)
-                    .overlaySurface(Circle())
-                slider
-                    .padding(.horizontal, 4)
-                    .frame(height: 44)
-                nextButton
-                    .frame(width: 44, height: 44)
-                    .overlaySurface(Circle())
-            }
             HStack(spacing: 8) {
                 // Shown only after a jump, until the reader moves on.
                 if let back = state.backLabel {
@@ -189,13 +173,12 @@ struct OverlayBar: View {
                     } label: {
                         Label(String(localized: "Back to \(back)"), systemImage: "arrow.uturn.backward")
                             .labelStyle(.titleAndIcon)
-                            .font(.footnote)
+                            .font(.footnote.weight(.semibold))
                             .lineLimit(1)
-                            .padding(.horizontal, 10)
-                            .frame(minHeight: 28)
-                            .overlaySurface(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
+                    .tint(.accentColor)
+                    Spacer(minLength: 8)
                 }
                 Text(locationText)
                     .font(.footnote)
@@ -203,16 +186,26 @@ struct OverlayBar: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .frame(minHeight: 28)
                     .accessibilityLabel(Text("Location"))
                     .accessibilityValue(Text(locationText))
             }
+            .frame(maxWidth: .infinity, minHeight: 24)
+            slider
+                .frame(height: 36)
+            HStack(spacing: 0) {
+                contentsButton.frame(maxWidth: .infinity, minHeight: 44)
+                bookmarkButton.scaleEffect(x: 1.15, y: 1).frame(maxWidth: .infinity, minHeight: 44)
+                layoutButton.frame(maxWidth: .infinity, minHeight: 44)
+                typographyButton.frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .labelStyle(.iconOnly)
+            .font(.body.weight(.medium))
+            .imageScale(.large)
+            .tint(.primary)
         }
         .buttonStyle(.borderless)
-        .labelStyle(.iconOnly)
-        .font(.body.weight(.semibold))
-        .tint(.primary)
-        .glassGroup(spacing: 8)
+        .frame(maxWidth: 600)
+        .popoverBookkeeping(state: state, actions: actions, openPopover: $openPopover)
     }
 
     // MARK: - The Mac's bar
@@ -228,7 +221,6 @@ struct OverlayBar: View {
                 bookmarkButton
                 layoutButton
                 typographyButton
-                if actions.toggleFavourite != nil { favouriteButton }
             }
             .frame(minHeight: 32)
         }
@@ -365,64 +357,6 @@ struct OverlayBar: View {
         .help("Text and Appearance")
         .popover(isPresented: isOpen(.typography), arrowEdge: popoverEdge) {
             TypographyPopover(state: state, actions: actions)
-        }
-    }
-
-    /// iOS: the heart, filled (in red) when the book is a favourite. Marking
-    /// a book as a favourite is a small moment of "I love this book", so the
-    /// heart beats twice (lub-dub, lub-dub) with a soft ring going out from
-    /// it on each beat, and the phone taps in time (the reader's
-    /// `toggleFavourite`). Taking it off is quiet. With Reduce Motion the
-    /// heart just fills.
-    private var favouriteButton: some View {
-        Button {
-            actions.toggleFavourite?()
-            actions.interacted()
-        } label: {
-            Label(state.isFavourite ? String(localized: "Remove from Favourites") : String(localized: "Add to Favourites"),
-                  systemImage: state.isFavourite ? "heart.fill" : "heart")
-                .foregroundStyle(state.isFavourite ? Color.red : Color.primary)
-                .contentTransition(.symbolEffect(.replace))
-                .keyframeAnimator(initialValue: Heartbeat(), trigger: heartbeats) { content, beat in
-                    content
-                        .scaleEffect(beat.scale)
-                        .background {
-                            Circle()
-                                .stroke(Color.red, lineWidth: 1.5)
-                                .scaleEffect(beat.ring)
-                                .opacity(beat.ringOpacity)
-                                .allowsHitTesting(false)
-                        }
-                } keyframes: { _ in
-                    // Two heartbeats: a strong beat and a softer echo, a
-                    // pause, then again a little gentler.
-                    KeyframeTrack(\.scale) {
-                        SpringKeyframe(1.35, duration: 0.12, spring: .snappy)
-                        SpringKeyframe(1.0, duration: 0.12, spring: .snappy)
-                        SpringKeyframe(1.2, duration: 0.11, spring: .snappy)
-                        SpringKeyframe(1.0, duration: 0.3, spring: .smooth)
-                        SpringKeyframe(1.25, duration: 0.12, spring: .snappy)
-                        SpringKeyframe(1.0, duration: 0.12, spring: .snappy)
-                        SpringKeyframe(1.12, duration: 0.11, spring: .snappy)
-                        SpringKeyframe(1.0, duration: 0.35, spring: .smooth)
-                    }
-                    KeyframeTrack(\.ring) {
-                        LinearKeyframe(0.8, duration: 0.01)
-                        CubicKeyframe(1.8, duration: 0.6)
-                        LinearKeyframe(0.8, duration: 0.07)
-                        CubicKeyframe(1.8, duration: 0.6)
-                    }
-                    KeyframeTrack(\.ringOpacity) {
-                        LinearKeyframe(0.45, duration: 0.01)
-                        CubicKeyframe(0, duration: 0.6)
-                        LinearKeyframe(0.4, duration: 0.07)
-                        CubicKeyframe(0, duration: 0.6)
-                    }
-                }
-        }
-        .help(state.isFavourite ? String(localized: "Remove from Favourites") : String(localized: "Add to Favourites"))
-        .onChange(of: state.isFavourite) { _, favourite in
-            if favourite, !reduceMotion { heartbeats += 1 }
         }
     }
 

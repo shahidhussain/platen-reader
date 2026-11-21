@@ -59,31 +59,6 @@ class ReaderBaseViewController: UIViewController {
     func applySettings() { applyTheme() }
     func savePositionNow() {}
 
-    /// The heart: adds the book to the home screen's Favourites (with a
-    /// copy of its cover, while this reader holds access to the book), or
-    /// takes it off.
-    func toggleFavourite() {
-        let favourites = RecentList.favorites
-        if let item = favourites.item(at: url) {
-            favourites.remove(item)
-        } else {
-            favourites.addBook(url)
-        }
-        state.isFavourite = favourites.contains(url)
-        if state.isFavourite { heartbeatHaptics() } else { UISelectionFeedbackGenerator().selectionChanged() }
-    }
-
-    /// Taps in time with the heart's two beats (OverlayBar's favourite
-    /// button): a firm tap and a softer one, twice.
-    private func heartbeatHaptics() {
-        let firm = UIImpactFeedbackGenerator(style: .medium)
-        let soft = UIImpactFeedbackGenerator(style: .light)
-        firm.prepare(); soft.prepare()
-        for (delay, generator, strength) in [(0.0, firm, 1.0), (0.24, soft, 0.8), (0.65, firm, 0.85), (0.89, soft, 0.6)] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { generator.impactOccurred(intensity: strength) }
-        }
-    }
-
     // MARK: - View setup
 
     /// Call at the end of `loadView`, once the page view is in `root`: adds
@@ -95,8 +70,7 @@ class ReaderBaseViewController: UIViewController {
                 self?.state.sidebarVisible.toggle()
                 self?.chrome.restartHideTimer()
             },
-            interacted: { [weak self] in self?.chrome.restartHideTimer() },
-            toggleFavourite: { [weak self] in self?.toggleFavourite() })
+            interacted: { [weak self] in self?.chrome.restartHideTimer() })
         let chrome = ReaderChrome(owner: self, state: state, actions: actions,
                                   sidebarActions: ContentsActions(commands: commands),
                                   close: { [weak self] in self?.close() },
@@ -120,7 +94,6 @@ class ReaderBaseViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         applyTheme()
-        state.isFavourite = RecentList.favorites.contains(url)
 
         // Re-style whenever a global setting changes.
         settings.objectWillChange
@@ -236,6 +209,9 @@ class ReaderBaseViewController: UIViewController {
     func runDebugStep(_ step: String) {
         if step == "@close" {
             close()
+        } else if step.hasPrefix("@theme:"), let choice = AppearanceChoice(rawValue: String(step.dropFirst(7))) {
+            // "@theme:sepia": the page theme, as the Aa popover would set it.
+            settings.appearance = choice
         } else if step == "@orientation" {
             // The device's orientation against the app's: different (with
             // the device in a supported orientation) means rotation is held.
@@ -262,6 +238,7 @@ class ReaderBaseViewController: UIViewController {
     func applyTheme() {
         let theme = currentTheme
         view.backgroundColor = theme.uiBackground
+        state.pageColour = theme.background
         overrideUserInterfaceStyle = theme.interfaceStyle
         setNeedsStatusBarAppearanceUpdate()
     }

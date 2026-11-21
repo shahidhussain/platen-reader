@@ -159,7 +159,6 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         state.allowsTwoPages = true
         installChrome(in: root)
         chrome.onVisibilityChanged = { [weak self] _ in self?.updateRibbon() }
-        chrome.setInterfaceStyle(.light)
         configurePageTurner()
 
         var constraints: [NSLayoutConstraint] = []

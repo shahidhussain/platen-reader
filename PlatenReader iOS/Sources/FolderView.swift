@@ -24,6 +24,11 @@ struct FolderGridView: View {
     @State private var searching = false
     /// The book whose Get Info sheet is showing.
     @State private var infoFor: FolderEntry?
+    /// Favourites, for the heart on their covers and the long-press menu.
+    @ObservedObject private var favourites = RecentList.favorites
+    /// Counts each book's hearts (marked as a favourite), to start its
+    /// heartbeat.
+    @State private var heartbeats: [URL: Int] = [:]
     @State private var showingOptions = false
     @ObservedObject private var filter = BookTypeFilter.shared
 
@@ -68,13 +73,20 @@ struct FolderGridView: View {
                                      imageFile: model.coverFiles[entry.url],
                                      badge: entry.isDownloaded ? nil
                                          : model.downloading.contains(entry.url) ? .downloading : .inCloud,
-                                     caption: lines.0, subcaption: lines.1)
+                                     caption: lines.0, subcaption: lines.1,
+                                     isFavourite: favourites.contains(entry.url),
+                                     heartbeats: heartbeats[entry.url, default: 0])
                         }
                     }
                     .buttonStyle(.plain)
-                    // A long press on a book: Get Info.
+                    // A long press on a book: Favourite, and Get Info.
                     .contextMenu {
                         if entry.kind == .book {
+                            Button {
+                                if Favourites.toggle(entry.url) { heartbeats[entry.url, default: 0] += 1 }
+                            } label: {
+                                Favourites.menuLabel(isFavourite: favourites.contains(entry.url))
+                            }
                             Button { infoFor = entry } label: { Label("Get Info", systemImage: "info.circle") }
                         }
                     }
@@ -338,6 +350,11 @@ struct BookTile: View {
     /// them): one or two lines; the title alone when not given.
     var caption: String? = nil
     var subcaption: String? = nil
+    /// A favourite shows a small heart on its cover (not in Favourites,
+    /// where every book is one).
+    var isFavourite = false
+    /// Goes up when the book is marked as a favourite: the heart beats.
+    var heartbeats = 0
     @State private var image: CGImage?
 
     var body: some View {
@@ -397,6 +414,20 @@ struct BookTile: View {
                     .padding(6)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if isFavourite {
+                Image(systemName: "heart.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(5)
+                    .background(.red, in: Circle())
+                    .shadow(color: .black.opacity(0.25), radius: 1.5, y: 0.5)
+                    .padding(5)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.3).delay(isFavourite ? 0.3 : 0), value: isFavourite)
+        .heartbeat(heartbeats)
         .overlay(alignment: .bottomTrailing) {
             switch badge {
             case .inCloud:
@@ -421,6 +452,7 @@ struct BookTile: View {
     private var accessibilityLabel: String {
         var parts = [title]
         if let author { parts.append(author) }
+        if isFavourite { parts.append(String(localized: "Favourite")) }
         switch badge {
         case .inCloud: parts.append(String(localized: "In iCloud"))
         case .downloading: parts.append(String(localized: "Downloading"))

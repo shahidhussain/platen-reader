@@ -29,6 +29,9 @@
     "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
 
     },
+    "A book’s title and author are known once Platen has read it; until then, and for books only in iCloud, its file name is shown." : {
+
+    },
     "About %@" : {
 
     },
@@ -42,6 +45,18 @@
 
     },
     "Appearance" : {
+
+    },
+    "Asking the file system…" : {
+
+    },
+    "Author" : {
+
+    },
+    "Author, then Title" : {
+
+    },
+    "Authors" : {
 
     },
     "Automatic" : {
@@ -149,6 +164,9 @@
     "Copy with Citation" : {
 
     },
+    "Created" : {
+
+    },
     "Dark" : {
 
     },
@@ -197,10 +215,10 @@
     "File" : {
 
     },
-    "File Types" : {
+    "File Name" : {
 
     },
-    "Filter" : {
+    "File Types" : {
 
     },
     "Find" : {
@@ -227,7 +245,13 @@
     "Folder: %@" : {
 
     },
+    "Folders" : {
+
+    },
     "Font" : {
+
+    },
+    "Get Info" : {
 
     },
     "Go" : {
@@ -263,7 +287,13 @@
     "In iCloud" : {
 
     },
+    "In iCloud, not on this device" : {
+
+    },
     "Invert Colours" : {
+
+    },
+    "iOS updates a file’s last-accessed date only now and then, so it can be well behind." : {
 
     },
     "It is in iCloud and not yet on this device. Connect to the internet to download it." : {
@@ -272,7 +302,16 @@
     "It may have been moved or deleted, or it is on a drive or network share that is not connected." : {
 
     },
+    "Kind" : {
+
+    },
     "Larger Text" : {
+
+    },
+    "Last Accessed" : {
+
+    },
+    "Last Opened in Platen" : {
 
     },
     "last page in chapter" : {
@@ -320,10 +359,7 @@
     "Minimise" : {
 
     },
-    "More" : {
-
-    },
-    "Name" : {
+    "Modified" : {
 
     },
     "Narrow" : {
@@ -433,6 +469,9 @@
 
     },
     "Paginated" : {
+
+    },
+    "Path" : {
 
     },
     "Picture" : {
@@ -588,6 +627,9 @@
     "Start of document" : {
 
     },
+    "Stored" : {
+
+    },
     "Tap the heart while reading a book to keep it here." : {
 
     },
@@ -636,13 +678,22 @@
     "This PDF is protected by a password." : {
 
     },
+    "Title" : {
+
+    },
     "Title, author or file name" : {
+
+    },
+    "Title, then Author" : {
 
     },
     "Two Pages" : {
 
     },
     "Two pages show side by side when you turn to landscape." : {
+
+    },
+    "Under Each Cover" : {
 
     },
     "Untitled" : {
@@ -660,6 +711,12 @@
       }
     },
     "View" : {
+
+    },
+    "View Options" : {
+
+    },
+    "Where" : {
 
     },
     "Wide" : {

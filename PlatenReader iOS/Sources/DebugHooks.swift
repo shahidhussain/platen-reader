@@ -21,7 +21,7 @@ import Foundation
 ///   page renders. A step is `@tap:<left|centre|right>` (as if that zone
 ///   were tapped), `@turn:<left|right|next|prev>` (a page turn, curled if
 ///   that is the setting), `@doubleturn:<…>` (two turns 0.15 s apart, the second
-///   while the first is drawn), `@snapshot` (a snapshot of the web view), `@orientation` (logs the device's
+///   while the first is drawn), `@snapshot` (a snapshot of the web view), `@theme:<light|sepia|dark|black>`, `@orientation` (logs the device's
 ///   and the app's orientation),
 ///   `@close`, or JavaScript such as `platen.next()`. PDFs take `@turn:<…>`,
 ///   `@doubleturn:<…>`, `@swipe:<left|right>` (a finger drawn across the

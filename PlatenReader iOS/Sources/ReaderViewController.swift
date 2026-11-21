@@ -490,7 +490,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     override func runDebugStep(_ step: String) {
         if step.hasPrefix("@tap:"), let zone = ClickZone(rawValue: String(step.dropFirst(5))) {
             handleTap(zone: zone)
-        } else if step == "@close" || step == "@orientation" {
+        } else if step == "@close" || step == "@orientation" || step.hasPrefix("@theme:") {
             super.runDebugStep(step)
         } else if step == "@snapshot" {
             webView.takeSnapshot(with: nil) { image, _ in log.notice("snapshot \(image == nil ? "failed" : "taken")") }

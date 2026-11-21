@@ -213,6 +213,10 @@ struct BookShelfView: View {
     @State private var opening: RecentItem.ID?
     @ObservedObject private var options = BookTypeFilter.shared
     @ObservedObject private var network = NetworkStatus.shared
+    @ObservedObject private var favourites = RecentList.favorites
+    /// Counts each book's hearts (marked as a favourite), to start its
+    /// heartbeat.
+    @State private var heartbeats: [RecentItem.ID: Int] = [:]
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     init(shelf: Shelf, actions: HomeActions) {
@@ -233,10 +237,19 @@ struct BookShelfView: View {
                     ForEach(recents.items) { item in
                         Button { open(item) } label: {
                             BookTile(title: item.displayName, author: item.author, imageFile: recents.coverURL(for: item),
-                                     badge: badge(for: item))
+                                     badge: badge(for: item),
+                                     isFavourite: shelf == .recent && isFavourite(item),
+                                     heartbeats: heartbeats[item.id, default: 0])
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
+                            if shelf == .recent {
+                                Button {
+                                    if Favourites.toggle(item, from: recents) { heartbeats[item.id, default: 0] += 1 }
+                                } label: {
+                                    Favourites.menuLabel(isFavourite: isFavourite(item))
+                                }
+                            }
                             Button(role: .destructive) { recents.remove(item) } label: {
                                 Label(removeLabel, systemImage: shelf == .recent ? "minus.circle" : "heart.slash")
                             }
@@ -262,7 +275,7 @@ struct BookShelfView: View {
                         ContentUnavailableView {
                             Label("No Favourites", systemImage: "heart")
                         } description: {
-                            Text("Tap the heart while reading a book to keep it here.")
+                            Text("Touch and hold a book’s cover, in a folder or in Recent Books, and choose Add to Favourites.")
                         }
                     }
                 }
@@ -294,6 +307,10 @@ struct BookShelfView: View {
                 }
             }
         }
+    }
+
+    private func isFavourite(_ item: RecentItem) -> Bool {
+        favourites.contains(RecentItem.pathURL(item.path))
     }
 
     /// The mark on a book's cover: being checked before it opens, in iCloud

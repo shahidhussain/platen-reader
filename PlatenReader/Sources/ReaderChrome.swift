@@ -15,9 +15,18 @@ final class ReaderChrome {
     private weak var root: NSView?
     private let overlayHost: NSHostingView<OverlayBar>
     /// Backing for the title when it is shown, drawn by us so the real title
-    /// bar can stay transparent (see `applyVisibility`).
-    private let titleBacking = PassThroughEffectView()
+    /// bar can stay transparent (see `applyVisibility`): a band of the
+    /// page's colour, fading into the page below it, so the title never
+    /// sits on text.
+    private let titleBacking: PageBandView
     private var titleBackingHeight: NSLayoutConstraint!
+    /// The same band behind the overlay bar, from the window's bottom edge
+    /// to a little above the bar, fading upwards: no line of the book (nor
+    /// its page number) shows behind or around the bar.
+    private let bottomBand: PageBandView
+    /// How tall the bands' fades are.
+    private let titleFade: CGFloat = 16
+    private let bottomFade: CGFloat = 28
     /// The strip under the (transparent) title bar that drags the window.
     private let dragStrip = WindowDragView()
 
@@ -40,6 +49,8 @@ final class ReaderChrome {
     init(state: ReaderState, actions: OverlayActions, sidebarActions: ContentsActions) {
         self.state = state
         overlayHost = NSHostingView(rootView: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions))
+        titleBacking = PageBandView(rootView: ReaderPageBand(state: state, edge: .top, fade: titleFade))
+        bottomBand = PageBandView(rootView: ReaderPageBand(state: state, edge: .bottom, fade: bottomFade))
 
         state.$sidebarVisible
             .dropFirst()
@@ -67,10 +78,11 @@ final class ReaderChrome {
         overlayHost.translatesAutoresizingMaskIntoConstraints = false
         overlayHost.alphaValue = 0
         overlayHost.isHidden = true
+        bottomBand.translatesAutoresizingMaskIntoConstraints = false
+        bottomBand.alphaValue = 0
+        root.addSubview(bottomBand)
         root.addSubview(overlayHost)
 
-        titleBacking.material = .titlebar
-        titleBacking.blendingMode = .withinWindow
         titleBacking.alphaValue = 0
         titleBacking.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(titleBacking)
@@ -90,6 +102,11 @@ final class ReaderChrome {
             overlayHost.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
             overlayHost.widthAnchor.constraint(equalToConstant: 720).withPriority(.defaultHigh),
 
+            bottomBand.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            bottomBand.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            bottomBand.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            bottomBand.topAnchor.constraint(equalTo: overlayHost.topAnchor, constant: -(12 + bottomFade)),
+
             titleBacking.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             titleBacking.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             titleBacking.topAnchor.constraint(equalTo: root.topAnchor),
@@ -98,7 +115,7 @@ final class ReaderChrome {
             dragStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             dragStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             dragStrip.topAnchor.constraint(equalTo: root.topAnchor),
-            dragStrip.heightAnchor.constraint(equalTo: titleBacking.heightAnchor),
+            dragStrip.heightAnchor.constraint(equalTo: titleBacking.heightAnchor, constant: -titleFade),
         ])
     }
 
@@ -169,13 +186,14 @@ final class ReaderChrome {
         window.titleVisibility = titleBarVisible ? .visible : .hidden
         window.titlebarAppearsTransparent = true
         let fullScreen = window.styleMask.contains(.fullScreen)
-        titleBackingHeight.constant = max(0, root.bounds.height - window.contentLayoutRect.height)
+        titleBackingHeight.constant = max(0, root.bounds.height - window.contentLayoutRect.height) + titleFade
         if isVisible { overlayHost.isHidden = false }
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = duration
             titleBar?.animator().alphaValue = titleBarVisible || fullScreen ? 1 : 0
-            titleBacking.animator().alphaValue = titleBarVisible && !fullScreen ? 0.55 : 0 // translucent
+            titleBacking.animator().alphaValue = titleBarVisible && !fullScreen ? 1 : 0
             overlayHost.animator().alphaValue = isVisible ? 1 : 0
+            bottomBand.animator().alphaValue = isVisible ? 1 : 0
         }, completionHandler: { [weak self] in
             guard let self else { return }
             // Hidden views take no clicks, so the page underneath gets them.

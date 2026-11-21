@@ -39,7 +39,7 @@ Platen stores one JSON file per book:
 
 ## Recents (iOS)
 
-At the reader's request (15 Nov 2026), the iOS home screen keeps short lists for its tabs: Recent Books, the Home tab's folders (only folders the reader chose, not ones browsed into), and, at the reader's request (21 Nov 2026), Favourites (books marked with the heart while reading):
+At the reader's request (15 Nov 2026), the iOS home screen keeps short lists for its tabs: Recent Books, the Home tab's folders (only folders the reader chose, not ones browsed into), and, at the reader's request (21 Nov 2026), Favourites (books marked from a cover's long-press menu, in a folder or in Recent Books):
 
 ```
 ~/Library/Application Support/Platen Reader/recents/books.json

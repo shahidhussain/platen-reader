@@ -160,7 +160,7 @@ final class RecentList: ObservableObject {
 
     static let books = RecentList(kind: .books)
     static let folders = RecentList(kind: .folders)
-    /// Books the reader marked as favourites (the heart in the reader): the
+    /// Books the reader marked as favourites (a book's long-press menu): the
     /// home screen's Favourites tab, "what I am reading now". Newest first
     /// unless put in an order by hand; never trimmed by age.
     static let favorites = RecentList(kind: .favorites, limit: 1000)
@@ -366,6 +366,32 @@ final class RecentList: ObservableObject {
         } else {
             try? FileManager.default.removeItem(at: orderURL)
         }
+    }
+
+    /// Puts another list's item on this one (Recent Books → Favourites):
+    /// the same bookmark, title, author and a copy of its cover, without
+    /// touching the book itself, which may be out of reach just now. An item
+    /// already here is left as it is.
+    @discardableResult
+    func add(copyOf item: RecentItem, from other: RecentList, now: Date = Date()) -> RecentItem {
+        if let here = items.first(where: { Self.key($0.path) == Self.key(item.path) }) { return here }
+        var copy = item
+        copy.id = UUID()
+        copy.lastOpened = now
+        copy.hasCover = false
+        if let cover = other.coverURL(for: item), let data = try? Data(contentsOf: cover) {
+            let folder = directory.appendingPathComponent("covers", isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            copy.hasCover = (try? data.write(to: folder.appendingPathComponent("\(copy.id.uuidString).jpg"),
+                                             options: .atomic)) != nil
+        }
+        items.insert(copy, at: 0)
+        while items.count > limit, let oldest = items.last, oldest.id != copy.id {
+            items.removeLast()
+            removeCover(of: oldest)
+        }
+        save()
+        return copy
     }
 
     /// Takes an item off the list (its cover copy too). The book or folder

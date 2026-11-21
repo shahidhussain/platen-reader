@@ -13,7 +13,8 @@ import os
 ///   "platen.next()"), or a reader command starting with "@": "@<selector>"
 ///   sends a menu action (e.g. "@toggleContents:"), "@search:<query>" runs a
 ///   search, "@tab:<contents|bookmarks|search>" opens the panel on a tab,
-///   "@resize:<w>x<h>" resizes the window and logs the re-layout time. Each step also writes "<book>-<n>-native.png" of the native views
+///   "@resize:<w>x<h>" resizes the window and logs the re-layout time,
+///   "@theme:<light|sepia|dark|black>" sets the page theme. Each step also writes "<book>-<n>-native.png" of the native views
 ///   (sidebar, overlay), which web snapshots do not include.
 enum DebugHooks {
     /// When an "@resize:" step changed the window size; the next page
@@ -31,7 +32,32 @@ enum DebugHooks {
                 let url = URL(fileURLWithPath: dir).appendingPathComponent("\(bookName)-\(index).png")
                 try? png.write(to: url)
             }
-            snapshotView(root, name: "\(bookName)-\(index)-native", suffix: "")
+            // The native views over the page, half a second later (once
+            // animations have settled): the page from the web view's own
+            // snapshot, then the native views drawn over it with the web
+            // view hidden. (Drawing the window directly can show the web
+            // view black, once SwiftUI views are layered over it.)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                webView.takeSnapshot(with: nil) { page, _ in
+                    guard let page else { return }
+                    webView.isHidden = true
+                    defer { webView.isHidden = false }
+                    guard let native = root.bitmapImageRepForCachingDisplay(in: root.bounds) else { return }
+                    root.cacheDisplay(in: root.bounds, to: native)
+                    let size = root.bounds.size
+                    let out = NSImage(size: size)
+                    out.lockFocus()
+                    NSColor.black.setFill()
+                    NSRect(origin: .zero, size: size).fill()
+                    page.draw(in: webView.convert(webView.bounds, to: root))
+                    native.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .sourceOver,
+                                fraction: 1, respectFlipped: true, hints: nil)
+                    out.unlockFocus()
+                    guard let tiff = out.tiffRepresentation,
+                          let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
+                    try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(bookName)-\(index)-native.png"))
+                }
+            }
         }
         func step(_ i: Int) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -60,7 +86,10 @@ enum DebugHooks {
 /// Runs one scripted step (see PLATEN_STEPS above).
 extension ReaderViewController {
     func runDebugStep(_ step: String) {
-        if step.hasPrefix("@tab:"), let tab = ReaderState.SidebarTab(rawValue: String(step.dropFirst(5))) {
+        if step.hasPrefix("@theme:"), let choice = AppearanceChoice(rawValue: String(step.dropFirst(7))) {
+            // "@theme:sepia": the page theme, as the View menu would set it.
+            settings.appearance = choice
+        } else if step.hasPrefix("@tab:"), let tab = ReaderState.SidebarTab(rawValue: String(step.dropFirst(5))) {
             self.chrome.setSidebar(visible: true, tab: tab)
         } else if step.hasPrefix("@search:") {
             self.chrome.setSidebar(visible: true, tab: .search)

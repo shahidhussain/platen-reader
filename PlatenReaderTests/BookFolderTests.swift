@@ -145,6 +145,37 @@ final class RecentsTests: XCTestCase {
         XCTAssertFalse(favourites.contains(book))
     }
 
+    /// Recent Books → Favourites (a cover's long-press menu): the entry is
+    /// copied, cover and all, without opening the book; marking it again
+    /// changes nothing; removing it leaves Recent Books alone.
+    @MainActor
+    func testARecentBookCanBecomeAFavourite() throws {
+        let folder = try temporaryFolder()
+        let store = folder.appendingPathComponent("recents")
+        let books = RecentList(kind: .books, directory: store)
+        let favourites = RecentList(kind: .favorites, directory: store, limit: 1000)
+        let book = file(folder, "Middlemarch.epub")
+        let recent = try XCTUnwrap(books.opened(book, title: "Middlemarch", author: "George Eliot"))
+        books.update(recent.id, title: nil, author: nil, cover: Data([1, 2, 3]))
+        let withCover = try XCTUnwrap(books.item(at: book))
+
+        let favourite = favourites.add(copyOf: withCover, from: books)
+        XCTAssertNotEqual(favourite.id, withCover.id)
+        XCTAssertEqual(favourite.title, "Middlemarch")
+        XCTAssertEqual(favourite.author, "George Eliot")
+        XCTAssertEqual(favourite.bookmark, withCover.bookmark)
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(favourites.coverURL(for: favourite))), Data([1, 2, 3]))
+        XCTAssertTrue(favourites.contains(book))
+
+        XCTAssertEqual(favourites.add(copyOf: withCover, from: books).id, favourite.id)
+        XCTAssertEqual(favourites.items.count, 1)
+
+        favourites.remove(favourite)
+        XCTAssertFalse(favourites.contains(book))
+        XCTAssertTrue(books.contains(book))
+        XCTAssertNotNil(books.coverURL(for: withCover).map { try? Data(contentsOf: $0) } ?? nil)
+    }
+
     @MainActor
     func testAnOrderSetByHandIsKept() throws {
         let folder = try temporaryFolder()
