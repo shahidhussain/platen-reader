@@ -223,17 +223,56 @@ extension HomeViewController {
 enum LastOpenBook {
     private static let key = "lastOpenBook"
 
-    /// The book to reopen at launch, if there is one and it can still be
-    /// reached.
-    static var url: URL? {
-        guard let data = AppDefaults.store.data(forKey: key) else { return nil }
-        var stale = false
-        guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
-            forget() // deleted, or no longer reachable
-            return nil
+    /// True if there is a book to go back to.
+    static var isSaved: Bool { AppDefaults.store.data(forKey: key) != nil }
+
+    /// Finds the book to reopen at launch, and calls `completion` on the
+    /// main thread with where it is now, or nil: none saved, deleted, or no
+    /// answer within `timeout` seconds.
+    ///
+    /// Resolving a bookmark asks the file system where the file is, and for
+    /// a book on a network share that has gone away (or a cloud folder not
+    /// answering) that can hang. Done on the main thread at launch, as it
+    /// was, it could freeze the app until iOS ended it (it did just that to
+    /// Recent Books, for the same reason). So it runs on a background queue
+    /// of its own, and launch stops waiting at the time limit and shows the
+    /// home screen. The book is only forgotten if it is truly gone, not on a
+    /// timeout, so a share that comes back reopens it next time.
+    @MainActor static func find(timeout: TimeInterval, completion: @escaping @MainActor (URL?) -> Void) {
+        guard let data = AppDefaults.store.data(forKey: key) else { return completion(nil) }
+        let answer = AnswerOnce(completion)
+        DispatchQueue(label: "org.platenreader.last-book", qos: .userInitiated).async {
+            var stale = false
+            guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
+                DispatchQueue.main.async { forget() } // deleted, or no longer reachable
+                return answer.send(nil)
+            }
+            if stale {
+                // Moved: keep a fresh bookmark (made here too, off the main thread).
+                let scoped = url.startAccessingSecurityScopedResource()
+                let fresh = try? url.bookmarkData()
+                if scoped { url.stopAccessingSecurityScopedResource() }
+                if let fresh { DispatchQueue.main.async { AppDefaults.store.set(fresh, forKey: key) } }
+            }
+            answer.send(url)
         }
-        if stale { remember(url) }
-        return url
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { answer.send(nil) }
+    }
+
+    /// Hands the first answer to the main thread; later ones are dropped.
+    private final class AnswerOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var sent = false
+        private let completion: @MainActor (URL?) -> Void
+        init(_ completion: @escaping @MainActor (URL?) -> Void) { self.completion = completion }
+        func send(_ url: URL?) {
+            lock.lock()
+            let first = !sent
+            sent = true
+            lock.unlock()
+            guard first else { return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.completion(url) } }
+        }
     }
 
     static func remember(_ url: URL) {

@@ -45,19 +45,32 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         #else
         let debugBook = false
         #endif
-        // Back to the book that was open, if there was one. (The book is
-        // presented once the home screen is in the window; until then a page
-        // in the theme's colour stands in, so the welcome does not flash.)
-        let reopen = launchedWithBook || debugBook ? nil : LastOpenBook.url
-        if let reopen { home.openBook(at: reopen) }
         window.makeKeyAndVisible()
 
         // Going straight into a book, the start-up animation stays up with
         // the book's progress until the first page is on screen.
-        if reopen != nil || launchedWithBook || debugBook {
-            home.onReaderCreated = { [weak splash, weak home] reader in
+        let followBook = { [weak splash, weak home] in
+            home?.onReaderCreated = { reader in
                 splash?.follow(reader.state)
                 home?.onReaderCreated = nil
+            }
+        }
+        if launchedWithBook || debugBook {
+            followBook()
+        } else if LastOpenBook.isSaved {
+            // Back to the book that was open. Where it is now is found in
+            // the background (it can hang; see LastOpenBook.find), with the
+            // start-up animation still up; if it cannot be found in time,
+            // the home screen instead.
+            LastOpenBook.find(timeout: 3) { [weak self, weak splash, weak home] url in
+                guard let home else { return }
+                // A book opened from another app meanwhile wins.
+                if let url, self?.openedSinceLaunch != true {
+                    followBook()
+                    home.openBook(at: url)
+                } else {
+                    splash?.finishSoon()
+                }
             }
         } else {
             splash.finishSoon()
@@ -94,6 +107,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// A book opened from another app before the home screen was built
     /// (see `start`).
     private var pendingURL: URL?
+    /// True once a book has been opened from another app since launch, so
+    /// the last book, found late, is not opened over it.
+    private var openedSinceLaunch = false
 
     /// A book opened from another app while Platen is running. With
     /// LSSupportsOpeningDocumentsInPlace, the URL is the original file
@@ -101,6 +117,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// Inbox.
     func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
         guard let context = contexts.first else { return }
+        openedSinceLaunch = true
         if let home { home.openBook(at: context.url) } else { pendingURL = context.url }
     }
 
