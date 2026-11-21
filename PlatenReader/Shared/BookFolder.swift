@@ -3,6 +3,8 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import PlatenCore
+import QuickLookThumbnailing
+import UniformTypeIdentifiers
 
 /// One thing in a folder the folder view shows: a book, or a folder inside
 /// it.
@@ -260,6 +262,9 @@ final class FolderModel: NSObject, ObservableObject {
     /// The books whose covers have been asked for, with the modification
     /// date they had then.
     private var requested: [URL: Date?] = [:]
+    /// The same, for books in iCloud only (their stored thumbnails; see
+    /// `loadCloudThumbnail`).
+    private var requestedCloud: [URL: Date?] = [:]
     private var downloadTimer: Timer?
     private var refreshPending = false
     /// A read of the folder is under way; another asked for meanwhile
@@ -340,10 +345,11 @@ final class FolderModel: NSObject, ObservableObject {
         // changes); those of books that went are dropped.
         let urls = Set(new.map(\.url))
         requested = requested.filter { urls.contains($0.key) }
+        requestedCloud = requestedCloud.filter { urls.contains($0.key) }
         covers = covers.filter { urls.contains($0.key) }
         coverFiles = coverFiles.filter { urls.contains($0.key) }
-        for entry in new where entry.kind == .book && entry.isDownloaded {
-            loadCover(entry)
+        for entry in new where entry.kind == .book {
+            if entry.isDownloaded { loadCover(entry) } else { loadCloudThumbnail(entry) }
         }
         // A tapped book that has arrived: open it.
         for url in downloading where new.contains(where: { $0.url == url && $0.isDownloaded }) {
@@ -372,6 +378,68 @@ final class FolderModel: NSObject, ObservableObject {
                 self.coverFiles[url] = made.imageURL
             }
         }
+    }
+
+    /// The cover of a book in iCloud only, without downloading the book.
+    ///
+    /// Its own cover cannot be read until it is downloaded, but iCloud Drive
+    /// usually keeps a small picture of each file, made by the device that
+    /// uploaded it (for a book, its cover), and that is what the Files app
+    /// shows. Quick Look's thumbnail generator fetches it: a few kilobytes
+    /// through the system's own iCloud, as a tap on the book fetches the
+    /// book. If iCloud has none (the uploading device could not make one),
+    /// the tile stays plain. The picture is kept in the cover cache, under a
+    /// key of its own (made from the book's path and date, as no size is
+    /// known), and replaced by the book's real cover once it is downloaded.
+    /// Asked for one at a time, in grid order, like the covers.
+    private func loadCloudThumbnail(_ entry: FolderEntry) {
+        let url = entry.url
+        if let asked = requestedCloud[url], asked == entry.modified { return }
+        requestedCloud[url] = entry.modified
+        let cache = cache
+        let active = active
+        let key = CoverCache.key(path: "icloud-thumbnail:" + FolderScanner.canonicalPath(url), size: 0,
+                                 modified: entry.modified ?? .distantPast)
+        coverQueue.async {
+            guard active.isOn else {
+                DispatchQueue.main.async { [weak self] in self?.requestedCloud[url] = nil }
+                return
+            }
+            let made = cache.cached(key: key) ?? Self.cloudThumbnail(of: url, maxPixelSize: cache.maxPixelSize)
+                .map { cache.store(BookCover.Result(info: BookCoverInfo(), jpeg: $0), key: key) }
+            guard let made, made.imageURL != nil else { return }
+            DispatchQueue.main.async { [weak self] in
+                // Not if the book has arrived meanwhile and has its own.
+                guard let self, self.requestedCloud[url] != nil, self.requested[url] == nil else { return }
+                self.covers[url] = made.info
+                self.coverFiles[url] = made.imageURL
+            }
+        }
+    }
+
+    /// iCloud's stored picture of a file, as a JPEG, or nil if it has none
+    /// (or none comes within 15 seconds). Only a real thumbnail is taken,
+    /// never the generic icon for the file's type. Waits, so call it on a
+    /// background queue.
+    private nonisolated static func cloudThumbnail(of url: URL, maxPixelSize: Int) -> Data? {
+        let side = CGFloat(maxPixelSize) / 3
+        let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: side * 2 / 3, height: side),
+                                                   scale: 3, representationTypes: .thumbnail)
+        let done = DispatchSemaphore(value: 0)
+        let result = ThumbnailResult()
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
+            if let error { log.info("No iCloud thumbnail for \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)") }
+            result.image = representation?.cgImage
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + 15) == .success, let image = result.image else {
+            QLThumbnailGenerator.shared.cancel(request)
+            return nil
+        }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+        return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 
     /// Covers still to make, and how many books want one, for the progress
@@ -410,6 +478,11 @@ final class FolderModel: NSObject, ObservableObject {
             self?.refresh()
         }
     }
+}
+
+/// Carries a thumbnail from Quick Look's callback to the queue waiting for it.
+private final class ThumbnailResult: @unchecked Sendable {
+    var image: CGImage?
 }
 
 /// A switch read from background queues (is the folder still on screen?).
