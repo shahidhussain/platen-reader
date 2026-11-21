@@ -288,7 +288,7 @@ final class RecentList: ObservableObject {
     /// say: for a network share, the server's address ("smb://nas/books"),
     /// and whether a /Volumes path is a share or a drive.
     private func refinePlace(of item: RecentItem, url: URL) {
-        Self.checkQueue.async { [weak self] in
+        Self.checkQueue.addOperation { [weak self] in
             let keys: Set<URLResourceKey> = [.volumeIsLocalKey, .volumeURLForRemountingKey, .volumeURLKey, .isUbiquitousItemKey]
             guard let values = try? url.resourceValues(forKeys: keys) else { return }
             var place: StoragePlace?
@@ -313,7 +313,7 @@ final class RecentList: ObservableObject {
     /// asks the file system, which can be slow for a network share): for a
     /// folder shown on screen, which must not wait for it.
     func openedSoon(_ url: URL) {
-        Self.checkQueue.async {
+        Self.checkQueue.addOperation {
             guard let bookmark = try? url.bookmarkData() else { return }
             DispatchQueue.main.async { [weak self] in self?.opened(url, bookmark: bookmark) }
         }
@@ -379,43 +379,67 @@ final class RecentList: ObservableObject {
     /// The item's current place, from its bookmark (nil if it is gone, or on
     /// a drive or share that is not connected). Slow for a network share, so
     /// call it off the main thread (`RecentList.resolve` is nonisolated).
-    nonisolated static func resolve(_ item: RecentItem) -> URL? {
+    /// A check in the background does not mount a share that is not
+    /// connected (`mounting: false`); opening one may.
+    nonisolated static func resolve(_ item: RecentItem, mounting: Bool = true) -> URL? {
         var stale = false
-        return try? URL(resolvingBookmarkData: item.bookmark, bookmarkDataIsStale: &stale)
+        let options: URL.BookmarkResolutionOptions = mounting ? [.withoutUI] : [.withoutUI, .withoutMounting]
+        return try? URL(resolvingBookmarkData: item.bookmark, options: options, bookmarkDataIsStale: &stale)
     }
 
-    /// Whether the item can be reached now: its bookmark resolves and the
-    /// file or folder is there. Off the main thread.
-    nonisolated static func isReachable(_ item: RecentItem) -> Bool {
-        guard let url = resolve(item) else { return false }
+    /// Whether the item can be reached now, and where it is: its bookmark
+    /// resolves and the file or folder is there. A book kept in iCloud but
+    /// not on this device is `inCloud` (it can be opened, and downloaded,
+    /// only while online). Off the main thread.
+    nonisolated static func check(_ item: RecentItem) -> Reached {
+        guard let url = resolve(item, mounting: false) else { return .no }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        return (try? url.checkResourceIsReachable()) == true
+        guard (try? url.checkResourceIsReachable()) == true else { return .no }
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isUbiquitousItemKey,
+                                                       .ubiquitousItemDownloadingStatusKey])
+        if values?.isDirectory != true, values?.isUbiquitousItem == true,
+           values?.ubiquitousItemDownloadingStatus == .notDownloaded {
+            return .inCloud(url)
+        }
+        return .yes(url)
     }
 
     /// The answer to "can this item be reached?".
     enum Reached: Sendable {
         /// Yes, and this is where it is now.
         case yes(URL)
+        /// It is there, but only in iCloud: opening it downloads it first,
+        /// which needs a connection.
+        case inCloud(URL)
         case no
-        /// No answer within the time allowed (a share that has gone away).
+        /// No answer within the time allowed (a share that has gone away,
+        /// or iOS's file service not answering).
         case noAnswer
+
+        /// Where it is, if it was found.
+        var url: URL? {
+            switch self {
+            case .yes(let url), .inCloud(let url): return url
+            case .no, .noAnswer: return nil
+            }
+        }
     }
 
     /// Whether the item can be reached, giving up after `timeout` seconds. A
-    /// network share that has gone away can take a long time to fail. The
-    /// check runs on an ordinary background queue (a read that hangs there
-    /// holds one thread, not Swift's small pool of threads that the rest of
-    /// the app's background work shares), and the answer comes at the time
-    /// limit whether or not the check has finished. When the item is found,
-    /// the list learns where it is now (`found`).
+    /// network share that has gone away can take a long time to fail, and
+    /// iOS's own file service has been seen to stop answering altogether.
+    /// The check runs on a queue of its own (`checkQueue`), and the time
+    /// limit is kept on the main thread, so the answer comes at the limit
+    /// whatever the checks are doing. When the item is found, the list
+    /// learns where it is now (`found`).
     func reachability(of item: RecentItem, timeout: TimeInterval = 6) async -> Reached {
         let answer: Reached = await withCheckedContinuation { continuation in
             let once = ResumeOnce(continuation)
             Self.checks.check(item) { once.resume($0) }
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { once.resume(.noAnswer) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { once.resume(.noAnswer) }
         }
-        if case .yes(let url) = answer { found(item.id, at: url) }
+        if let url = answer.url { found(item.id, at: url) }
         return answer
     }
 
@@ -440,19 +464,28 @@ final class RecentList: ObservableObject {
                 return true
             }
             guard first else { return }
-            RecentList.checkQueue.async {
-                let result: Reached
-                if RecentList.isReachable(item), let url = RecentList.resolve(item) { result = .yes(url) } else { result = .no }
+            RecentList.checkQueue.addOperation {
+                let result = RecentList.check(item)
                 let answers = self.lock.withLock { self.waiting.removeValue(forKey: item.id) ?? [] }
                 for answer in answers { answer(result) }
             }
         }
     }
 
-    /// Checks run here, side by side: one stuck on a share does not hold up
-    /// the others.
-    fileprivate nonisolated static let checkQueue = DispatchQueue(label: "org.platenreader.recents-check",
-                                                              qos: .userInitiated, attributes: .concurrent)
+    /// Where checks (and other questions to the file system about listed
+    /// items) run: four at a time, the rest waiting their turn. One stuck on
+    /// a share does not hold up the others, and when the file system stops
+    /// answering altogether, at most four threads are stuck. (One thread per
+    /// item, as before, took all 64 of the threads the app's background
+    /// work shares, so even the time limits, then kept on that pool, never
+    /// came: every folder showed its spinner for good and no book opened.)
+    fileprivate nonisolated static let checkQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "org.platenreader.recents-check"
+        queue.qualityOfService = .userInitiated
+        queue.maxConcurrentOperationCount = 4
+        return queue
+    }()
 
     /// An item was found at `url`. Its stored path is brought up to date (an
     /// app's own folder moves when the app is updated, for one), and

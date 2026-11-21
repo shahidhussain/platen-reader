@@ -191,9 +191,21 @@ final class RecentsTests: XCTestCase {
         let list = RecentList(kind: .books, directory: folder.appendingPathComponent("recents"))
         let url = file(folder, "A.epub")
         let item = try XCTUnwrap(list.opened(url))
-        XCTAssertTrue(RecentList.isReachable(item))
+        XCTAssertNotNil(RecentList.check(item).url)
         try FileManager.default.removeItem(at: url)
-        XCTAssertFalse(RecentList.isReachable(item))
+        XCTAssertNil(RecentList.check(item).url)
+    }
+
+    /// The time limit answers even when the checks themselves cannot run
+    /// (the file system not answering): it is kept on the main thread.
+    @MainActor
+    func testReachabilityAnswersWithinItsTimeLimit() async throws {
+        let folder = try temporaryFolder()
+        let list = RecentList(kind: .books, directory: folder.appendingPathComponent("recents"))
+        let item = try XCTUnwrap(list.opened(file(folder, "A.epub")))
+        let started = Date()
+        if case .yes = await list.reachability(of: item, timeout: 5) {} else { XCTFail("should be found") }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
     }
 
     func testSearchMatchesEveryWordInNameTitleOrAuthor() {

@@ -32,6 +32,9 @@
     "About %@" : {
 
     },
+    "Add to Favourites" : {
+
+    },
     "Advanced" : {
 
     },
@@ -83,10 +86,7 @@
     "Books you open appear here." : {
 
     },
-    "Breaks long words at the ends of lines, so justified text has fewer wide gaps between words." : {
-
-    },
-    "Breaks long words at the ends of lines. Not used in this book: its pages are laid out by the publisher." : {
+    "Breaks long words at the ends of lines, so justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher." : {
 
     },
     "Bring All to Front" : {
@@ -96,6 +96,9 @@
 
     },
     "Change the filter to see the other books here." : {
+
+    },
+    "Choose a folder of books to find it here." : {
 
     },
     "Choose Folder…" : {
@@ -188,6 +191,9 @@
     "External drive" : {
 
     },
+    "Favourites" : {
+
+    },
     "File" : {
 
     },
@@ -219,9 +225,6 @@
 
     },
     "Folder: %@" : {
-
-    },
-    "Folders you look at appear here." : {
 
     },
     "Font" : {
@@ -344,10 +347,13 @@
     "No Books of These Kinds" : {
 
     },
-    "No Recent Books" : {
+    "No Favourites" : {
 
     },
-    "No Recent Folders" : {
+    "No Folders" : {
+
+    },
+    "No Recent Books" : {
 
     },
     "No results for “%@”" : {
@@ -459,6 +465,9 @@
     "Quit %@" : {
 
     },
+    "Reading" : {
+
+    },
     "Reading controls: click the left of the page for the previous page, the right for the next page, and the middle to show controls, or press C." : {
 
     },
@@ -468,13 +477,13 @@
     "Recent Books" : {
 
     },
-    "Recent Folders" : {
-
-    },
     "Remove Bookmark" : {
 
     },
     "Remove Bookmark (⌘D)" : {
+
+    },
+    "Remove from Favourites" : {
 
     },
     "Remove from Recents" : {
@@ -571,6 +580,9 @@
 
     },
     "Start of document" : {
+
+    },
+    "Tap the heart while reading a book to keep it here." : {
 
     },
     "Text" : {

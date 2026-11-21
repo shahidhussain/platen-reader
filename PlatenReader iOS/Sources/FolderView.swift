@@ -258,12 +258,16 @@ private struct CoverProgress: View {
 /// and Recent Books.
 struct BookTile: View {
     /// A mark on the cover, for a book that cannot be opened at once.
-    enum Badge {
-        /// In iCloud only (tapping downloads it), and while it downloads.
+    enum Badge: Equatable {
+        /// In iCloud only (tapping downloads it), and while it downloads
+        /// (or, in Recent Books, while it is checked before opening).
         case inCloud, downloading
-        /// Recent Books: its file cannot be reached (moved, deleted, or on
-        /// a drive or share that is not connected).
-        case unavailable
+        /// Recent Books and Favourites: its file cannot be reached now
+        /// (moved, deleted, on a drive or share that is not connected, or
+        /// only in iCloud while offline), with a word saying which.
+        case unavailable(String)
+
+        var isUnavailable: Bool { if case .unavailable = self { true } else { false } }
     }
 
     let title: String
@@ -306,18 +310,29 @@ struct BookTile: View {
                 PlainCover(title: title, author: author)
             }
         }
-        // A book that cannot be reached is greyed, with a mark saying so.
-        .saturation(badge == .unavailable ? 0 : 1)
-        .opacity(badge == .unavailable ? 0.45 : 1)
+        // A book that cannot be reached is greyed, with a label saying so.
+        .saturation(badge?.isUnavailable == true ? 0 : 1)
+        .opacity(badge?.isUnavailable == true ? 0.45 : 1)
+        .overlay(alignment: .bottom) {
+            if case .unavailable(let reason) = badge {
+                Text(reason)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .padding(6)
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             switch badge {
             case .inCloud:
                 mark(Image(systemName: "icloud.and.arrow.down"))
             case .downloading:
                 mark(ProgressView().tint(.white))
-            case .unavailable:
-                mark(Image(systemName: "externaldrive.badge.xmark"))
-            case nil:
+            case .unavailable, nil:
                 EmptyView()
             }
         }
@@ -338,7 +353,7 @@ struct BookTile: View {
         switch badge {
         case .inCloud: parts.append(String(localized: "In iCloud"))
         case .downloading: parts.append(String(localized: "Downloading"))
-        case .unavailable: parts.append(String(localized: "Not available"))
+        case .unavailable(let reason): parts.append(reason)
         case nil: break
         }
         return parts.joined(separator: ", ")

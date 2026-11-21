@@ -177,7 +177,21 @@ struct HomeTabBar: View {
 
 /// Whether a recent item can be reached: being checked (in the background,
 /// with a time limit), yes, or no.
-enum Reach { case checking, available, unavailable }
+enum Reach: Equatable {
+    case checking, available, unavailable
+    /// A book kept only in iCloud: it opens (downloading first) while online.
+    case inCloud
+}
+
+extension Reach {
+    init(_ answer: RecentList.Reached) {
+        switch answer {
+        case .yes: self = .available
+        case .inCloud: self = .inCloud
+        case .no, .noAnswer: self = .unavailable
+        }
+    }
+}
 
 // MARK: - Recent Books and Favourites
 
@@ -195,7 +209,10 @@ struct BookShelfView: View {
 
     @State private var reach: [RecentItem.ID: Reach] = [:]
     @State private var cannotOpen: RecentItem?
+    /// The book tapped, while it is checked before opening.
+    @State private var opening: RecentItem.ID?
     @ObservedObject private var options = BookTypeFilter.shared
+    @ObservedObject private var network = NetworkStatus.shared
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     init(shelf: Shelf, actions: HomeActions) {
@@ -216,7 +233,7 @@ struct BookShelfView: View {
                     ForEach(recents.items) { item in
                         Button { open(item) } label: {
                             BookTile(title: item.displayName, author: item.author, imageFile: recents.coverURL(for: item),
-                                     badge: reach[item.id] == .unavailable ? .unavailable : nil)
+                                     badge: badge(for: item))
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
@@ -269,21 +286,47 @@ struct BookShelfView: View {
             ), presenting: cannotOpen) { item in
                 Button(removeLabel, role: .destructive) { recents.remove(item) }
                 Button("OK", role: .cancel) {}
-            } message: { _ in
-                Text("It may have been moved or deleted, or it is on a drive or network share that is not connected.")
+            } message: { item in
+                if reach[item.id] == .inCloud {
+                    Text("It is in iCloud and not yet on this device. Connect to the internet to download it.")
+                } else {
+                    Text("It may have been moved or deleted, or it is on a drive or network share that is not connected.")
+                }
             }
+        }
+    }
+
+    /// The mark on a book's cover: being checked before it opens, in iCloud
+    /// (downloads when opened), or not available now, greyed with a word
+    /// saying why: a share not connected, offline for a book only in
+    /// iCloud, or moved, deleted or not answering.
+    private func badge(for item: RecentItem) -> BookTile.Badge? {
+        if opening == item.id { return .downloading }
+        switch reach[item.id] {
+        case .unavailable:
+            return .unavailable(item.storageKind == .network ? String(localized: "Not connected")
+                                                             : String(localized: "Not available"))
+        case .inCloud:
+            return network.isOnline ? .inCloud : .unavailable(String(localized: "Offline"))
+        case .checking, .available, nil:
+            return nil
         }
     }
 
     private func open(_ item: RecentItem) {
         guard !options.justPinched else { return } // the end of a pinch, not a tap
-        reach[item.id] = .checking
+        guard opening == nil else { return } // one at a time
+        opening = item.id
         Task {
-            if case .yes(let url) = await recents.reachability(of: item, timeout: 10) {
-                reach[item.id] = .available
+            let answer = await recents.reachability(of: item, timeout: 10)
+            opening = nil
+            reach[item.id] = Reach(answer)
+            switch answer {
+            case .yes(let url):
                 actions.openBook(url)
-            } else {
-                reach[item.id] = .unavailable
+            case .inCloud(let url) where network.isOnline:
+                actions.openBook(url) // the reader downloads it
+            case .inCloud, .no, .noAnswer:
                 cannotOpen = item
             }
         }
@@ -306,11 +349,7 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
     await withTaskGroup(of: Void.self) { group in
         for item in items {
             group.addTask { @MainActor in
-                if case .yes = await list.reachability(of: item) {
-                    reach.wrappedValue[item.id] = .available
-                } else {
-                    reach.wrappedValue[item.id] = .unavailable
-                }
+                reach.wrappedValue[item.id] = Reach(await list.reachability(of: item))
             }
         }
     }
@@ -362,18 +401,15 @@ struct RecentFoldersView: View {
                     for item in offsets.map({ recents.items[$0] }) { recents.remove(item) }
                 }
                 } footer: {
-                    if recents.items.isEmpty { emptyFolders }
-                }
-                // Settings: about the app, not a book, so here rather than
-                // among the reader's buttons.
-                Section {
-                    Button { showingSettings = true } label: {
-                        Label("Settings", systemImage: "gearshape")
+                    VStack(spacing: 0) {
+                        if recents.items.isEmpty { emptyFolders }
+                        settingsButton
                     }
-                    .disabled(editMode.isEditing)
                 }
             }
             .listStyle(.insetGrouped)
+            // Room between the large "Home" title and the list.
+            .contentMargins(.top, 16, for: .scrollContent)
             .sheet(isPresented: $showingSettings) { ReaderSettingsView() }
             .environment(\.editMode, $editMode)
             .onChange(of: recents.items.isEmpty) { _, empty in if empty { editMode = .inactive } }
@@ -418,6 +454,24 @@ struct RecentFoldersView: View {
         }
     }
 
+    /// Settings: about the app, not a book, so here rather than among the
+    /// reader's buttons. A small capsule button centred below the list (as
+    /// iOS puts actions under a list), so it does not read as one of the
+    /// folders.
+    private var settingsButton: some View {
+        Button { showingSettings = true } label: {
+            Label("Settings", systemImage: "gearshape")
+                .font(.subheadline.weight(.medium))
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .tint(.secondary)
+        .disabled(editMode.isEditing)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 28)
+        .textCase(nil)
+    }
+
     /// No folders yet (the gear stays below it).
     private var emptyFolders: some View {
         ContentUnavailableView {
@@ -454,7 +508,7 @@ struct RecentFoldersView: View {
                     switch state {
                     case .unavailable:
                         Text(kind == .network ? "Not connected" : "Not available")
-                    case .checking, .available:
+                    case .checking, .available, .inCloud:
                         Text(item.lastOpened.formatted(.relative(presentation: .named)))
                     }
                 }
@@ -479,7 +533,7 @@ struct RecentFoldersView: View {
     private func open(_ item: RecentItem) {
         reach[item.id] = .checking
         Task {
-            guard case .yes(let url) = await recents.reachability(of: item, timeout: 10) else {
+            guard let url = await recents.reachability(of: item, timeout: 10).url else {
                 reach[item.id] = .unavailable
                 cannotOpen = item
                 return
