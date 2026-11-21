@@ -25,9 +25,15 @@ const bookCSS = s => `
     html {
         color-scheme: ${s.theme.dark ? 'dark' : 'light'};
         font-size: ${s.fontSize}px !important;
+        /* iOS enlarges text it judges too small for a wide block, and a
+           chapter laid out as pages is one very wide block of columns, so
+           the text size could change on switching to scrolling and back.
+           The size chosen is the size shown. */
+        -webkit-text-size-adjust: none !important;
+        text-size-adjust: none !important;
     }
     html, body {
-        background-color: ${s.theme.background} !important;
+        background-color: ${s.transparent ? 'transparent' : s.theme.background} !important;
         color: ${s.theme.foreground} !important;
     }
     a:link, a:visited { color: ${s.theme.link} !important; }
@@ -85,7 +91,9 @@ const columnCount = s => {
 const applyLayout = () => {
     const r = reader.view?.renderer
     if (!r || !reader.settings) return
-    document.documentElement.style.setProperty('--platen-bg', reader.settings.theme.background)
+    // iOS ambient light: no background, so the glow behind the page shows.
+    document.documentElement.style.setProperty('--platen-bg',
+        reader.settings.transparent ? 'transparent' : reader.settings.theme.background)
     document.documentElement.style.setProperty('--platen-fg', reader.settings.theme.foreground)
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
     r.toggleAttribute('animated', reader.settings.animated && !reduceMotion)

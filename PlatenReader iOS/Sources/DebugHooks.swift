@@ -25,7 +25,8 @@ import Foundation
 ///   and the app's orientation),
 ///   `@close`, or JavaScript such as `platen.next()`. PDFs take `@turn:<…>`,
 ///   `@doubleturn:<…>`, `@swipe:<left|right>` (a finger drawn across the
-///   page over 0.3 s; left brings the next page), `@orientation` and
+///   page over 0.3 s; left brings the next page), `@zoom:<factor>` (zoom to
+///   that many times the fit), `@fit` (back to the fit), `@orientation` and
 ///   `@close`. Each
 ///   step is logged as `step: …`; take screenshots between them with
 ///   `xcrun simctl io booted screenshot`.

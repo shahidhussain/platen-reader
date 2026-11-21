@@ -53,6 +53,9 @@ check windows-1252.txt        "$TEXT"                                  "Café no
 # An EPUB 2 cover page first in the spine (its picture is the folder view's
 # cover), shown as a page that is one picture (as large as the page).
 check cover-page.epub         "'lone:'+platen.view.renderer.getContents()[0].doc.documentElement.classList.contains('platen-lone-picture')" "lone:true"
+# A page partway through a chapter that is one picture and nothing else
+# counts as a picture-only page (the page before it, text, does not).
+check plate-page.epub         "@resize:500x800;platen.view.goTo(0);'before:'+platen.pagePicture();platen.next();'plate:'+platen.pagePicture()" "plate:true" "before:true"
 # Body text set at 75% by the book still comes out at the size chosen.
 check small-body-text.epub    "(d=>'body:'+(Math.abs(parseFloat(getComputedStyle(d.querySelector('p')).fontSize)-platen.fontSize())<0.1))(platen.view.renderer.getContents()[0].doc)" "body:true"
 # PDF (PDFKit): its pages and its outline as Contents.

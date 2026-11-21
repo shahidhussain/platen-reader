@@ -37,6 +37,12 @@ If you patch a file, list it here with the reason, so updates can re-apply it.
   because dragging in JavaScript was limited to 60 frames a second and
   stuttered. Marked `// Platen:`.
 
+- `paginator.js`, `#beforeRender`, scrolled flow: the text gets the width
+  and side margins of one page (upstream used the whole view, with the
+  column gap on each side and the full `max-inline-size`), so switching
+  between pages and scrolling does not move or rewrap it. Marked
+  `// Platen:`.
+
 ## How to update
 
 1. `git clone https://github.com/johnfactotum/foliate-js && cd foliate-js && git checkout <commit>`

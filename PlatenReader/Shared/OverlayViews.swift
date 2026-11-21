@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// The heart's size and its ring, as the heartbeat animation moves them.
+struct Heartbeat {
+    var scale = 1.0
+    var ring = 0.8
+    var ringOpacity = 0.0
+}
+
 /// Callbacks from the overlay to the reader.
 struct OverlayActions {
     var previousPage: () -> Void
@@ -12,9 +19,12 @@ struct OverlayActions {
     /// Called whenever the user interacts, so the overlay does not auto-hide
     /// while it is being used.
     var interacted: () -> Void
-    /// iOS: what the gear button's popover shows (the settings). The Mac
-    /// has Platen Reader > Settings… instead, so leaves this out.
-    var settingsContent: (() -> AnyView)? = nil
+    /// iOS: marks the book as a favourite, or no longer (the heart button;
+    /// the home screen's Favourites tab lists them). The Mac has no home
+    /// screen to list them on, so leaves this out and shows no heart.
+    /// Settings are not among the reader's buttons: every button there is
+    /// about the book being read; Settings are on the home screen.
+    var toggleFavourite: (() -> Void)? = nil
 }
 
 extension View {
@@ -77,15 +87,20 @@ struct OverlayBar: View {
     var part: Part = .whole
 
     /// The Mac draws the whole bar as one panel at the bottom of the window.
-    /// iOS splits it, in the way of Apple's own iOS 26 apps: the buttons are
-    /// a small glass group at the bottom right, just above the slider, which
-    /// floats at the bottom with ‹ and › at its ends.
-    enum Part { case whole, buttons, scrubber }
+    /// iOS splits it, in the way of Apple's own iOS 26 apps: two small glass
+    /// groups just above the slider, which floats at the bottom with ‹ and ›
+    /// at its ends. At the left, the marks ("get me back here"): the
+    /// favourite heart and the bookmark. At the right, the views of the
+    /// book: Contents, Layout and Aa.
+    enum Part { case whole, marks, buttons, scrubber }
 
     @State private var dragFraction: Double?
     /// The popover that is open, if any: one at a time.
     @State private var openPopover: Popover?
-    private enum Popover { case typography, layout, settings }
+    private enum Popover { case typography, layout }
+    /// Counts favourites marked, to start the heart's beats.
+    @State private var heartbeats = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The bar is slightly see-through, and solid while the pointer is on it.
     @State private var hovering = false
     #if os(iOS)
@@ -107,6 +122,7 @@ struct OverlayBar: View {
     var body: some View {
         switch part {
         case .whole: wholeBar
+        case .marks: marksGroup
         case .buttons: buttonGroup
         case .scrubber: scrubber
         }
@@ -114,16 +130,30 @@ struct OverlayBar: View {
 
     // MARK: - iOS: the buttons, and the floating slider
 
-    /// Contents, bookmark, layout, Aa and settings, side by side on one
-    /// piece of glass.
+    /// The favourite heart and the bookmark, side by side on one piece of
+    /// glass, at the left.
+    private var marksGroup: some View {
+        HStack(spacing: 0) {
+            if actions.toggleFavourite != nil { favouriteButton.frame(width: 44, height: 44) }
+            // The system's bookmark symbol is narrow beside the others.
+            bookmarkButton.scaleEffect(x: 1.2, y: 1).frame(width: 44, height: 44)
+        }
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .font(.body.weight(.medium))
+        .imageScale(.large)
+        .padding(.horizontal, 4)
+        .overlaySurface(Capsule())
+        .tint(.primary)
+    }
+
+    /// Contents, Layout and Aa, side by side on one piece of glass, at the
+    /// right.
     private var buttonGroup: some View {
         HStack(spacing: 0) {
             contentsButton.frame(width: 44, height: 44)
-            // The system's bookmark symbol is narrow beside the others.
-            bookmarkButton.scaleEffect(x: 1.2, y: 1).frame(width: 44, height: 44)
             layoutButton.frame(width: 44, height: 44)
             typographyButton.frame(width: 44, height: 44)
-            if actions.settingsContent != nil { settingsButton.frame(width: 44, height: 44) }
         }
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
@@ -198,7 +228,7 @@ struct OverlayBar: View {
                 bookmarkButton
                 layoutButton
                 typographyButton
-                if actions.settingsContent != nil { settingsButton }
+                if actions.toggleFavourite != nil { favouriteButton }
             }
             .frame(minHeight: 32)
         }
@@ -338,16 +368,61 @@ struct OverlayBar: View {
         }
     }
 
-    /// iOS: the settings, in a popover like the others.
-    private var settingsButton: some View {
+    /// iOS: the heart, filled (in red) when the book is a favourite. Marking
+    /// a book as a favourite is a small moment of "I love this book", so the
+    /// heart beats twice (lub-dub, lub-dub) with a soft ring going out from
+    /// it on each beat, and the phone taps in time (the reader's
+    /// `toggleFavourite`). Taking it off is quiet. With Reduce Motion the
+    /// heart just fills.
+    private var favouriteButton: some View {
         Button {
-            toggle(.settings)
+            actions.toggleFavourite?()
+            actions.interacted()
         } label: {
-            Label(String(localized: "Settings"), systemImage: "gearshape")
+            Label(state.isFavourite ? String(localized: "Remove from Favourites") : String(localized: "Add to Favourites"),
+                  systemImage: state.isFavourite ? "heart.fill" : "heart")
+                .foregroundStyle(state.isFavourite ? Color.red : Color.primary)
+                .contentTransition(.symbolEffect(.replace))
+                .keyframeAnimator(initialValue: Heartbeat(), trigger: heartbeats) { content, beat in
+                    content
+                        .scaleEffect(beat.scale)
+                        .background {
+                            Circle()
+                                .stroke(Color.red, lineWidth: 1.5)
+                                .scaleEffect(beat.ring)
+                                .opacity(beat.ringOpacity)
+                                .allowsHitTesting(false)
+                        }
+                } keyframes: { _ in
+                    // Two heartbeats: a strong beat and a softer echo, a
+                    // pause, then again a little gentler.
+                    KeyframeTrack(\.scale) {
+                        SpringKeyframe(1.35, duration: 0.12, spring: .snappy)
+                        SpringKeyframe(1.0, duration: 0.12, spring: .snappy)
+                        SpringKeyframe(1.2, duration: 0.11, spring: .snappy)
+                        SpringKeyframe(1.0, duration: 0.3, spring: .smooth)
+                        SpringKeyframe(1.25, duration: 0.12, spring: .snappy)
+                        SpringKeyframe(1.0, duration: 0.12, spring: .snappy)
+                        SpringKeyframe(1.12, duration: 0.11, spring: .snappy)
+                        SpringKeyframe(1.0, duration: 0.35, spring: .smooth)
+                    }
+                    KeyframeTrack(\.ring) {
+                        LinearKeyframe(0.8, duration: 0.01)
+                        CubicKeyframe(1.8, duration: 0.6)
+                        LinearKeyframe(0.8, duration: 0.07)
+                        CubicKeyframe(1.8, duration: 0.6)
+                    }
+                    KeyframeTrack(\.ringOpacity) {
+                        LinearKeyframe(0.45, duration: 0.01)
+                        CubicKeyframe(0, duration: 0.6)
+                        LinearKeyframe(0.4, duration: 0.07)
+                        CubicKeyframe(0, duration: 0.6)
+                    }
+                }
         }
-        .popover(isPresented: isOpen(.settings), arrowEdge: popoverEdge) {
-            actions.settingsContent?()
-                .platenPopover()
+        .help(state.isFavourite ? String(localized: "Remove from Favourites") : String(localized: "Add to Favourites"))
+        .onChange(of: state.isFavourite) { _, favourite in
+            if favourite, !reduceMotion { heartbeats += 1 }
         }
     }
 
@@ -500,10 +575,16 @@ struct TypographyPopover: View {
             }
             LabeledContent("Appearance") { appearancePicker.labelsHidden() }
                 .popoverRow()
+            PopoverDivider()
+            // The glow of the page's own colours around it (books and PDFs;
+            // not in the Black theme, whose point is a black screen).
+            Toggle("Ambient Light", isOn: $settings.ambientLight)
+                .tint(Color(uiColor: .systemGreen))
+                .popoverRow()
             if state.isPDF {
                 PopoverDivider()
-                // The glow of the page's own colours around it.
-                Toggle("Ambient Light", isOn: $settings.ambientLight)
+                // White pages dark, for reading in the dark.
+                Toggle("Invert Colours", isOn: $settings.invertPDF)
                     .tint(Color(uiColor: .systemGreen))
                     .popoverRow()
             }

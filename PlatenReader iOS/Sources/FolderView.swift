@@ -9,7 +9,7 @@ extension Notification.Name {
 }
 
 /// One folder's grid of covers (about three across on an iPhone), the
-/// folders inside it first, shown in the Recent Folders tab. Tapping a
+/// folders inside it first, shown in the Home tab. Tapping a
 /// folder goes into it, with the usual Back button; tapping a book opens it.
 /// Search (by file name, title and author) and a filter by kind of book are
 /// in the toolbar.
@@ -18,21 +18,19 @@ struct FolderGridView: View {
     let openBook: (URL) -> Void
     /// A folder inside this one was tapped.
     let openFolder: (URL) -> Void
-    let chooseBook: () -> Void
-    let chooseFolder: () -> Void
     @StateObject private var model: FolderModel
     /// The search field (shown by the search button) and what is typed in it.
     @State private var query = ""
     @State private var searching = false
+    /// The book whose Get Info sheet is showing.
+    @State private var infoFor: FolderEntry?
+    @State private var showingOptions = false
     @ObservedObject private var filter = BookTypeFilter.shared
 
-    init(folder: URL, openBook: @escaping (URL) -> Void, openFolder: @escaping (URL) -> Void,
-         chooseBook: @escaping () -> Void, chooseFolder: @escaping () -> Void) {
+    init(folder: URL, openBook: @escaping (URL) -> Void, openFolder: @escaping (URL) -> Void) {
         self.folder = folder
         self.openBook = openBook
         self.openFolder = openFolder
-        self.chooseBook = chooseBook
-        self.chooseFolder = chooseFolder
         _model = StateObject(wrappedValue: FolderModel(folder: folder))
     }
 
@@ -41,7 +39,7 @@ struct FolderGridView: View {
     /// authors too.
     private var shown: [FolderEntry] {
         let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
-        return model.entries.filter { entry in
+        return filter.sort.sorted(model.entries, info: model.covers).filter { entry in
             if entry.kind == .book, !filter.shows(entry.url) { return false }
             guard searching else { return true }
             let info = model.covers[entry.url]
@@ -49,13 +47,12 @@ struct FolderGridView: View {
         }
     }
 
-    /// At least 100 points wide: three across on every iPhone in portrait
-    /// (even the smallest), more on iPad and in landscape.
-    private let columns = [GridItem(.adaptive(minimum: 100, maximum: 200), spacing: 18, alignment: .bottom)]
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+            LazyVGrid(columns: CoverColumns.items(filter, sizeClass), alignment: .leading,
+                      spacing: CoverColumns.spacing(filter, sizeClass) + 6) {
                 ForEach(shown) { entry in
                     Button {
                         tapped(entry)
@@ -65,17 +62,30 @@ struct FolderGridView: View {
                             FolderTile(name: entry.name)
                         case .book:
                             let info = model.covers[entry.url]
+                            let lines = filter.coverLabel.lines(fileName: entry.name, title: info?.title,
+                                                                author: info?.authors.first)
                             BookTile(title: info?.title ?? entry.name, author: info?.authors.first,
                                      imageFile: model.coverFiles[entry.url],
                                      badge: entry.isDownloaded ? nil
-                                         : model.downloading.contains(entry.url) ? .downloading : .inCloud)
+                                         : model.downloading.contains(entry.url) ? .downloading : .inCloud,
+                                     caption: lines.0, subcaption: lines.1)
                         }
                     }
                     .buttonStyle(.plain)
+                    // A long press on a book: Get Info.
+                    .contextMenu {
+                        if entry.kind == .book {
+                            Button { infoFor = entry } label: { Label("Get Info", systemImage: "info.circle") }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+        }
+        .coverPinch(filter, sizeClass)
+        .sheet(item: $infoFor) { entry in
+            BookInfoView(entry: entry, info: model.covers[entry.url])
         }
         .overlay {
             if !model.hasLoaded {
@@ -112,48 +122,45 @@ struct FolderGridView: View {
         }
         .animation(.easeOut(duration: 0.3), value: model.coverProgress.done < model.coverProgress.total)
         .navigationTitle(folder.lastPathComponent)
-        // The title sits in the bar with the buttons, and there is no Back
-        // button: a swipe across the page goes back (SwipeBack), as does
-        // tapping the Recent Folders tab. The grid gets the space.
+        // The title sits in the bar with the buttons, so the grid gets the
+        // space. iOS's own Back button is at the top left (long-press it for
+        // the whole way back); a swipe across the page goes back too
+        // (SwipeBack), as does tapping the Home tab.
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
         // The search field opens from the search button (and closes with
         // Cancel, clearing the search).
         .searchable(text: $query, isPresented: $searching,
                     placement: .navigationBarDrawer(displayMode: .automatic),
                     prompt: Text("Title, author or file name"))
+        // A note in the log of what each search found, once typing pauses,
+        // to tell "not in the folder's listing yet" from "not matched".
+        .task(id: query) {
+            guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            logSearch()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                // The kinds of book shown, each with a tick; at least one
-                // stays ticked. The menu stays open while ticking.
-                Menu {
-                    Section("Show") {
-                        ForEach(BookFileType.allCases) { type in
-                            Toggle(type.label, isOn: Binding(get: { filter.isShown(type) }, set: { _ in filter.toggle(type) }))
-                                .menuActionDismissBehavior(.disabled)
-                        }
-                    }
-                } label: {
-                    Label("Filter", systemImage: filter.showsAll ? "line.3.horizontal.decrease.circle"
-                                                                 : "line.3.horizontal.decrease.circle.fill")
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button(action: chooseFolder) { Label("Choose Folder…", systemImage: "folder.badge.plus") }
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
+                // View Options: the order, the kinds of book shown and the
+                // words under each cover, in a sheet (filled in when some
+                // kinds are hidden).
+                Button { showingOptions = true } label: {
+                    Label("View Options", systemImage: filter.showsAll ? "line.3.horizontal.decrease.circle"
+                                                                       : "line.3.horizontal.decrease.circle.fill")
                 }
             }
         }
+        .sheet(isPresented: $showingOptions) { FolderViewOptions() }
         .refreshable { model.refresh() }
         .onAppear {
             model.onDownloaded = openBook
             model.start()
-            RecentList.folders.openedSoon(folder) // for the Recent Folders tab
+            // Not added to the Home list: only folders the reader chose
+            // go there (Choose Folder…), not every folder browsed into.
         }
         .onDisappear { model.stop() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
@@ -164,7 +171,20 @@ struct FolderGridView: View {
         }
     }
 
+    private func logSearch() {
+        let books = model.entries.filter { $0.kind == .book }
+        let found = shown
+        let byName = books.filter { FolderSearch.matches(query, name: $0.name) }.count
+        let titled = books.filter { model.covers[$0.url]?.title != nil }.count
+        log.info("folder search: \(found.count) shown of \(model.entries.count) entries (\(books.count) books, \(titled) with titles read, \(byName) matching by file name), loaded: \(model.hasLoaded)")
+        #if DEBUG
+        // Debug builds only: the words and names themselves.
+        log.info("folder search for \(query, privacy: .public) in \(folder.lastPathComponent, privacy: .public): \(found.map(\.name).joined(separator: " | "), privacy: .public)")
+        #endif
+    }
+
     private func tapped(_ entry: FolderEntry) {
+        guard !filter.justPinched else { return } // the end of a pinch, not a tap
         switch entry.kind {
         case .folder:
             openFolder(entry.url)
@@ -174,6 +194,94 @@ struct FolderGridView: View {
             // In iCloud only: fetch it first; it opens when it arrives.
             model.download(entry)
         }
+    }
+}
+
+/// View Options, a sheet from the folder view's filter button: the order of
+/// the books, the kinds shown (at least one stays ticked), and the words
+/// under each cover. One choice for every folder.
+struct FolderViewOptions: View {
+    @ObservedObject private var filter = BookTypeFilter.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Sort By") {
+                    Picker("Sort By", selection: $filter.sort) {
+                        ForEach(FolderSort.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
+                Section {
+                    Picker("Under Each Cover", selection: $filter.coverLabel) {
+                        ForEach(CoverLabel.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("Under Each Cover")
+                } footer: {
+                    Text("A book’s title and author are known once Platen has read it; until then, and for books only in iCloud, its file name is shown.")
+                }
+                Section {
+                    ForEach(BookFileType.allCases) { type in
+                        Toggle(type.label, isOn: Binding(get: { filter.isShown(type) }, set: { _ in filter.toggle(type) }))
+                            .disabled(filter.isShown(type) && BookFileType.allCases.filter(filter.isShown).count == 1)
+                    }
+                } header: {
+                    Text("Show")
+                }
+            }
+            .navigationTitle("View Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+/// How many covers fit across a grid (folders, Recent Books): the reader's
+/// choice, made by pinching (out for fewer and bigger, in for more and
+/// smaller), or three on an iPhone and five on an iPad.
+enum CoverColumns {
+    static func range(_ sizeClass: UserInterfaceSizeClass?) -> ClosedRange<Int> {
+        sizeClass == .regular ? 3...8 : 2...5
+    }
+
+    @MainActor static func count(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> Int {
+        let range = range(sizeClass)
+        return min(max(options.columns ?? (sizeClass == .regular ? 5 : 3), range.lowerBound), range.upperBound)
+    }
+
+    @MainActor static func spacing(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> CGFloat {
+        count(options, sizeClass) > 3 ? 12 : 18
+    }
+
+    @MainActor static func items(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: spacing(options, sizeClass), alignment: .bottom),
+              count: count(options, sizeClass))
+    }
+}
+
+extension View {
+    /// A pinch on a cover grid changes how many covers fit across.
+    @MainActor func coverPinch(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> some View {
+        simultaneousGesture(
+            MagnifyGesture()
+                .onChanged { _ in options.lastPinch = Date() }
+                .onEnded { value in
+                options.lastPinch = Date()
+                let now = CoverColumns.count(options, sizeClass)
+                let next = value.magnification > 1.15 ? now - 1 : value.magnification < 0.87 ? now + 1 : now
+                let range = CoverColumns.range(sizeClass)
+                guard next != now, range.contains(next) else { return }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { options.columns = next }
+            }
+        )
     }
 }
 
@@ -208,12 +316,16 @@ private struct CoverProgress: View {
 /// and Recent Books.
 struct BookTile: View {
     /// A mark on the cover, for a book that cannot be opened at once.
-    enum Badge {
-        /// In iCloud only (tapping downloads it), and while it downloads.
+    enum Badge: Equatable {
+        /// In iCloud only (tapping downloads it), and while it downloads
+        /// (or, in Recent Books, while it is checked before opening).
         case inCloud, downloading
-        /// Recent Books: its file cannot be reached (moved, deleted, or on
-        /// a drive or share that is not connected).
-        case unavailable
+        /// Recent Books and Favourites: its file cannot be reached now
+        /// (moved, deleted, on a drive or share that is not connected, or
+        /// only in iCloud while offline), with a word saying which.
+        case unavailable(String)
+
+        var isUnavailable: Bool { if case .unavailable = self { true } else { false } }
     }
 
     let title: String
@@ -222,6 +334,10 @@ struct BookTile: View {
     /// while the tile is on screen (CoverImages).
     let imageFile: URL?
     var badge: Badge?
+    /// The words under the cover (the folder view's View Options choose
+    /// them): one or two lines; the title alone when not given.
+    var caption: String? = nil
+    var subcaption: String? = nil
     @State private var image: CGImage?
 
     var body: some View {
@@ -229,10 +345,19 @@ struct BookTile: View {
             Color.clear
                 .aspectRatio(2 / 3, contentMode: .fit)
                 .overlay(alignment: .bottom) { cover }
-            Text(title)
+            // Two lines either way, so the rows of covers line up.
+            if let subcaption {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(caption ?? title).foregroundStyle(.primary.opacity(0.75)).lineLimit(1)
+                    Text(subcaption).foregroundStyle(.secondary).lineLimit(1)
+                }
                 .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2, reservesSpace: true)
+            } else {
+                Text(caption ?? title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2, reservesSpace: true)
+            }
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
@@ -256,18 +381,29 @@ struct BookTile: View {
                 PlainCover(title: title, author: author)
             }
         }
-        // A book that cannot be reached is greyed, with a mark saying so.
-        .saturation(badge == .unavailable ? 0 : 1)
-        .opacity(badge == .unavailable ? 0.45 : 1)
+        // A book that cannot be reached is greyed, with a label saying so.
+        .saturation(badge?.isUnavailable == true ? 0 : 1)
+        .opacity(badge?.isUnavailable == true ? 0.45 : 1)
+        .overlay(alignment: .bottom) {
+            if case .unavailable(let reason) = badge {
+                Text(reason)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .padding(6)
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             switch badge {
             case .inCloud:
                 mark(Image(systemName: "icloud.and.arrow.down"))
             case .downloading:
                 mark(ProgressView().tint(.white))
-            case .unavailable:
-                mark(Image(systemName: "externaldrive.badge.xmark"))
-            case nil:
+            case .unavailable, nil:
                 EmptyView()
             }
         }
@@ -288,7 +424,7 @@ struct BookTile: View {
         switch badge {
         case .inCloud: parts.append(String(localized: "In iCloud"))
         case .downloading: parts.append(String(localized: "Downloading"))
-        case .unavailable: parts.append(String(localized: "Not available"))
+        case .unavailable(let reason): parts.append(reason)
         case nil: break
         }
         return parts.joined(separator: ", ")

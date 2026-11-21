@@ -83,6 +83,9 @@ struct WebSettings: Equatable {
     var sideMargin: Double?
     /// Room above and below the text, in points (nil: the shell's default).
     var verticalMargin: Double?
+    /// The page paints no background of its own, so a glow drawn behind the
+    /// web view shows through (iOS ambient light).
+    var transparent = false
 
     /// As the plain values WebKit can pass to JavaScript.
     var payload: [String: Any] {
@@ -106,6 +109,7 @@ struct WebSettings: Equatable {
         if nativeSwipe { payload["nativeSwipe"] = true }
         if let sideMargin { payload["sideMargin"] = sideMargin }
         if let verticalMargin { payload["verticalMargin"] = verticalMargin }
+        if transparent { payload["transparent"] = true }
         return payload
     }
 }
@@ -141,6 +145,9 @@ enum ReaderMessage: Equatable {
     case click(ClickZone)
     /// A click on a picture: show it full size.
     case image(Picture)
+    /// The page on screen is just one picture (its bytes), or no longer is
+    /// (nil). iOS shows it natively, as large as the screen allows.
+    case lonePicture(Data?)
     /// A link to the web, to open in the browser.
     case externalLink(URL)
     /// The book could not be opened in the page.
@@ -286,6 +293,8 @@ enum ReaderMessage: Equatable {
             self = .image(Picture(data: data, mimeType: string("mimeType") ?? "", alt: string("alt") ?? "",
                                   rect: CGRect(x: number("x"), y: number("y"),
                                                width: number("width"), height: number("height"))))
+        case "lonePicture":
+            self = .lonePicture(string("data").flatMap { Data(base64Encoded: $0) })
         case "externalLink":
             // Only links a browser or Mail can open; anything else is dropped.
             guard let href = string("href"), let url = URL(string: href),

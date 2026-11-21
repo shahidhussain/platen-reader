@@ -9,33 +9,24 @@ struct HomeActions {
     let chooseFolder: () -> Void
 }
 
-/// Which tab is showing, and the folders open in Recent Folders: kept by
+/// Which tab is showing, and the folders open in the Home tab: kept by
 /// HomeViewController, so a folder just chosen ("Choose Folder…") opens
 /// there.
 @MainActor
 final class HomeNavigation: ObservableObject {
-    enum Tab: Int, Hashable, CaseIterable { case home, books, folders }
+    enum Tab: Int, Hashable, CaseIterable { case home, books, favourites }
     @Published var tab: Tab = .home
     @Published var folderPath: [URL] = []
 
-    /// A sideways swipe on a tab's main screen moves to the tab beside it:
-    /// left for the next, right for the one before. Inside a folder, a swipe
-    /// right goes back instead (SwipeBack), so tabs do not change there.
-    func swiped(left: Bool) {
-        guard tab != .folders || folderPath.isEmpty,
-              let next = Tab(rawValue: tab.rawValue + (left ? 1 : -1)) else { return }
-        withAnimation(.easeInOut(duration: 0.2)) { tab = next }
-    }
-
-    /// Shows a folder in the Recent Folders tab (just chosen, or tapped).
+    /// Shows a folder in the Home tab (just chosen, or tapped in the list).
     func show(folder: URL) {
         FolderAccess.hold(folder)
-        tab = .folders
+        tab = .home
         folderPath = [folder]
     }
 }
 
-/// Folders opened from Recent Folders (or just chosen) keep their access
+/// Folders opened from the Home tab (or just chosen) keep their access
 /// while the app runs: their books are read from them.
 @MainActor
 enum FolderAccess {
@@ -46,85 +37,208 @@ enum FolderAccess {
     }
 }
 
-/// The home screen: three tabs, whose bar stays at the bottom even inside a
-/// folder, so the reader can always get back out.
-/// - **Home:** the welcome (Open Book…, Choose Folder…), for now.
+/// The home screen.
+///
+/// The first time Platen is opened, with nothing to show (no folders, no
+/// recent books, no favourites), it is the welcome alone: Open Book… and
+/// Choose Folder…. As soon as a book is opened or a folder chosen, the
+/// welcome is gone for good and the home screen is three tabs:
+/// - **Home:** the reader's folders (the ones they chose), as a list; a
+///   folder opens inside the tab. The gear for Settings is at its foot.
 /// - **Recent Books:** books opened lately, from anywhere, newest first.
-/// - **Recent Folders:** folders looked at lately, as a list; a folder opens
-///   inside the tab.
+/// - **Favourites:** books the reader marked with the heart in the reader,
+///   "what I am reading now".
 struct HomeTabs: View {
     @ObservedObject var navigation: HomeNavigation
     let actions: HomeActions
+    @ObservedObject private var books = RecentList.books
+    @ObservedObject private var folders = RecentList.folders
+    @ObservedObject private var favourites = RecentList.favorites
+
+    private var isFirstRun: Bool { books.items.isEmpty && folders.items.isEmpty && favourites.items.isEmpty }
 
     var body: some View {
-        TabView(selection: $navigation.tab) {
-            WelcomeView(open: actions.chooseBook, chooseFolder: actions.chooseFolder)
-                .contentShape(Rectangle())
-                .tabSwipe(navigation)
-                .tabItem { Label("Home", systemImage: "house") }
-                .tag(HomeNavigation.Tab.home)
-            RecentBooksView(actions: actions)
-                .tabSwipe(navigation)
-                .tabItem { Label("Recent Books", systemImage: "clock") }
-                .tag(HomeNavigation.Tab.books)
-            RecentFoldersView(navigation: navigation, actions: actions)
-                .tabSwipe(navigation)
-                .tabItem { Label("Recent Folders", systemImage: "folder") }
-                .tag(HomeNavigation.Tab.folders)
+        Group {
+            if isFirstRun {
+                WelcomeView(open: actions.chooseBook, chooseFolder: actions.chooseFolder)
+            } else {
+                HomeTabRow(navigation: navigation, actions: actions)
+            }
+        }
+        // The first book opened from the welcome: closing it comes back to
+        // Recent Books, where it is, rather than to an empty Home.
+        .onChange(of: isFirstRun) { _, first in
+            if !first, folders.items.isEmpty { navigation.tab = .books }
         }
     }
 }
 
-extension View {
-    /// Switches tabs on a clear sideways swipe (see HomeNavigation.swiped),
-    /// alongside the screen's own scrolling and taps.
-    func tabSwipe(_ navigation: HomeNavigation) -> some View {
-        simultaneousGesture(
-            DragGesture(minimumDistance: 30)
-                .onEnded { drag in
-                    let dx = drag.translation.width, dy = drag.translation.height
-                    // Mostly sideways, and far enough (or quick enough).
-                    guard abs(dx) > abs(dy) * 2,
-                          abs(dx) > 90 || abs(drag.predictedEndTranslation.width) > 200 else { return }
-                    navigation.swiped(left: dx < 0)
+/// The three tabs side by side, which slide sideways under the finger (or
+/// when a tab is tapped), so they read as three pages in a row. The tab bar
+/// stays at the bottom even inside a folder, so the reader can always get
+/// back out; there, a swipe right goes back instead (the row stands still).
+///
+/// The system's tab view cannot slide between its tabs, so the sections are
+/// pages of a paging scroll view, with a tab bar of Platen's own on glass.
+struct HomeTabRow: View {
+    @ObservedObject var navigation: HomeNavigation
+    let actions: HomeActions
+    /// The page the row is scrolled to (follows the finger).
+    @State private var shown: HomeNavigation.Tab? = .home
+
+    /// Inside a folder the row stands still: a swipe goes back.
+    private var rowLocked: Bool { navigation.tab == .home && !navigation.folderPath.isEmpty }
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 0) {
+                ForEach(HomeNavigation.Tab.allCases, id: \.self) { tab in
+                    page(tab)
+                        .containerRelativeFrame(.horizontal)
+                        .id(tab)
                 }
-        )
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $shown)
+        .scrollIndicators(.hidden)
+        .scrollDisabled(rowLocked)
+        .safeAreaInset(edge: .bottom) {
+            HomeTabBar(selection: Binding(get: { navigation.tab }, set: { tab in
+                // Tapping Home again goes back to the list of folders.
+                if tab == navigation.tab, tab == .home { navigation.folderPath = [] }
+                navigation.tab = tab
+            }))
+        }
+        // A swipe that settles on a page makes it the tab; a tab chosen
+        // (tapped, or a folder just chosen) slides the row to it.
+        .onChange(of: shown) { _, tab in
+            if let tab, tab != navigation.tab { navigation.tab = tab }
+        }
+        .onChange(of: navigation.tab) { _, tab in
+            guard shown != tab else { return }
+            withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .snappy(duration: 0.35)) { shown = tab }
+        }
+        // A tab chosen before the row was laid out (a folder chosen at
+        // launch, or from the welcome): go to it once it is on screen.
+        .onAppear {
+            DispatchQueue.main.async { if shown != navigation.tab { shown = navigation.tab } }
+        }
+    }
+
+    @ViewBuilder private func page(_ tab: HomeNavigation.Tab) -> some View {
+        switch tab {
+        case .home: RecentFoldersView(navigation: navigation, actions: actions)
+        case .books: BookShelfView(shelf: .recent, actions: actions)
+        case .favourites: BookShelfView(shelf: .favourites, actions: actions)
+        }
+    }
+}
+
+/// The tab bar: Home, Recent Books and Favourites, on glass, the one shown
+/// picked out.
+struct HomeTabBar: View {
+    @Binding var selection: HomeNavigation.Tab
+
+    var body: some View {
+        HStack(spacing: 4) {
+            item(.home, "Home", "house")
+            item(.books, "Recent Books", "clock")
+            item(.favourites, "Favourites", "heart")
+        }
+        .padding(4)
+        .overlaySurface(Capsule())
+        .padding(.bottom, 4)
+    }
+
+    private func item(_ tab: HomeNavigation.Tab, _ title: LocalizedStringKey, _ symbol: String) -> some View {
+        let selected = selection == tab
+        return Button { selection = tab } label: {
+            VStack(spacing: 2) {
+                Image(systemName: selected ? symbol + ".fill" : symbol)
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(height: 22)
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            .frame(width: 100, height: 48)
+            .background {
+                if selected { Capsule().fill(Color.primary.opacity(0.08)) }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }
 
 /// Whether a recent item can be reached: being checked (in the background,
 /// with a time limit), yes, or no.
-enum Reach { case checking, available, unavailable }
+enum Reach: Equatable {
+    case checking, available, unavailable
+    /// A book kept only in iCloud: it opens (downloading first) while online.
+    case inCloud
+}
 
-// MARK: - Recent Books
+extension Reach {
+    init(_ answer: RecentList.Reached) {
+        switch answer {
+        case .yes: self = .available
+        case .inCloud: self = .inCloud
+        case .no, .noAnswer: self = .unavailable
+        }
+    }
+}
 
-/// Books opened lately, wherever they are, as covers (copies kept with the
-/// list, so they show even when the book cannot be reached). A book that
-/// cannot be reached now (moved, deleted, or on a drive or share that is
-/// not connected) is greyed with a mark. A long press offers Remove from
-/// Recents; + opens another book.
-struct RecentBooksView: View {
-    @ObservedObject private var recents = RecentList.books
+// MARK: - Recent Books and Favourites
+
+/// Books as covers: those opened lately (Recent Books), or the reader's
+/// favourites. Covers are copies kept with the list, so they show even when
+/// the book cannot be reached. A book that cannot be reached now (moved,
+/// deleted, or on a drive or share that is not connected) is greyed with a
+/// mark. A long press takes it off the list; in Recent Books, + opens
+/// another book.
+struct BookShelfView: View {
+    enum Shelf { case recent, favourites }
+    let shelf: Shelf
+    @ObservedObject private var recents: RecentList
     let actions: HomeActions
 
     @State private var reach: [RecentItem.ID: Reach] = [:]
     @State private var cannotOpen: RecentItem?
+    /// The book tapped, while it is checked before opening.
+    @State private var opening: RecentItem.ID?
+    @ObservedObject private var options = BookTypeFilter.shared
+    @ObservedObject private var network = NetworkStatus.shared
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
-    private let columns = [GridItem(.adaptive(minimum: 100, maximum: 200), spacing: 18, alignment: .bottom)]
+    init(shelf: Shelf, actions: HomeActions) {
+        self.shelf = shelf
+        self.actions = actions
+        recents = shelf == .recent ? RecentList.books : RecentList.favorites
+    }
+
+    private var removeLabel: LocalizedStringKey {
+        shelf == .recent ? "Remove from Recents" : "Remove from Favourites"
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+                LazyVGrid(columns: CoverColumns.items(options, sizeClass), alignment: .leading,
+                          spacing: CoverColumns.spacing(options, sizeClass) + 6) {
                     ForEach(recents.items) { item in
                         Button { open(item) } label: {
                             BookTile(title: item.displayName, author: item.author, imageFile: recents.coverURL(for: item),
-                                     badge: reach[item.id] == .unavailable ? .unavailable : nil)
+                                     badge: badge(for: item))
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button(role: .destructive) { recents.remove(item) } label: {
-                                Label("Remove from Recents", systemImage: "minus.circle")
+                                Label(removeLabel, systemImage: shelf == .recent ? "minus.circle" : "heart.slash")
                             }
                         }
                     }
@@ -132,25 +246,37 @@ struct RecentBooksView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            .coverPinch(options, sizeClass)
             .overlay {
                 if recents.items.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Recent Books", systemImage: "clock")
-                    } description: {
-                        Text("Books you open appear here.")
-                    } actions: {
-                        Button("Open Book…", action: actions.chooseBook)
+                    switch shelf {
+                    case .recent:
+                        ContentUnavailableView {
+                            Label("No Recent Books", systemImage: "clock")
+                        } description: {
+                            Text("Books you open appear here.")
+                        } actions: {
+                            Button("Open Book…", action: actions.chooseBook)
+                        }
+                    case .favourites:
+                        ContentUnavailableView {
+                            Label("No Favourites", systemImage: "heart")
+                        } description: {
+                            Text("Tap the heart while reading a book to keep it here.")
+                        }
                     }
                 }
             }
-            .navigationTitle("Recent Books")
+            .navigationTitle(shelf == .recent ? "Recent Books" : "Favourites")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: actions.chooseBook) { Label("Open Book…", systemImage: "plus") }
+                if shelf == .recent {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: actions.chooseBook) { Label("Open Book…", systemImage: "plus") }
+                    }
                 }
             }
-            // Covers, and whether each book can be reached, looked up again
-            // whenever the list changes or the app comes back.
+            // Whether each book can be reached, looked up again whenever the
+            // list changes or the app comes back.
             .task(id: recents.items.map(\.id)) { await refresh() }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 Task { await refresh() }
@@ -158,22 +284,49 @@ struct RecentBooksView: View {
             .alert(Text("This book can’t be opened"), isPresented: Binding(
                 get: { cannotOpen != nil }, set: { if !$0 { cannotOpen = nil } }
             ), presenting: cannotOpen) { item in
-                Button("Remove from Recents", role: .destructive) { recents.remove(item) }
+                Button(removeLabel, role: .destructive) { recents.remove(item) }
                 Button("OK", role: .cancel) {}
-            } message: { _ in
-                Text("It may have been moved or deleted, or it is on a drive or network share that is not connected.")
+            } message: { item in
+                if reach[item.id] == .inCloud {
+                    Text("It is in iCloud and not yet on this device. Connect to the internet to download it.")
+                } else {
+                    Text("It may have been moved or deleted, or it is on a drive or network share that is not connected.")
+                }
             }
         }
     }
 
+    /// The mark on a book's cover: being checked before it opens, in iCloud
+    /// (downloads when opened), or not available now, greyed with a word
+    /// saying why: a share not connected, offline for a book only in
+    /// iCloud, or moved, deleted or not answering.
+    private func badge(for item: RecentItem) -> BookTile.Badge? {
+        if opening == item.id { return .downloading }
+        switch reach[item.id] {
+        case .unavailable:
+            return .unavailable(item.storageKind == .network ? String(localized: "Not connected")
+                                                             : String(localized: "Not available"))
+        case .inCloud:
+            return network.isOnline ? .inCloud : .unavailable(String(localized: "Offline"))
+        case .checking, .available, nil:
+            return nil
+        }
+    }
+
     private func open(_ item: RecentItem) {
-        reach[item.id] = .checking
+        guard !options.justPinched else { return } // the end of a pinch, not a tap
+        guard opening == nil else { return } // one at a time
+        opening = item.id
         Task {
-            if case .yes(let url) = await recents.reachability(of: item, timeout: 10) {
-                reach[item.id] = .available
+            let answer = await recents.reachability(of: item, timeout: 10)
+            opening = nil
+            reach[item.id] = Reach(answer)
+            switch answer {
+            case .yes(let url):
                 actions.openBook(url)
-            } else {
-                reach[item.id] = .unavailable
+            case .inCloud(let url) where network.isOnline:
+                actions.openBook(url) // the reader downloads it
+            case .inCloud, .no, .noAnswer:
                 cannotOpen = item
             }
         }
@@ -196,24 +349,38 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
     await withTaskGroup(of: Void.self) { group in
         for item in items {
             group.addTask { @MainActor in
-                if case .yes = await list.reachability(of: item) {
-                    reach.wrappedValue[item.id] = .available
-                } else {
-                    reach.wrappedValue[item.id] = .unavailable
-                }
+                reach.wrappedValue[item.id] = Reach(await list.reachability(of: item))
             }
         }
     }
 }
 
 
-// MARK: - Recent Folders
+extension View {
+    /// The version line under the large title (iOS 26 and later).
+    @ViewBuilder func versionSubtitle() -> some View {
+        if #available(iOS 26, *) {
+            navigationSubtitle(Text(verbatim: AppVersion.line))
+        } else {
+            self
+        }
+    }
+}
 
-/// Folders looked at lately, as a list: an icon for where each is kept
-/// (this device, iCloud Drive, a network share, a drive), its name, its
-/// path (the end of it always shown) and when. Tapping one shows it inside
-/// this tab. Each is checked in the background; one that does not answer is
-/// greyed. A long press (or a swipe) removes it; + adds a folder.
+// MARK: - Home: the reader's folders
+
+/// The Home tab: the folders the reader chose (Choose Folder…), as a list:
+/// an icon for where each is kept (this device, iCloud Drive, a network
+/// share, a drive), its name, its path (the end of it always shown) and
+/// when. Tapping one shows it inside this tab. Folders browsed into from
+/// there are not added: the list holds only what the reader chose, so it
+/// stays tidy. Each is checked in the background; one that does not answer
+/// is greyed. A long press removes it (a sideways swipe moves between the
+/// home screen's tabs); + adds a folder. Edit (top left, as in iOS's own
+/// lists) shows handles to drag the folders into an order of the reader's
+/// own, which the list then keeps (`RecentList.isOrderedByHand`), and
+/// delete buttons; while editing, Sort by Date goes back to newest first.
+/// The gear at the foot of the list opens Settings.
 struct RecentFoldersView: View {
     @ObservedObject private var recents = RecentList.folders
     @ObservedObject var navigation: HomeNavigation
@@ -221,47 +388,78 @@ struct RecentFoldersView: View {
 
     @State private var reach: [RecentItem.ID: Reach] = [:]
     @State private var cannotOpen: RecentItem?
+    @State private var editMode: EditMode = .inactive
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationStack(path: $navigation.folderPath) {
             List {
+                Section {
                 ForEach(recents.items) { item in
                     Button { open(item) } label: { row(item) }
                         .buttonStyle(.plain) // ordinary text, not the tint
+                        // While editing, rows are only moved or deleted (not
+                        // greyed, as disabling them would make them look gone).
+                        .allowsHitTesting(!editMode.isEditing)
                         .contextMenu {
                             Button(role: .destructive) { recents.remove(item) } label: {
                                 Label("Remove from Recents", systemImage: "minus.circle")
                             }
                         }
-                        .swipeActions {
-                            Button(role: .destructive) { recents.remove(item) } label: {
-                                Label("Remove", systemImage: "minus.circle")
-                            }
-                        }
                 }
-            }
-            .listStyle(.insetGrouped)
-            .overlay {
-                if recents.items.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Recent Folders", systemImage: "folder")
-                    } description: {
-                        Text("Folders you look at appear here.")
-                    } actions: {
-                        Button("Choose Folder…", action: actions.chooseFolder)
+                .onMove { recents.move(fromOffsets: $0, toOffset: $1) }
+                .onDelete { offsets in
+                    for item in offsets.map({ recents.items[$0] }) { recents.remove(item) }
+                }
+                } header: {
+                    // Before iOS 26 the version cannot sit under the title
+                    // (navigationSubtitle), so it heads the list instead.
+                    if #available(iOS 26, *) {
+                        Text("Folders")
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(verbatim: AppVersion.line).textCase(nil)
+                            Text("Folders")
+                        }
+                    }
+                } footer: {
+                    VStack(spacing: 0) {
+                        if recents.items.isEmpty { emptyFolders }
+                        settingsButton
                     }
                 }
             }
-            .navigationTitle("Recent Folders")
+            .listStyle(.insetGrouped)
+            // Room between the large "Home" title and the list.
+            .contentMargins(.top, 16, for: .scrollContent)
+            .sheet(isPresented: $showingSettings) { ReaderSettingsView() }
+            .environment(\.editMode, $editMode)
+            .onChange(of: recents.items.isEmpty) { _, empty in if empty { editMode = .inactive } }
+            // The app's name and version head the home screen (the tab
+            // below still says Home).
+            .navigationTitle(Text(verbatim: "Platen Reader"))
+            .versionSubtitle()
             .toolbar {
+                if !recents.items.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(editMode.isEditing ? "Done" : "Edit") {
+                            withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                        }
+                        .fontWeight(editMode.isEditing ? .semibold : .regular)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: actions.chooseFolder) { Label("Choose Folder…", systemImage: "plus") }
+                    if editMode.isEditing {
+                        Button("Sort by Date") { withAnimation { recents.sortByDate() } }
+                            .disabled(!recents.isOrderedByHand)
+                    } else {
+                        Button(action: actions.chooseFolder) { Label("Choose Folder…", systemImage: "plus") }
+                    }
                 }
             }
             .navigationDestination(for: URL.self) { folder in
                 FolderGridView(folder: folder, openBook: actions.openBook,
-                               openFolder: { navigation.folderPath.append($0) },
-                               chooseBook: actions.chooseBook, chooseFolder: actions.chooseFolder)
+                               openFolder: { navigation.folderPath.append($0) })
                     .id(folder)
             }
             .task(id: recents.items.map(\.id)) { await checkReach(recents.items, in: recents, into: $reach) }
@@ -278,6 +476,36 @@ struct RecentFoldersView: View {
                 Text("It may have been moved or deleted, or it is on a drive or network share that is not connected.")
             }
         }
+    }
+
+    /// Settings: about the app, not a book, so here rather than among the
+    /// reader's buttons. A small capsule button centred below the list (as
+    /// iOS puts actions under a list), so it does not read as one of the
+    /// folders.
+    private var settingsButton: some View {
+        Button { showingSettings = true } label: {
+            Label("Settings", systemImage: "gearshape")
+                .font(.subheadline.weight(.medium))
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .tint(.secondary)
+        .disabled(editMode.isEditing)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 28)
+        .textCase(nil)
+    }
+
+    /// No folders yet (the gear stays below it).
+    private var emptyFolders: some View {
+        ContentUnavailableView {
+            Label("No Folders", systemImage: "folder")
+        } description: {
+            Text("Choose a folder of books to find it here.")
+        } actions: {
+            Button("Choose Folder…", action: actions.chooseFolder)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func row(_ item: RecentItem) -> some View {
@@ -304,7 +532,7 @@ struct RecentFoldersView: View {
                     switch state {
                     case .unavailable:
                         Text(kind == .network ? "Not connected" : "Not available")
-                    case .checking, .available:
+                    case .checking, .available, .inCloud:
                         Text(item.lastOpened.formatted(.relative(presentation: .named)))
                     }
                 }
@@ -314,7 +542,7 @@ struct RecentFoldersView: View {
             Spacer(minLength: 8)
             if state == .checking {
                 ProgressView().controlSize(.small)
-            } else {
+            } else if !editMode.isEditing { // the drag handle stands there instead
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
@@ -329,12 +557,13 @@ struct RecentFoldersView: View {
     private func open(_ item: RecentItem) {
         reach[item.id] = .checking
         Task {
-            guard case .yes(let url) = await recents.reachability(of: item, timeout: 10) else {
+            guard let url = await recents.reachability(of: item, timeout: 10).url else {
                 reach[item.id] = .unavailable
                 cannotOpen = item
                 return
             }
             reach[item.id] = .available
+            recents.openedSoon(url) // brings its date up to date
             navigation.show(folder: url)
         }
     }

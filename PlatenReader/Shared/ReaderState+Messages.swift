@@ -59,7 +59,7 @@ extension ReaderState {
             pagesLeftInChapter = place.pagesLeft
             columnsOnScreen = place.columns
 
-        case .ready, .firstRender, .addBookmark, .removeBookmark, .click, .image, .externalLink,
+        case .ready, .firstRender, .addBookmark, .removeBookmark, .click, .image, .lonePicture, .externalLink,
              .failed, .pageText, .log:
             break // nothing the overlay shows
         }

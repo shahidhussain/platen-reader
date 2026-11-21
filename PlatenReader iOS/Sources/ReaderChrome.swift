@@ -5,8 +5,9 @@ import UIKit
 /// The overlay on iOS, shared by the book reader and the PDF reader. Three
 /// small pieces of glass float over the page, with no panel behind them:
 /// - top left: a round Close button, and the title and chapter;
-/// - bottom right, just above the slider: Contents, Bookmark, Layout, Aa and
-///   Settings in one group, within reach of a thumb;
+/// - just above the slider, within reach of a thumb: at the left, the
+///   favourite heart and the bookmark (marks that bring the reader back);
+///   at the right, Contents, Layout and Aa (ways of viewing the book);
 /// - bottom: the slider between ‹ and ›, and where the reader is below it.
 /// The buttons and the slider are the Mac bar's own (Shared/OverlayViews.swift,
 /// drawn in parts). A centre tap shows and hides them all; they also hide
@@ -23,7 +24,9 @@ final class ReaderChrome {
     let top: UIHostingController<ReaderTopControls>
     /// The group of buttons at the bottom right, above the slider.
     let buttons: UIHostingController<OverlayBar>
-    private var pieces: [UIView] { [bottom.view, top.view, buttons.view] }
+    /// The heart and the bookmark, at the bottom left, above the slider.
+    let marks: UIHostingController<OverlayBar>
+    private var pieces: [UIView] { [bottom.view, top.view, buttons.view, marks.view] }
     private(set) var isVisible = false
     private var hideTimer: Timer?
     private var cancellables: Set<AnyCancellable> = []
@@ -42,6 +45,8 @@ final class ReaderChrome {
         top = UIHostingController(rootView: ReaderTopControls(state: state, close: close))
         buttons = UIHostingController(rootView: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions,
                                                            part: .buttons))
+        marks = UIHostingController(rootView: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions,
+                                                         part: .marks))
 
         // When the contents popover closes, the hide countdown starts again.
         state.$sidebarVisible
@@ -66,7 +71,7 @@ final class ReaderChrome {
         guard let owner else { return }
         // The hosting views take their size from the SwiftUI content, and let
         // the page show around it.
-        for host in [bottom, top, buttons] as [UIViewController] {
+        for host in [bottom, top, buttons, marks] as [UIViewController] {
             (host as? UIHostingController<OverlayBar>)?.sizingOptions = [.intrinsicContentSize]
             (host as? UIHostingController<ReaderTopControls>)?.sizingOptions = [.intrinsicContentSize]
             // Their places already allow for the safe areas (updateEdges);
@@ -100,6 +105,9 @@ final class ReaderChrome {
             // Right-aligned with the › button, just above it.
             buttons.view.trailingAnchor.constraint(equalTo: bottom.view.trailingAnchor),
             buttons.view.bottomAnchor.constraint(equalTo: bottom.view.topAnchor, constant: -8),
+            // Left-aligned with the ‹ button, level with the others.
+            marks.view.leadingAnchor.constraint(equalTo: bottom.view.leadingAnchor),
+            marks.view.bottomAnchor.constraint(equalTo: buttons.view.bottomAnchor),
         ])
         // A long title truncates rather than running off the screen.
         top.view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -130,7 +138,7 @@ final class ReaderChrome {
     /// reader asks for light: its pages are white in every theme, and the
     /// controls often sit over them.
     func setInterfaceStyle(_ style: UIUserInterfaceStyle) {
-        for host in [bottom, buttons] as [UIViewController] { host.overrideUserInterfaceStyle = style }
+        for host in [bottom, buttons, marks] as [UIViewController] { host.overrideUserInterfaceStyle = style }
         top.overrideUserInterfaceStyle = style
     }
 
@@ -194,6 +202,7 @@ final class ReaderChrome {
         hideTimer?.invalidate()
         bottom.view.removeFromSuperview()
         buttons.view.removeFromSuperview()
+        marks.view.removeFromSuperview()
         top.view.isHidden = false
         top.view.alpha = 1
         isVisible = true

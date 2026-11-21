@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import PlatenCore
 import SwiftUI
@@ -38,12 +39,25 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     override var commands: ReaderCommands { session }
     override var pageView: UIView { webView }
+    /// The page view and the native picture together (what page turns move).
+    private(set) var pageArea: UIView!
+    /// A page that is just one picture, shown as large as the screen
+    /// allows, touching its sides or its top and bottom, with no bars.
+    private(set) var lonePictureView: UIImageView!
+    /// The glow behind the page (ambient light), and its next renewal.
+    private(set) var ambient: AmbientGlowView!
+    private var ambientWork: DispatchWorkItem?
+    private var ambientMaskSize: CGSize = .zero
+    private var ambientMask: UIImage?
+    /// A turn waiting for a picture-only page's picture (settleLonePicture).
+    private var lonePictureWaiter: (() -> Void)?
     override var hasShownPage: Bool { session.hasRendered }
 
     // MARK: - View setup
 
     override func loadView() {
         let root = UIView()
+
 
         // Web view, configured as on the Mac (BookSession.makeConfiguration).
         let config = session.makeConfiguration()
@@ -62,7 +76,28 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         #if DEBUG
         webView.isInspectable = true // Safari > Develop can inspect the shell
         #endif
-        root.addSubview(webView)
+        // The page and, over it, a page that is just one picture shown
+        // natively (sessionShowLonePicture): together, so page turns move
+        // and photograph them as one.
+        // Ambient light: a soft glow of the page's own colours behind the
+        // book, whose page is then see-through (`usesAmbientLight`). It is
+        // behind the page area, not in it: pages slide over it while it
+        // fades from one page's glow to the next (AmbientGlowView); a curl
+        // carries the old page's glow in its picture.
+        ambient = AmbientGlowView()
+        ambient.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(ambient)
+        pageArea = UIView()
+        pageArea.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(pageArea)
+        pageArea.addSubview(webView)
+        lonePictureView = UIImageView()
+        lonePictureView.translatesAutoresizingMaskIntoConstraints = false
+        lonePictureView.contentMode = .scaleAspectFit
+        lonePictureView.isUserInteractionEnabled = false // taps reach the page
+        lonePictureView.isAccessibilityElement = false
+        lonePictureView.isHidden = true
+        pageArea.addSubview(lonePictureView)
 
         // Taps on the page are recognised here, natively, rather than from
         // the page's click events: WebKit does not turn every tap into a
@@ -83,10 +118,22 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         installSwipeRecogniser()
 
         NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: root.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            ambient.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            ambient.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            ambient.topAnchor.constraint(equalTo: root.topAnchor),
+            ambient.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            pageArea.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            pageArea.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            pageArea.topAnchor.constraint(equalTo: root.topAnchor),
+            pageArea.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            webView.leadingAnchor.constraint(equalTo: pageArea.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: pageArea.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: pageArea.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: pageArea.bottomAnchor),
+            lonePictureView.leadingAnchor.constraint(equalTo: pageArea.leadingAnchor),
+            lonePictureView.trailingAnchor.constraint(equalTo: pageArea.trailingAnchor),
+            lonePictureView.topAnchor.constraint(equalTo: pageArea.topAnchor),
+            lonePictureView.bottomAnchor.constraint(equalTo: pageArea.bottomAnchor),
         ])
         installChrome(in: root)
         // While the controls are up, the page number steps aside for their
@@ -125,6 +172,73 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     @objc private func pagePressed(_ recogniser: UILongPressGestureRecognizer) {
         guard recogniser.state == .began, session.hasRendered else { return }
         session.pictureAt(recogniser.location(in: webView)) { _ in }
+    }
+
+    /// The page on screen is just one picture: shown natively over the page
+    /// (whose own, smaller copy the page hides), or taken away.
+    func sessionShowLonePicture(_ data: Data?) {
+        let image = data.flatMap(UIImage.init(data:))
+        lonePictureView.image = image
+        lonePictureView.isHidden = image == nil
+        if let waiting = lonePictureWaiter {
+            lonePictureWaiter = nil
+            waiting()
+        } else {
+            updateAmbient()
+        }
+    }
+
+    /// Before a turned page is drawn: the native picture brought in line
+    /// with it (hidden if the new page is not a picture-only page; if it is
+    /// a new one, its picture waited for, briefly), so the page and its glow
+    /// arrive as they will stay.
+    func settleLonePicture(_ done: @escaping () -> Void) {
+        session.lonePictureState { [weak self] state in
+            guard let self else { return done() }
+            switch state {
+            case "same":
+                done()
+            case "new":
+                var finished = false
+                let finish = { if !finished { finished = true; done() } }
+                self.lonePictureWaiter = finish
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.lonePictureWaiter = nil
+                    finish()
+                }
+            default:
+                self.lonePictureView.image = nil
+                self.lonePictureView.isHidden = true
+                done()
+            }
+        }
+    }
+
+    /// A picture of the page area as it is: the web view's snapshot, with
+    /// the native picture drawn over it when it is showing. A curl asks for
+    /// the glow under it too (`withGlow`), so the old page curls away with
+    /// its own glow; a slide's picture is the page alone, over the glow that
+    /// stays; the glow itself is made from a picture without one.
+    func pageSnapshot(_ configuration: WKSnapshotConfiguration?, withGlow: Bool = false,
+                      done: @escaping (UIImage?) -> Void) {
+        webView.takeSnapshot(with: configuration) { [weak self] image, _ in
+            guard let self, let image else { return done(image) }
+            let picture = self.lonePictureView.isHidden ? nil : self.lonePictureView.image
+            let glow = withGlow && !self.ambient.isHidden ? self.ambient.image : nil
+            guard picture != nil || glow != nil else { return done(image) }
+            let bounds = CGRect(origin: .zero, size: image.size)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = image.scale
+            done(UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
+                if let glow {
+                    self.currentTheme.uiBackground.setFill()
+                    UIRectFill(bounds)
+                    glow.draw(in: bounds)
+                }
+                image.draw(in: bounds)
+                if let picture { picture.draw(in: AVMakeRect(aspectRatio: picture.size, insideRect: bounds)) }
+            })
+        }
     }
 
     func sessionShowPicture(_ picture: ReaderMessage.Picture) {
@@ -170,6 +284,102 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     override func applySettings() {
         super.applySettings()
         session.pushSettings()
+        updateAmbient()
+    }
+
+    // MARK: - Ambient light
+
+    /// Ambient light (Aa > Ambient Light) in every theme but Black, whose
+    /// point is a black screen: the page is see-through, and a glow of what
+    /// is on it (its pictures; text pages stay near the theme's colour)
+    /// lies behind it, as for PDFs.
+    var usesAmbientLight: Bool { settings.ambientLight && currentTheme != .black }
+
+    /// The glow shows only towards the screen's edges, as light spilling
+    /// from behind a television: strongest at the edge, gone some way in,
+    /// so the text sits on the theme's own colour.
+    func updateAmbientMask() {
+        let size = view.bounds.size
+        guard size.width > 0, size.height > 0, ambientMaskSize != size else { return }
+        ambientMaskSize = size
+        let edge: CGFloat = 70
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            let cg = context.cgContext
+            let colours = [UIColor.white.cgColor, UIColor.white.withAlphaComponent(0).cgColor] as CFArray
+            guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colours,
+                                            locations: [0, 1]) else { return }
+            // Four edges, each fading inwards; corners get both.
+            let w = size.width, h = size.height
+            for (start, end) in [(CGPoint(x: 0, y: 0), CGPoint(x: edge, y: 0)),
+                                 (CGPoint(x: w, y: 0), CGPoint(x: w - edge, y: 0)),
+                                 (CGPoint(x: 0, y: 0), CGPoint(x: 0, y: edge)),
+                                 (CGPoint(x: 0, y: h), CGPoint(x: 0, y: h - edge))] {
+                cg.drawLinearGradient(gradient, start: start, end: end, options: [])
+            }
+        }
+        ambientMask = image
+    }
+
+    /// The glow, stretched to the screen and faded towards the middle (the
+    /// edge mask drawn in): ready to show, and to draw into page pictures.
+    private func maskedGlow(_ glow: UIImage) -> UIImage? {
+        guard let mask = ambientMask else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1 // a blur: points are plenty
+        return UIGraphicsImageRenderer(size: mask.size, format: format).image { context in
+            let bounds = CGRect(origin: .zero, size: mask.size)
+            glow.draw(in: bounds)
+            mask.draw(in: bounds, blendMode: .destinationIn, alpha: 1)
+        }
+    }
+
+    /// Makes the glow for the page now on screen and shows it at once, then
+    /// calls `done`: page turns call this after turning underneath and
+    /// before animating, so the new page arrives with its glow.
+    func makeGlowNow(_ done: @escaping () -> Void) {
+        guard usesAmbientLight, session.hasRendered else { return done() }
+        ambientWork?.cancel()
+        let config = WKSnapshotConfiguration()
+        config.snapshotWidth = 48
+        let theme = currentTheme.uiBackground
+        pageSnapshot(config) { [weak self] image in
+            guard let self, let image else { return done() }
+            PDFAmbientBackground.make(from: image, theme: theme) { [weak self] glow in
+                // During a slide this is the page sliding in: it fades in
+                // with the slide (AmbientGlowView).
+                if let self, let glow, let masked = self.maskedGlow(glow) { self.ambient.show(masked) }
+                done()
+            }
+        }
+    }
+
+    /// Makes the glow from a small picture of the page as it is now, after a
+    /// moment (turns come in runs), and fades it in.
+    func updateAmbient() {
+        ambient.isHidden = !usesAmbientLight
+        updateAmbientMask()
+        // During a turn the turn itself brings the new glow (makeGlowNow).
+        guard usesAmbientLight, session.hasRendered, !pageTurner.isBusy else { return }
+        ambientWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let config = WKSnapshotConfiguration()
+            config.snapshotWidth = 48
+            let theme = self.currentTheme.uiBackground
+            self.pageSnapshot(config) { [weak self] image in
+                guard let self, let image else { return }
+                PDFAmbientBackground.make(from: image, theme: theme) { [weak self] glow in
+                    guard let self, let glow, self.usesAmbientLight, !self.pageTurner.isBusy,
+                          let masked = self.maskedGlow(glow) else { return }
+                    // The first glow is there from the start; later ones
+                    // (a jump, a new setting) fade from the old.
+                    let fade = self.ambient.image == nil || UIAccessibility.isReduceMotionEnabled ? 0 : 0.35
+                    self.ambient.show(masked, fade: fade)
+                }
+            }
+        }
+        ambientWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
     override func savePositionNow() { session.savePositionNow() }
@@ -185,6 +395,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     ///   clear of the Dynamic Island, the status bar and the home indicator.
     func adjust(_ web: inout WebSettings) {
         web.touch = true
+        web.transparent = usesAmbientLight
         // iPhone: one page always, in either orientation (spec, "Layout").
         // iPad: the Two Pages rule decides by width, as on the Mac, so two
         // pages appear in landscape and in wide Split View windows.
@@ -214,6 +425,11 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         }
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateAmbientMask() // the glow's edges follow the window's size
+    }
+
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         session.pushSettings() // margins follow the notch, rotation and Split View
@@ -237,6 +453,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     }
 
     func sessionDidRenderFirstPage() {
+        updateAmbient()
         spinner.stopAnimating()
         #if DEBUG
         runDebugStepsIfAny()
@@ -246,6 +463,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     func sessionDidOpen() {}
 
     func sessionDidRelocate() {
+        updateAmbient()
         log.info("relocate \(self.session.record?.lastCFI ?? "", privacy: .public)")
     }
 

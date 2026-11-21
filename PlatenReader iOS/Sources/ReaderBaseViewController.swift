@@ -54,12 +54,35 @@ class ReaderBaseViewController: UIViewController {
     var hasShownPage: Bool { false }
     /// The title when nothing could be opened and no better one is known.
     var failureFallbackTitle: String { String(localized: "This book could not be opened.") }
-    /// Whether the settings popover leaves out what only applies to text.
-    var hidesTextSettings: Bool { state.isFixedLayout }
 
     /// A setting or the system's appearance changed: re-style.
     func applySettings() { applyTheme() }
     func savePositionNow() {}
+
+    /// The heart: adds the book to the home screen's Favourites (with a
+    /// copy of its cover, while this reader holds access to the book), or
+    /// takes it off.
+    func toggleFavourite() {
+        let favourites = RecentList.favorites
+        if let item = favourites.item(at: url) {
+            favourites.remove(item)
+        } else {
+            favourites.addBook(url)
+        }
+        state.isFavourite = favourites.contains(url)
+        if state.isFavourite { heartbeatHaptics() } else { UISelectionFeedbackGenerator().selectionChanged() }
+    }
+
+    /// Taps in time with the heart's two beats (OverlayBar's favourite
+    /// button): a firm tap and a softer one, twice.
+    private func heartbeatHaptics() {
+        let firm = UIImpactFeedbackGenerator(style: .medium)
+        let soft = UIImpactFeedbackGenerator(style: .light)
+        firm.prepare(); soft.prepare()
+        for (delay, generator, strength) in [(0.0, firm, 1.0), (0.24, soft, 0.8), (0.65, firm, 0.85), (0.89, soft, 0.6)] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { generator.impactOccurred(intensity: strength) }
+        }
+    }
 
     // MARK: - View setup
 
@@ -73,10 +96,7 @@ class ReaderBaseViewController: UIViewController {
                 self?.chrome.restartHideTimer()
             },
             interacted: { [weak self] in self?.chrome.restartHideTimer() },
-            // The gear button's popover: the settings.
-            settingsContent: { [weak self] in
-                AnyView(ReaderSettingsView(isFixedLayout: self?.hidesTextSettings ?? false))
-            })
+            toggleFavourite: { [weak self] in self?.toggleFavourite() })
         let chrome = ReaderChrome(owner: self, state: state, actions: actions,
                                   sidebarActions: ContentsActions(commands: commands),
                                   close: { [weak self] in self?.close() },
@@ -100,6 +120,7 @@ class ReaderBaseViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         applyTheme()
+        state.isFavourite = RecentList.favorites.contains(url)
 
         // Re-style whenever a global setting changes.
         settings.objectWillChange

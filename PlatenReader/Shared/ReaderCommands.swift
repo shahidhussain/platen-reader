@@ -55,9 +55,9 @@ extension OverlayActions {
     /// The overlay's buttons and slider, wired to a reader. Showing the
     /// contents panel and keeping the overlay up are the app's own business
     /// (they differ between the Mac and iOS), so they are passed in, as is
-    /// what the gear button's popover shows (iOS only).
+    /// the favourite heart (iOS only).
     init(commands: ReaderCommands, toggleContents: @escaping () -> Void, interacted: @escaping () -> Void,
-         settingsContent: (() -> AnyView)? = nil) {
+         toggleFavourite: (() -> Void)? = nil) {
         self.init(
             previousPage: { [weak commands] in commands?.turn(.prev) },
             nextPage: { [weak commands] in commands?.turn(.next) },
@@ -67,7 +67,7 @@ extension OverlayActions {
             setLayout: { [weak commands] layout in commands?.setLayout(layout) },
             toggleBookmark: { [weak commands] in commands?.toggleBookmark() },
             interacted: interacted,
-            settingsContent: settingsContent)
+            toggleFavourite: toggleFavourite)
     }
 }
 

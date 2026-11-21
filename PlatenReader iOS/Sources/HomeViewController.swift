@@ -8,21 +8,21 @@ import UniformTypeIdentifiers
 ///
 /// - At launch it goes back to the book that was open when Platen was last
 ///   left (`LastOpenBook`).
-/// - Otherwise it shows three tabs (HomeTabs): Home (the welcome, for now:
-///   the app's name, "Open Book…" and "Choose Folder…"), Recent Books and
-///   Recent Folders.
+/// - Otherwise it shows the home screen (HomeTabs): the welcome the first
+///   time ("Open Book…" and "Choose Folder…"), then three tabs: Home (the
+///   reader's folders, and Settings), Recent Books and Favourites.
 /// - "Open Book…" shows the system's document picker, which opens the book
 ///   where it is (Files, iCloud Drive, SMB shares, any file provider) through
 ///   a security-scoped URL. Nothing is ever copied into the app.
 ///   "Choose Folder…" picks a folder the same way (opening one book gives no
-///   access to its folder); it joins Recent Folders, kept as a bookmark, and
+///   access to its folder); it joins the Home list, kept as a bookmark, and
 ///   opens there.
 /// - Books opened from other apps go straight to the reader (SceneDelegate
 ///   calls `openBook(at:)`).
 ///
 /// Platen has no library of its own; folders are the library.
 final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
-    /// The tab showing, and the folders open in Recent Folders.
+    /// The tab showing, and the folders open in the Home tab.
     let navigation = HomeNavigation()
     /// The picker on screen is choosing a folder, not a book.
     private var pickingFolder = false
@@ -53,8 +53,8 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        // The tabs (Home, Recent Books, Recent Folders), whose Home tab is
-        // the folder view once a folder is chosen, or the welcome until then.
+        // The home screen: the welcome the first time, then the tabs (Home,
+        // Recent Books, Favourites).
         let tabs = UIHostingController(rootView: HomeTabs(navigation: navigation, actions: HomeActions(
             openBook: { [weak self] in self?.openBook(at: $0) },
             chooseBook: { [weak self] in self?.chooseBook() },
@@ -176,7 +176,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
                 NotificationCenter.default.post(name: .platenFolderShouldRefresh, object: nil)
             }
             LastOpenBook.remember(url)
-            self.addToRecents(url)
+            RecentList.books.addBook(url)
             reader.modalPresentationStyle = .fullScreen
             self.reader = reader
             self.onReaderCreated?(reader)
@@ -199,23 +199,6 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
     }
 }
 
-extension HomeViewController {
-    /// Puts the book at the top of Recent Books, then (in the background)
-    /// adds its title, author and a copy of its cover, so the list shows them
-    /// even when the book cannot be reached later. The reader holds access
-    /// to the book meanwhile.
-    func addToRecents(_ url: URL) {
-        guard let item = RecentList.books.opened(url) else { return }
-        DispatchQueue.global(qos: .utility).async {
-            let entry = CoverCache.standard().cover(for: url)
-            let jpeg = entry.imageURL.flatMap { try? Data(contentsOf: $0) }
-            DispatchQueue.main.async {
-                RecentList.books.update(item.id, title: entry.info.title, author: entry.info.authors.first, cover: jpeg)
-            }
-        }
-    }
-}
-
 /// The book that was open when Platen was last left, kept as a bookmark (a
 /// reference that survives the file moving, and keeps permission to read
 /// it). Launching goes back to it; Close forgets it, so the next launch
@@ -223,17 +206,56 @@ extension HomeViewController {
 enum LastOpenBook {
     private static let key = "lastOpenBook"
 
-    /// The book to reopen at launch, if there is one and it can still be
-    /// reached.
-    static var url: URL? {
-        guard let data = AppDefaults.store.data(forKey: key) else { return nil }
-        var stale = false
-        guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
-            forget() // deleted, or no longer reachable
-            return nil
+    /// True if there is a book to go back to.
+    static var isSaved: Bool { AppDefaults.store.data(forKey: key) != nil }
+
+    /// Finds the book to reopen at launch, and calls `completion` on the
+    /// main thread with where it is now, or nil: none saved, deleted, or no
+    /// answer within `timeout` seconds.
+    ///
+    /// Resolving a bookmark asks the file system where the file is, and for
+    /// a book on a network share that has gone away (or a cloud folder not
+    /// answering) that can hang. Done on the main thread at launch, as it
+    /// was, it could freeze the app until iOS ended it (it did just that to
+    /// Recent Books, for the same reason). So it runs on a background queue
+    /// of its own, and launch stops waiting at the time limit and shows the
+    /// home screen. The book is only forgotten if it is truly gone, not on a
+    /// timeout, so a share that comes back reopens it next time.
+    @MainActor static func find(timeout: TimeInterval, completion: @escaping @MainActor (URL?) -> Void) {
+        guard let data = AppDefaults.store.data(forKey: key) else { return completion(nil) }
+        let answer = AnswerOnce(completion)
+        DispatchQueue(label: "org.platenreader.last-book", qos: .userInitiated).async {
+            var stale = false
+            guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
+                DispatchQueue.main.async { forget() } // deleted, or no longer reachable
+                return answer.send(nil)
+            }
+            if stale {
+                // Moved: keep a fresh bookmark (made here too, off the main thread).
+                let scoped = url.startAccessingSecurityScopedResource()
+                let fresh = try? url.bookmarkData()
+                if scoped { url.stopAccessingSecurityScopedResource() }
+                if let fresh { DispatchQueue.main.async { AppDefaults.store.set(fresh, forKey: key) } }
+            }
+            answer.send(url)
         }
-        if stale { remember(url) }
-        return url
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { answer.send(nil) }
+    }
+
+    /// Hands the first answer to the main thread; later ones are dropped.
+    private final class AnswerOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var sent = false
+        private let completion: @MainActor (URL?) -> Void
+        init(_ completion: @escaping @MainActor (URL?) -> Void) { self.completion = completion }
+        func send(_ url: URL?) {
+            lock.lock()
+            let first = !sent
+            sent = true
+            lock.unlock()
+            guard first else { return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.completion(url) } }
+        }
     }
 
     static func remember(_ url: URL) {

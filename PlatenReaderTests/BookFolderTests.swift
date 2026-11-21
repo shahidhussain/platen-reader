@@ -1,4 +1,5 @@
 import XCTest
+import PlatenCore
 
 /// Tests of the folder view's shared logic (Shared/BookFolder.swift): what
 /// a folder lists, iCloud's stand-ins for books not yet downloaded, and the
@@ -126,15 +127,86 @@ final class RecentsTests: XCTestCase {
         XCTAssertEqual(list.items.map(\.name), ["5", "4", "3"])
     }
 
+    /// Favourites are a list of their own, found by file, and kept apart
+    /// from Recent Books.
+    @MainActor
+    func testFavouritesAreAListOfTheirOwn() throws {
+        let folder = try temporaryFolder()
+        let store = folder.appendingPathComponent("recents")
+        let favourites = RecentList(kind: .favorites, directory: store)
+        let books = RecentList(kind: .books, directory: store)
+        let book = file(folder, "Middlemarch.epub")
+        XCTAssertNil(favourites.item(at: book))
+        favourites.opened(book)
+        XCTAssertEqual(favourites.item(at: book)?.name, "Middlemarch.epub")
+        XCTAssertTrue(books.items.isEmpty)
+        XCTAssertEqual(RecentList(kind: .favorites, directory: store).items.map(\.name), ["Middlemarch.epub"])
+        favourites.remove(try XCTUnwrap(favourites.item(at: book)))
+        XCTAssertFalse(favourites.contains(book))
+    }
+
+    @MainActor
+    func testAnOrderSetByHandIsKept() throws {
+        let folder = try temporaryFolder()
+        let store = folder.appendingPathComponent("recents")
+        let list = RecentList(kind: .folders, directory: store, limit: 4)
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        for (i, name) in ["A", "B", "C"].enumerated() {
+            list.opened(file(folder, name), now: start.addingTimeInterval(Double(i)))
+        }
+        XCTAssertEqual(list.items.map(\.name), ["C", "B", "A"])
+        XCTAssertFalse(list.isOrderedByHand)
+
+        // Drag A to the top: the order is the reader's from now on.
+        list.move(fromOffsets: [2], toOffset: 0)
+        XCTAssertEqual(list.items.map(\.name), ["A", "C", "B"])
+        XCTAssertTrue(list.isOrderedByHand)
+
+        // Opening one again leaves it where it is; a new one goes on top.
+        list.opened(file(folder, "B"), now: start.addingTimeInterval(10))
+        XCTAssertEqual(list.items.map(\.name), ["A", "C", "B"])
+        list.opened(file(folder, "D"), now: start.addingTimeInterval(11))
+        XCTAssertEqual(list.items.map(\.name), ["D", "A", "C", "B"])
+
+        // Full: the one opened longest ago (A, at 0) goes, wherever it is.
+        list.opened(file(folder, "E"), now: start.addingTimeInterval(12))
+        XCTAssertEqual(list.items.map(\.name), ["E", "D", "C", "B"])
+
+        // Kept across launches.
+        let relaunched = RecentList(kind: .folders, directory: store, limit: 4)
+        XCTAssertTrue(relaunched.isOrderedByHand)
+        XCTAssertEqual(relaunched.items.map(\.name), ["E", "D", "C", "B"])
+
+        // Sort by Date: newest first again, and opening moves to the top.
+        relaunched.sortByDate()
+        XCTAssertFalse(relaunched.isOrderedByHand)
+        XCTAssertEqual(relaunched.items.map(\.name), ["E", "D", "B", "C"])
+        relaunched.opened(file(folder, "C"), now: start.addingTimeInterval(13))
+        XCTAssertEqual(relaunched.items.first?.name, "C")
+        XCTAssertFalse(RecentList(kind: .folders, directory: store).isOrderedByHand)
+    }
+
     @MainActor
     func testAnItemThatHasGoneIsNotReachable() throws {
         let folder = try temporaryFolder()
         let list = RecentList(kind: .books, directory: folder.appendingPathComponent("recents"))
         let url = file(folder, "A.epub")
         let item = try XCTUnwrap(list.opened(url))
-        XCTAssertTrue(RecentList.isReachable(item))
+        XCTAssertNotNil(RecentList.check(item).url)
         try FileManager.default.removeItem(at: url)
-        XCTAssertFalse(RecentList.isReachable(item))
+        XCTAssertNil(RecentList.check(item).url)
+    }
+
+    /// The time limit answers even when the checks themselves cannot run
+    /// (the file system not answering): it is kept on the main thread.
+    @MainActor
+    func testReachabilityAnswersWithinItsTimeLimit() async throws {
+        let folder = try temporaryFolder()
+        let list = RecentList(kind: .books, directory: folder.appendingPathComponent("recents"))
+        let item = try XCTUnwrap(list.opened(file(folder, "A.epub")))
+        let started = Date()
+        if case .yes = await list.reachability(of: item, timeout: 5) {} else { XCTFail("should be found") }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
     }
 
     func testSearchMatchesEveryWordInNameTitleOrAuthor() {
@@ -255,5 +327,40 @@ final class FolderSpeedTests: XCTestCase {
             once.resume("check") // too late: ignored
         }
         XCTAssertEqual(answer, "time limit")
+    }
+}
+
+/// The folder view's sort orders (FolderSort).
+final class FolderSortTests: XCTestCase {
+    private func book(_ name: String, modified: Double, created: Double, size: Int64) -> FolderEntry {
+        FolderEntry(url: URL(fileURLWithPath: "/b/\(name).epub"), name: name, kind: .book,
+                    modified: Date(timeIntervalSince1970: modified), created: Date(timeIntervalSince1970: created), size: size)
+    }
+
+    func testEachOrderFoldersFirst() {
+        let folder = FolderEntry(url: URL(fileURLWithPath: "/b/Z"), name: "Z", kind: .folder)
+        let a = book("Book 10", modified: 1, created: 3, size: 50)
+        let b = book("Book 2", modified: 3, created: 1, size: 10)
+        let c = book("Alpha", modified: 2, created: 2, size: 99)
+        let all = [a, b, folder, c]
+        XCTAssertEqual(FolderSort.name.sorted(all).map(\.name), ["Z", "Alpha", "Book 2", "Book 10"])
+        XCTAssertEqual(FolderSort.modified.sorted(all).map(\.name), ["Z", "Book 2", "Alpha", "Book 10"])
+        XCTAssertEqual(FolderSort.created.sorted(all).map(\.name), ["Z", "Book 10", "Alpha", "Book 2"])
+        XCTAssertEqual(FolderSort.size.sorted(all).map(\.name), ["Z", "Alpha", "Book 10", "Book 2"])
+    }
+
+    /// Title and author orders use what has been read of each book; a book
+    /// with no title known goes by its file name, one with no author last.
+    func testTitleAndAuthorOrders() {
+        let a = book("a", modified: 0, created: 0, size: 0)
+        let b = book("b", modified: 0, created: 0, size: 0)
+        let c = book("Middle", modified: 0, created: 0, size: 0) // nothing read yet
+        let info: [URL: BookCoverInfo] = [
+            a.url: BookCoverInfo(title: "Zebra Days", authors: ["Anne Ames"]),
+            b.url: BookCoverInfo(title: "Apples", authors: ["Zoe Zed"]),
+        ]
+        let all = [a, b, c]
+        XCTAssertEqual(FolderSort.title.sorted(all, info: info).map(\.name), ["b", "Middle", "a"])
+        XCTAssertEqual(FolderSort.author.sorted(all, info: info).map(\.name), ["a", "b", "Middle"])
     }
 }

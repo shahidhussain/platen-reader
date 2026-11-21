@@ -177,6 +177,7 @@
 				A1B2C3D4E5F6000000000026 /* Sources */,
 				A1B2C3D4E5F6000000000027 /* Frameworks */,
 				A1B2C3D4E5F6000000000028 /* Resources */,
+				A1B2C3D4E5F600000000004D /* Record Git Commit */,
 			);
 			buildRules = (
 			);
@@ -308,6 +309,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		A1B2C3D4E5F600000000004D /* Record Git Commit */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Record Git Commit";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Writes the git commit this build was made from into the built app's\n# Info.plist (PlatenCommit), for the version line on the start-up screens,\n# so a phone shows which code it runs. A trailing + means uncommitted\n# changes. Without git (or outside a checkout) it writes nothing.\ncommit=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null) || exit 0\ngit -C \"$SRCROOT\" diff --quiet HEAD -- 2>/dev/null || commit=\"$commit+\"\nplist=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n/usr/libexec/PlistBuddy -c \"Delete :PlatenCommit\" \"$plist\" 2>/dev/null\n/usr/libexec/PlistBuddy -c \"Add :PlatenCommit string $commit\" \"$plist\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A1B2C3D4E5F600000000000B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -430,6 +454,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "PlatenReader iOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -449,6 +474,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "PlatenReader iOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (

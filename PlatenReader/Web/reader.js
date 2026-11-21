@@ -98,6 +98,104 @@ const sendFirstRender = force => {
     firstRenderSent = true
     post('firstRender')
 }
+// iOS: a page that is just one picture is shown natively, as large as the
+// screen allows. That is a whole chapter that is one picture (bookfixes.js
+// marks those), or any single page, anywhere in a chapter, on which one
+// picture is all there is (a plate between pages of text). Its bytes go to
+// Swift once per picture; an empty message says the page on screen no
+// longer is one. Only with one page across, in paginated mode, and not in
+// fixed layout books (whose pages are drawn as the publisher made them).
+//
+// The picture being shown (a key: chapter and picture), and the one Swift
+// has (sent, not just being read).
+let lonePictureKey = null
+let lonePictureSent = null
+// The page's own copy, hidden while the native one shows.
+let hiddenPicture = null
+
+// The one picture on the page on screen, if that is all the page holds.
+// foliate's visible range only takes in elements wholly on the page, so on
+// such a page it holds that picture and (almost) no text. Small pictures
+// (ornaments, a drop cap drawn as an image) do not count.
+function pagePicture(doc) {
+    const range = reader.view?.lastLocation?.range
+    if (!range || range.startContainer?.ownerDocument !== doc) return null
+    if (range.toString().replace(/\s+/g, '').length > 20) return null
+    const pictures = [...doc.querySelectorAll('img, svg')].filter(p => {
+        if (p.localName === 'img' ? p.closest('svg') : p.parentElement?.closest('svg')) return false
+        if (!range.intersectsNode(p)) return false
+        const { width, height } = p.getBoundingClientRect()
+        return width >= 120 && height >= 120
+    })
+    return pictures.length === 1 ? pictures[0] : null
+}
+
+// The picture-only page on screen, if there is one (and native display is
+// in use: one page across, paginated, not fixed layout, on iOS). `picture`
+// is the img or svg element; `key` names it within the book.
+function currentLonePicture() {
+    const r = reader.view?.renderer
+    const { doc, index } = r?.getContents?.()[0] ?? {}
+    const usable = reader.settings?.touch && !reader.isFixedLayout && reader.settings?.flow !== 'scrolled'
+        && (r?.feet?.length ?? 1) === 1
+    if (!usable || !doc) return { r, doc, index, picture: null, key: null }
+    const picture = doc.documentElement.classList.contains('platen-lone-picture')
+        ? doc.querySelector('img, svg') : pagePicture(doc)
+    const key = picture ? `${index}:${[...doc.querySelectorAll('img, svg')].indexOf(picture)}` : null
+    return { r, doc, index, picture, key }
+}
+// The address of a picture's bytes (an svg's is in its <image>).
+function pictureSource(picture) {
+    if (picture.localName === 'img') return picture.currentSrc || picture.src
+    const image = picture.querySelector('image')
+    return image?.getAttribute('href') ?? image?.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+}
+function showPageCopy() {
+    hiddenPicture?.style.removeProperty('visibility')
+    hiddenPicture = null
+}
+// For a page turn, before it is drawn: whether the page now on screen is a
+// picture-only page whose picture Swift already has ('same'), one it is
+// about to be sent ('new'), or not one ('none').
+function lonePictureState() {
+    const { picture, key } = currentLonePicture()
+    if (!picture) return 'none'
+    return lonePictureSent === key ? 'same' : 'new'
+}
+async function reportLonePicture() {
+    const { picture, key } = currentLonePicture()
+    if (!picture) {
+        if (lonePictureKey !== null) {
+            lonePictureKey = null
+            lonePictureSent = null
+            post('lonePicture', {})
+            // The page's own copy shows again (Scroll, two pages…).
+            showPageCopy()
+        }
+        return
+    }
+    if (lonePictureKey === key) return
+    lonePictureKey = key
+    try {
+        const src = pictureSource(picture)
+        if (!src) throw new Error('no source')
+        const blob = await (await fetch(src)).blob()
+        const bytes = new Uint8Array(await blob.arrayBuffer())
+        let binary = ''
+        for (let i = 0; i < bytes.length; i += 0x8000)
+            binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+        if (lonePictureKey !== key) return // moved on meanwhile
+        post('lonePicture', { data: btoa(binary), mimeType: blob.type })
+        lonePictureSent = key
+        showPageCopy()
+        picture.style.setProperty('visibility', 'hidden', 'important')
+        hiddenPicture = picture
+    } catch (e) {
+        lonePictureKey = null
+        post('log', { level: 'error', message: `lone picture: ${e}` })
+    }
+}
+
 let lastReason = null
 const onRelocate = ({ detail }) => {
     const { cfi, fraction, tocItem, pageItem, location, section } = detail
@@ -113,6 +211,7 @@ const onRelocate = ({ detail }) => {
         // Keep the frame's name on the chapter being read (for VoiceOver).
         for (const { doc } of reader.view.renderer.getContents?.() ?? []) nameSection(doc, tocItem?.label?.trim())
         pageChanged(lastReason)
+        reportLonePicture()
         // Page width changes with the layout; re-check tables each time.
         if (!reader.isFixedLayout && reader.settings?.flow !== 'scrolled')
             for (const { doc } of reader.view.renderer.getContents?.() ?? []) if (doc) fitWideTables(doc)
@@ -272,6 +371,15 @@ window.platen = {
     tapTarget,
     // iOS: the picture under a held finger, sent as an 'image' message.
     pictureAt,
+    // iOS, during a page turn: is the new page a picture-only page?
+    lonePictureState,
+    // Whether the page on screen is one picture and nothing else, whatever
+    // the platform (the corpus checks it on the Mac, which has no native
+    // picture view).
+    pagePicture: () => {
+        const doc = reader.view?.renderer?.getContents?.()[0]?.doc
+        return !!(doc && pagePicture(doc))
+    },
     // The text size chosen, in pixels (for checks: body text should be it).
     fontSize: () => reader.settings?.fontSize,
     // Esc closes an open note pop-up; says whether there was one.

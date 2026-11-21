@@ -2,8 +2,8 @@ import Combine
 import Foundation
 import PlatenCore
 
-/// A book or folder the reader opened lately, for the home screen's Recent
-/// Books and Recent Folders tabs.
+/// A book or folder on one of the home screen's lists: Recent Books, the
+/// Home tab's folders, or Favourites.
 ///
 /// It is found again through a bookmark (a reference that survives the item
 /// being moved or renamed, and keeps permission to read it), never through
@@ -34,10 +34,21 @@ struct RecentItem: Codable, Identifiable, Equatable, Sendable {
     var locationText: String { location ?? StoragePlace(path: path).location }
 
     /// "Middlemarch" for "Middlemarch.kepub.epub"; a folder's own name.
-    var displayName: String { title ?? FolderScanner.displayName(URL(fileURLWithPath: path)) }
+    var displayName: String { title ?? FolderScanner.displayName(Self.pathURL(path)) }
 
     /// The folder it is in ("Kids"), to tell apart two items of one name.
-    var place: String { URL(fileURLWithPath: path).deletingLastPathComponent().lastPathComponent }
+    var place: String { Self.pathURL(path).deletingLastPathComponent().lastPathComponent }
+
+    /// A saved path as a URL, for working with its name and folders only,
+    /// without touching the disk. Plain `URL(fileURLWithPath:)` asks the
+    /// file system whether the path is a folder, and for a book on a network
+    /// share that has gone away (or a cloud folder not answering) that
+    /// question can hang: building the Recent Books list on the main thread
+    /// once waited more than 10 seconds and iOS ended the app. Saying it is
+    /// not a folder costs nothing here: only the path's text is used.
+    nonisolated static func pathURL(_ path: String) -> URL {
+        URL(fileURLWithPath: path, isDirectory: false)
+    }
 }
 
 /// Where a file or folder is kept, for the icon in Recent Folders.
@@ -134,15 +145,25 @@ struct StoragePlace: Equatable, Sendable {
 /// removed from the list (a long press), and nothing else is kept.
 @MainActor
 final class RecentList: ObservableObject {
-    enum Kind: String { case books, folders }
+    enum Kind: String { case books, folders, favorites }
 
     @Published private(set) var items: [RecentItem] = []
+    /// True once the reader has put the list in an order of their own (by
+    /// dragging, in Recent Folders). The list then keeps that order: an
+    /// item opened again stays where it is, a new one goes at the top, and
+    /// when the list is full the one opened longest ago goes. `sortByDate()`
+    /// goes back to newest first. Kept in a small file of its own.
+    @Published private(set) var isOrderedByHand = false
     let kind: Kind
     let directory: URL
     let limit: Int
 
     static let books = RecentList(kind: .books)
     static let folders = RecentList(kind: .folders)
+    /// Books the reader marked as favourites (the heart in the reader): the
+    /// home screen's Favourites tab, "what I am reading now". Newest first
+    /// unless put in an order by hand; never trimmed by age.
+    static let favorites = RecentList(kind: .favorites, limit: 1000)
 
     /// Application Support/Platen Reader/recents (or the test home).
     nonisolated static var defaultDirectory: URL {
@@ -153,30 +174,34 @@ final class RecentList: ObservableObject {
         self.kind = kind
         self.directory = directory
         self.limit = limit
+        isOrderedByHand = FileManager.default.fileExists(atPath: orderURL.path)
         if let data = try? Data(contentsOf: listURL),
            let saved = try? JSONDecoder.recents.decode([RecentItem].self, from: data) {
             // One entry per place, the newest kept (lists saved by earlier
             // versions could hold one place under two spellings of its path).
-            items = Self.merged(saved)
+            items = Self.merged(saved, byHand: isOrderedByHand)
         }
     }
 
     /// One entry per place: of entries at the same place, the one opened
-    /// most lately, dated by the latest of them. Newest first.
-    private nonisolated static func merged(_ list: [RecentItem]) -> [RecentItem] {
+    /// most lately, dated by the latest of them. Newest first; or, for a
+    /// list ordered by hand, where the first of them was.
+    private nonisolated static func merged(_ list: [RecentItem], byHand: Bool) -> [RecentItem] {
         var byPlace: [String: RecentItem] = [:]
+        var order: [String] = []
         for item in list {
             let key = key(item.path)
-            guard var kept = byPlace[key] else { byPlace[key] = item; continue }
+            guard var kept = byPlace[key] else { byPlace[key] = item; order.append(key); continue }
             if item.lastOpened > kept.lastOpened { kept = item }
             byPlace[key] = kept
         }
+        if byHand { return order.compactMap { byPlace[$0] } }
         return byPlace.values.sorted { $0.lastOpened > $1.lastOpened }
     }
 
     /// The form paths are compared in.
     private nonisolated static func key(_ path: String) -> String {
-        FolderScanner.canonicalPath(URL(fileURLWithPath: path))
+        FolderScanner.canonicalPath(RecentItem.pathURL(path)) // never the disk (see pathURL)
     }
 
     /// Whether this file or folder is on the list.
@@ -185,7 +210,33 @@ final class RecentList: ObservableObject {
         return items.contains { Self.key($0.path) == path }
     }
 
+    /// The entry for this file or folder, if it is on the list.
+    func item(at url: URL) -> RecentItem? {
+        let path = FolderScanner.canonicalPath(url)
+        return items.first { Self.key($0.path) == path }
+    }
+
+    /// A book was opened (Recent Books) or marked as a favourite: it goes on
+    /// the list (`opened`), then, in the background, its title, author and a
+    /// copy of its cover are added, so the list shows them even when the
+    /// book cannot be reached later. Call while access to the book is held
+    /// (the reader holds it while the book is open).
+    @discardableResult
+    func addBook(_ url: URL) -> RecentItem? {
+        guard let item = opened(url) else { return nil }
+        DispatchQueue.global(qos: .utility).async {
+            let entry = CoverCache.standard().cover(for: url)
+            let jpeg = entry.imageURL.flatMap { try? Data(contentsOf: $0) }
+            DispatchQueue.main.async { [weak self] in
+                self?.update(item.id, title: entry.info.title, author: entry.info.authors.first, cover: jpeg)
+            }
+        }
+        return item
+    }
+
     private var listURL: URL { directory.appendingPathComponent("\(kind.rawValue).json") }
+    /// Present when the list is ordered by hand (`isOrderedByHand`).
+    private var orderURL: URL { directory.appendingPathComponent("\(kind.rawValue)-ordered-by-hand") }
 
     /// Where an item's cover copy is (books only).
     func coverURL(for item: RecentItem) -> URL? {
@@ -212,10 +263,22 @@ final class RecentList: ObservableObject {
         item.location = item.location ?? place.location
         if let title, !title.isEmpty { item.title = title }
         if let author, !author.isEmpty { item.author = author }
-        items.removeAll { $0.id == item.id }
-        items.insert(item, at: 0)
-        for dropped in items.dropFirst(limit) { removeCover(of: dropped) }
-        items = Array(items.prefix(limit))
+        if isOrderedByHand, let i = items.firstIndex(where: { $0.id == item.id }) {
+            items[i] = item // stays where the reader put it
+        } else {
+            items.removeAll { $0.id == item.id }
+            items.insert(item, at: 0)
+        }
+        // Full: the one opened longest ago goes: the last, or, in a list
+        // ordered by hand, wherever it is (never the one just opened).
+        while items.count > limit {
+            let oldest = isOrderedByHand
+                ? items.filter({ $0.id != item.id }).min(by: { $0.lastOpened < $1.lastOpened })
+                : items.last
+            guard let oldest else { break }
+            items.removeAll { $0.id == oldest.id }
+            removeCover(of: oldest)
+        }
         save()
         refinePlace(of: item, url: url)
         return item
@@ -225,7 +288,7 @@ final class RecentList: ObservableObject {
     /// say: for a network share, the server's address ("smb://nas/books"),
     /// and whether a /Volumes path is a share or a drive.
     private func refinePlace(of item: RecentItem, url: URL) {
-        Self.checkQueue.async { [weak self] in
+        Self.checkQueue.addOperation { [weak self] in
             let keys: Set<URLResourceKey> = [.volumeIsLocalKey, .volumeURLForRemountingKey, .volumeURLKey, .isUbiquitousItemKey]
             guard let values = try? url.resourceValues(forKeys: keys) else { return }
             var place: StoragePlace?
@@ -250,7 +313,7 @@ final class RecentList: ObservableObject {
     /// asks the file system, which can be slow for a network share): for a
     /// folder shown on screen, which must not wait for it.
     func openedSoon(_ url: URL) {
-        Self.checkQueue.async {
+        Self.checkQueue.addOperation {
             guard let bookmark = try? url.bookmarkData() else { return }
             DispatchQueue.main.async { [weak self] in self?.opened(url, bookmark: bookmark) }
         }
@@ -279,6 +342,32 @@ final class RecentList: ObservableObject {
         save()
     }
 
+    /// The reader dragged items to new places: the list keeps their order
+    /// from now on (`isOrderedByHand`).
+    func move(fromOffsets source: IndexSet, toOffset destination: Int) {
+        items.move(fromOffsets: source, toOffset: destination)
+        setOrderedByHand(true)
+        save()
+    }
+
+    /// Back to newest first.
+    func sortByDate() {
+        items.sort { $0.lastOpened > $1.lastOpened }
+        setOrderedByHand(false)
+        save()
+    }
+
+    private func setOrderedByHand(_ byHand: Bool) {
+        guard byHand != isOrderedByHand else { return }
+        isOrderedByHand = byHand
+        if byHand {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: orderURL.path, contents: Data())
+        } else {
+            try? FileManager.default.removeItem(at: orderURL)
+        }
+    }
+
     /// Takes an item off the list (its cover copy too). The book or folder
     /// itself is not touched.
     func remove(_ item: RecentItem) {
@@ -290,53 +379,113 @@ final class RecentList: ObservableObject {
     /// The item's current place, from its bookmark (nil if it is gone, or on
     /// a drive or share that is not connected). Slow for a network share, so
     /// call it off the main thread (`RecentList.resolve` is nonisolated).
-    nonisolated static func resolve(_ item: RecentItem) -> URL? {
+    /// A check in the background does not mount a share that is not
+    /// connected (`mounting: false`); opening one may.
+    nonisolated static func resolve(_ item: RecentItem, mounting: Bool = true) -> URL? {
         var stale = false
-        return try? URL(resolvingBookmarkData: item.bookmark, bookmarkDataIsStale: &stale)
+        let options: URL.BookmarkResolutionOptions = mounting ? [.withoutUI] : [.withoutUI, .withoutMounting]
+        return try? URL(resolvingBookmarkData: item.bookmark, options: options, bookmarkDataIsStale: &stale)
     }
 
-    /// Whether the item can be reached now: its bookmark resolves and the
-    /// file or folder is there. Off the main thread.
-    nonisolated static func isReachable(_ item: RecentItem) -> Bool {
-        guard let url = resolve(item) else { return false }
+    /// Whether the item can be reached now, and where it is: its bookmark
+    /// resolves and the file or folder is there. A book kept in iCloud but
+    /// not on this device is `inCloud` (it can be opened, and downloaded,
+    /// only while online). Off the main thread.
+    nonisolated static func check(_ item: RecentItem) -> Reached {
+        guard let url = resolve(item, mounting: false) else { return .no }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        return (try? url.checkResourceIsReachable()) == true
+        guard (try? url.checkResourceIsReachable()) == true else { return .no }
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isUbiquitousItemKey,
+                                                       .ubiquitousItemDownloadingStatusKey])
+        if values?.isDirectory != true, values?.isUbiquitousItem == true,
+           values?.ubiquitousItemDownloadingStatus == .notDownloaded {
+            return .inCloud(url)
+        }
+        return .yes(url)
     }
 
     /// The answer to "can this item be reached?".
     enum Reached: Sendable {
         /// Yes, and this is where it is now.
         case yes(URL)
+        /// It is there, but only in iCloud: opening it downloads it first,
+        /// which needs a connection.
+        case inCloud(URL)
         case no
-        /// No answer within the time allowed (a share that has gone away).
+        /// No answer within the time allowed (a share that has gone away,
+        /// or iOS's file service not answering).
         case noAnswer
+
+        /// Where it is, if it was found.
+        var url: URL? {
+            switch self {
+            case .yes(let url), .inCloud(let url): return url
+            case .no, .noAnswer: return nil
+            }
+        }
     }
 
     /// Whether the item can be reached, giving up after `timeout` seconds. A
-    /// network share that has gone away can take a long time to fail. The
-    /// check runs on an ordinary background queue (a read that hangs there
-    /// holds one thread, not Swift's small pool of threads that the rest of
-    /// the app's background work shares), and the answer comes at the time
-    /// limit whether or not the check has finished. When the item is found,
-    /// the list learns where it is now (`found`).
+    /// network share that has gone away can take a long time to fail, and
+    /// iOS's own file service has been seen to stop answering altogether.
+    /// The check runs on a queue of its own (`checkQueue`), and the time
+    /// limit is kept on the main thread, so the answer comes at the limit
+    /// whatever the checks are doing. When the item is found, the list
+    /// learns where it is now (`found`).
     func reachability(of item: RecentItem, timeout: TimeInterval = 6) async -> Reached {
         let answer: Reached = await withCheckedContinuation { continuation in
             let once = ResumeOnce(continuation)
-            Self.checkQueue.async {
-                guard Self.isReachable(item), let url = Self.resolve(item) else { return once.resume(.no) }
-                once.resume(.yes(url))
-            }
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { once.resume(.noAnswer) }
+            Self.checks.check(item) { once.resume($0) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { once.resume(.noAnswer) }
         }
-        if case .yes(let url) = answer { found(item.id, at: url) }
+        if let url = answer.url { found(item.id, at: url) }
         return answer
     }
 
-    /// Checks run here, side by side: one stuck on a share does not hold up
-    /// the others.
-    private nonisolated static let checkQueue = DispatchQueue(label: "org.platenreader.recents-check",
-                                                              qos: .userInitiated, attributes: .concurrent)
+    /// The checks under way, one per item at most.
+    private nonisolated static let checks = ChecksUnderWay()
+
+    /// Runs at most one check per item at a time. Asking about an item whose
+    /// check is still running waits for that check's answer rather than
+    /// starting another. Without this, a file system that stopped answering
+    /// (it happened: iOS's own file service hung for minutes) left a new
+    /// stuck thread behind every time the lists were checked (each return to
+    /// the app, each list change), 64 of them in the end, until iOS ended
+    /// the app and nothing at all would open meanwhile.
+    final class ChecksUnderWay: @unchecked Sendable {
+        private let lock = NSLock()
+        private var waiting: [RecentItem.ID: [(Reached) -> Void]] = [:]
+
+        func check(_ item: RecentItem, answer: @escaping (Reached) -> Void) {
+            let first = lock.withLock { () -> Bool in
+                if waiting[item.id] != nil { waiting[item.id]!.append(answer); return false }
+                waiting[item.id] = [answer]
+                return true
+            }
+            guard first else { return }
+            RecentList.checkQueue.addOperation {
+                let result = RecentList.check(item)
+                let answers = self.lock.withLock { self.waiting.removeValue(forKey: item.id) ?? [] }
+                for answer in answers { answer(result) }
+            }
+        }
+    }
+
+    /// Where checks (and other questions to the file system about listed
+    /// items) run: four at a time, the rest waiting their turn. One stuck on
+    /// a share does not hold up the others, and when the file system stops
+    /// answering altogether, at most four threads are stuck. (One thread per
+    /// item, as before, took all 64 of the threads the app's background
+    /// work shares, so even the time limits, then kept on that pool, never
+    /// came: every folder showed its spinner for good and no book opened.)
+    fileprivate nonisolated static let checkQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "org.platenreader.recents-check"
+        queue.qualityOfService = .userInitiated
+        queue.maxConcurrentOperationCount = 4
+        return queue
+    }()
 
     /// An item was found at `url`. Its stored path is brought up to date (an
     /// app's own folder moves when the app is updated, for one), and
@@ -348,7 +497,7 @@ final class RecentList: ObservableObject {
         items[i].path = path
         let place = StoragePlace(path: path)
         if items[i].storage != .network { items[i].storage = place.kind; items[i].location = place.location }
-        let merged = Self.merged(items)
+        let merged = Self.merged(items, byHand: isOrderedByHand)
         for gone in items where !merged.contains(where: { $0.id == gone.id }) { removeCover(of: gone) }
         items = merged
         save()

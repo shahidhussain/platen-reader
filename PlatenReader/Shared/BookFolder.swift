@@ -3,6 +3,8 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import PlatenCore
+import QuickLookThumbnailing
+import UniformTypeIdentifiers
 
 /// One thing in a folder the folder view shows: a book, or a folder inside
 /// it.
@@ -19,8 +21,11 @@ struct FolderEntry: Identifiable, Equatable, Sendable, Codable {
     /// only). Its cover cannot be read until it is downloaded.
     var isDownloaded: Bool = true
     /// When the file last changed, so an edited or replaced book gets a new
-    /// cover.
+    /// cover (and for sorting).
     var modified: Date?
+    /// When it was made, and its size in bytes, for sorting.
+    var created: Date?
+    var size: Int64?
 
     var id: URL { url }
 }
@@ -58,22 +63,127 @@ enum BookFileType: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Which kinds of book the folder view shows: all of them unless the
-/// reader turns some off (the filter button), and never none. One choice
-/// for every folder, kept with the settings.
+/// How the folder view orders its books (folders always come first, by
+/// name).
+enum FolderSort: String, CaseIterable, Identifiable, Sendable {
+    case name, title, author, modified, created, size
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        // The file's name (without its extension), not the book's title:
+        // the folder knows every file's name at once, but titles only once
+        // each book has been read (and never for one only in iCloud).
+        case .name: return String(localized: "File Name")
+        case .title: return String(localized: "Title")
+        case .author: return String(localized: "Author")
+        case .modified: return String(localized: "Date Modified")
+        case .created: return String(localized: "Date Created")
+        case .size: return String(localized: "Size")
+        }
+    }
+
+    /// Names, titles and authors A to Z; dates newest first; sizes largest
+    /// first. Ties by file name. Titles and authors come from `info` (what
+    /// has been read of each book so far): a book with no title known sorts
+    /// by its file name, and one with no author known goes after those
+    /// with one. Authors sort as the book gives them (usually first name
+    /// first).
+    func sorted(_ entries: [FolderEntry], info: [URL: BookCoverInfo] = [:]) -> [FolderEntry] {
+        func title(_ e: FolderEntry) -> String { info[e.url]?.title ?? e.name }
+        func author(_ e: FolderEntry) -> String? { info[e.url]?.authors.first }
+        func ordered(_ x: String, _ y: String) -> Bool? {
+            let order = x.localizedStandardCompare(y)
+            return order == .orderedSame ? nil : order == .orderedAscending
+        }
+        return entries.sorted { a, b in
+            if a.kind != b.kind { return a.kind == .folder }
+            if a.kind == .book, self != .name {
+                switch self {
+                case .title:
+                    if let answer = ordered(title(a), title(b)) { return answer }
+                case .author:
+                    switch (author(a), author(b)) {
+                    case let (x?, y?): if let answer = ordered(x, y) { return answer }
+                    case (.some, nil): return true
+                    case (nil, .some): return false
+                    case (nil, nil): break
+                    }
+                    if let answer = ordered(title(a), title(b)) { return answer }
+                case .modified where a.modified != b.modified:
+                    return (a.modified ?? .distantPast) > (b.modified ?? .distantPast)
+                case .created where a.created != b.created:
+                    return (a.created ?? .distantPast) > (b.created ?? .distantPast)
+                case .size where a.size != b.size:
+                    return (a.size ?? 0) > (b.size ?? 0)
+                default: break
+                }
+            }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+    }
+}
+
+/// What the words under each cover in a folder say.
+enum CoverLabel: String, CaseIterable, Identifiable, Sendable {
+    /// The file's name without its extension ("Middlemarch").
+    case fileName
+    /// The book's title, with its author below.
+    case titleThenAuthor
+    /// The author, with the book's title below.
+    case authorThenTitle
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .fileName: return String(localized: "File Name")
+        case .titleThenAuthor: return String(localized: "Title, then Author")
+        case .authorThenTitle: return String(localized: "Author, then Title")
+        }
+    }
+
+    /// The first and second lines under a cover. A book not read yet (or
+    /// only in iCloud) has no title or author known: its file name stands
+    /// in for the title.
+    func lines(fileName: String, title: String?, author: String?) -> (String, String?) {
+        let title = title ?? fileName
+        switch self {
+        case .fileName: return (fileName, nil)
+        case .titleThenAuthor: return (title, author)
+        case .authorThenTitle: return author.map { ($0, title) } ?? (title, nil)
+        }
+    }
+}
+
+/// How the folder view shows a folder, one choice for every folder, kept
+/// with the settings: which kinds of book (all unless the reader turns some
+/// off in the View Options sheet, never none), in what order, what the
+/// words under each cover say, and how many covers across (a pinch changes
+/// it).
 @MainActor
 final class BookTypeFilter: ObservableObject {
     static let shared = BookTypeFilter(defaults: AppDefaults.store)
 
     @Published private(set) var hidden: Set<BookFileType>
+    @Published var sort: FolderSort { didSet { defaults.set(sort.rawValue, forKey: "folderSort") } }
+    @Published var coverLabel: CoverLabel { didSet { defaults.set(coverLabel.rawValue, forKey: "folderCoverLabel") } }
+    /// Covers across, when the reader has pinched (nil: the default for the
+    /// screen).
+    @Published var columns: Int? { didSet { defaults.set(columns, forKey: "folderColumns") } }
+    /// When a pinch on a grid last moved: a tap that ends a pinch must not
+    /// open the book under the fingers.
+    var lastPinch: Date = .distantPast
+    var justPinched: Bool { Date().timeIntervalSince(lastPinch) < 0.4 }
     private let defaults: UserDefaults
     private static let key = "hiddenBookTypes"
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
-        let saved = defaults.stringArray(forKey: Self.key) ?? []
-        hidden = Set(saved.compactMap(BookFileType.init(rawValue:)))
-        if hidden.count == BookFileType.allCases.count { hidden = [] }
+        let saved = Set((defaults.stringArray(forKey: Self.key) ?? []).compactMap(BookFileType.init(rawValue:)))
+        hidden = saved.count == BookFileType.allCases.count ? [] : saved
+        sort = defaults.string(forKey: "folderSort").flatMap(FolderSort.init) ?? .name
+        coverLabel = defaults.string(forKey: "folderCoverLabel").flatMap(CoverLabel.init) ?? .titleThenAuthor
+        columns = defaults.object(forKey: "folderColumns") as? Int
     }
 
     /// True unless some kinds are hidden (the filter button shows that).
@@ -103,7 +213,7 @@ enum FolderScanner {
     static func entries(in folder: URL) -> [FolderEntry] {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isHiddenKey,
                                       .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
-                                      .contentModificationDateKey]
+                                      .contentModificationDateKey, .creationDateKey, .fileSizeKey]
         // Hidden files are not skipped here, because iCloud's stand-ins for
         // files not yet downloaded are hidden (".Book.epub.icloud").
         guard let urls = try? FileManager.default.contentsOfDirectory(
@@ -133,7 +243,8 @@ enum FolderScanner {
                 let status = values?.ubiquitousItemDownloadingStatus
                 let downloaded = values?.isUbiquitousItem != true || status == nil || status == .current || status == .downloaded
                 entries.append(FolderEntry(url: url, name: displayName(url), kind: .book, isDownloaded: downloaded,
-                                           modified: values?.contentModificationDate))
+                                           modified: values?.contentModificationDate,
+                                           created: values?.creationDate, size: values?.fileSize.map(Int64.init)))
             }
         }
         return entries.sorted { a, b in
@@ -211,6 +322,9 @@ final class FolderModel: NSObject, ObservableObject {
     /// The books whose covers have been asked for, with the modification
     /// date they had then.
     private var requested: [URL: Date?] = [:]
+    /// The same, for books in iCloud only (their stored thumbnails; see
+    /// `loadCloudThumbnail`).
+    private var requestedCloud: [URL: Date?] = [:]
     private var downloadTimer: Timer?
     private var refreshPending = false
     /// A read of the folder is under way; another asked for meanwhile
@@ -291,10 +405,11 @@ final class FolderModel: NSObject, ObservableObject {
         // changes); those of books that went are dropped.
         let urls = Set(new.map(\.url))
         requested = requested.filter { urls.contains($0.key) }
+        requestedCloud = requestedCloud.filter { urls.contains($0.key) }
         covers = covers.filter { urls.contains($0.key) }
         coverFiles = coverFiles.filter { urls.contains($0.key) }
-        for entry in new where entry.kind == .book && entry.isDownloaded {
-            loadCover(entry)
+        for entry in new where entry.kind == .book {
+            if entry.isDownloaded { loadCover(entry) } else { loadCloudThumbnail(entry) }
         }
         // A tapped book that has arrived: open it.
         for url in downloading where new.contains(where: { $0.url == url && $0.isDownloaded }) {
@@ -323,6 +438,68 @@ final class FolderModel: NSObject, ObservableObject {
                 self.coverFiles[url] = made.imageURL
             }
         }
+    }
+
+    /// The cover of a book in iCloud only, without downloading the book.
+    ///
+    /// Its own cover cannot be read until it is downloaded, but iCloud Drive
+    /// usually keeps a small picture of each file, made by the device that
+    /// uploaded it (for a book, its cover), and that is what the Files app
+    /// shows. Quick Look's thumbnail generator fetches it: a few kilobytes
+    /// through the system's own iCloud, as a tap on the book fetches the
+    /// book. If iCloud has none (the uploading device could not make one),
+    /// the tile stays plain. The picture is kept in the cover cache, under a
+    /// key of its own (made from the book's path and date, as no size is
+    /// known), and replaced by the book's real cover once it is downloaded.
+    /// Asked for one at a time, in grid order, like the covers.
+    private func loadCloudThumbnail(_ entry: FolderEntry) {
+        let url = entry.url
+        if let asked = requestedCloud[url], asked == entry.modified { return }
+        requestedCloud[url] = entry.modified
+        let cache = cache
+        let active = active
+        let key = CoverCache.key(path: "icloud-thumbnail:" + FolderScanner.canonicalPath(url), size: 0,
+                                 modified: entry.modified ?? .distantPast)
+        coverQueue.async {
+            guard active.isOn else {
+                DispatchQueue.main.async { [weak self] in self?.requestedCloud[url] = nil }
+                return
+            }
+            let made = cache.cached(key: key) ?? Self.cloudThumbnail(of: url, maxPixelSize: cache.maxPixelSize)
+                .map { cache.store(BookCover.Result(info: BookCoverInfo(), jpeg: $0), key: key) }
+            guard let made, made.imageURL != nil else { return }
+            DispatchQueue.main.async { [weak self] in
+                // Not if the book has arrived meanwhile and has its own.
+                guard let self, self.requestedCloud[url] != nil, self.requested[url] == nil else { return }
+                self.covers[url] = made.info
+                self.coverFiles[url] = made.imageURL
+            }
+        }
+    }
+
+    /// iCloud's stored picture of a file, as a JPEG, or nil if it has none
+    /// (or none comes within 15 seconds). Only a real thumbnail is taken,
+    /// never the generic icon for the file's type. Waits, so call it on a
+    /// background queue.
+    private nonisolated static func cloudThumbnail(of url: URL, maxPixelSize: Int) -> Data? {
+        let side = CGFloat(maxPixelSize) / 3
+        let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: side * 2 / 3, height: side),
+                                                   scale: 3, representationTypes: .thumbnail)
+        let done = DispatchSemaphore(value: 0)
+        let result = ThumbnailResult()
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
+            if let error { log.info("No iCloud thumbnail for \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)") }
+            result.image = representation?.cgImage
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + 15) == .success, let image = result.image else {
+            QLThumbnailGenerator.shared.cancel(request)
+            return nil
+        }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+        return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 
     /// Covers still to make, and how many books want one, for the progress
@@ -361,6 +538,11 @@ final class FolderModel: NSObject, ObservableObject {
             self?.refresh()
         }
     }
+}
+
+/// Carries a thumbnail from Quick Look's callback to the queue waiting for it.
+private final class ThumbnailResult: @unchecked Sendable {
+    var image: CGImage?
 }
 
 /// A switch read from background queues (is the folder still on screen?).

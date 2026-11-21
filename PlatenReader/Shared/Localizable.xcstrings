@@ -32,6 +32,9 @@
     "About %@" : {
 
     },
+    "Add to Favourites" : {
+
+    },
     "Advanced" : {
 
     },
@@ -83,10 +86,7 @@
     "Books you open appear here." : {
 
     },
-    "Breaks long words at the ends of lines, so justified text has fewer wide gaps between words." : {
-
-    },
-    "Breaks long words at the ends of lines. Not used in this book: its pages are laid out by the publisher." : {
+    "Breaks long words at the ends of lines, so justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher." : {
 
     },
     "Bring All to Front" : {
@@ -96,6 +96,9 @@
 
     },
     "Change the filter to see the other books here." : {
+
+    },
+    "Choose a folder of books to find it here." : {
 
     },
     "Choose Folder…" : {
@@ -149,7 +152,16 @@
     "Dark" : {
 
     },
+    "Date Created" : {
+
+    },
+    "Date Modified" : {
+
+    },
     "Default Text Size" : {
+
+    },
+    "Done" : {
 
     },
     "Downloading" : {
@@ -177,6 +189,9 @@
 
     },
     "External drive" : {
+
+    },
+    "Favourites" : {
 
     },
     "File" : {
@@ -210,9 +225,6 @@
 
     },
     "Folder: %@" : {
-
-    },
-    "Folders you look at appear here." : {
 
     },
     "Font" : {
@@ -249,6 +261,12 @@
 
     },
     "In iCloud" : {
+
+    },
+    "Invert Colours" : {
+
+    },
+    "It is in iCloud and not yet on this device. Connect to the internet to download it." : {
 
     },
     "It may have been moved or deleted, or it is on a drive or network share that is not connected." : {
@@ -305,6 +323,9 @@
     "More" : {
 
     },
+    "Name" : {
+
+    },
     "Narrow" : {
 
     },
@@ -329,10 +350,13 @@
     "No Books of These Kinds" : {
 
     },
-    "No Recent Books" : {
+    "No Favourites" : {
 
     },
-    "No Recent Folders" : {
+    "No Folders" : {
+
+    },
+    "No Recent Books" : {
 
     },
     "No results for “%@”" : {
@@ -348,6 +372,9 @@
 
     },
     "Not connected" : {
+
+    },
+    "Offline" : {
 
     },
     "OK" : {
@@ -368,10 +395,10 @@
     "Open Recent" : {
 
     },
-    "Opening the book…" : {
+    "Open…" : {
 
     },
-    "Open…" : {
+    "Opening the book…" : {
 
     },
     "or press C" : {
@@ -444,6 +471,9 @@
     "Quit %@" : {
 
     },
+    "Reading" : {
+
+    },
     "Reading controls: click the left of the page for the previous page, the right for the next page, and the middle to show controls, or press C." : {
 
     },
@@ -453,16 +483,13 @@
     "Recent Books" : {
 
     },
-    "Recent Folders" : {
-
-    },
-    "Remove" : {
-
-    },
     "Remove Bookmark" : {
 
     },
     "Remove Bookmark (⌘D)" : {
+
+    },
+    "Remove from Favourites" : {
 
     },
     "Remove from Recents" : {
@@ -471,10 +498,10 @@
     "Save Image…" : {
 
     },
-    "Save to Photos" : {
+    "Save to Files…" : {
 
     },
-    "Save to Files…" : {
+    "Save to Photos" : {
 
     },
     "Saved to Photos" : {
@@ -540,16 +567,28 @@
     "Shows the click zones again for the next five books you open." : {
 
     },
+    "Size" : {
+
+    },
     "Slide" : {
 
     },
     "Smaller Text" : {
 
     },
+    "Sort By" : {
+
+    },
+    "Sort by Date" : {
+
+    },
     "Start of book" : {
 
     },
     "Start of document" : {
+
+    },
+    "Tap the heart while reading a book to keep it here." : {
 
     },
     "Text" : {
@@ -608,6 +647,17 @@
     },
     "Untitled" : {
 
+    },
+    "Version %@" : {
+      "comment" : "The app's version on the start-up screens, such as “Version 0.8.1 · 3f2a9c1”.",
+      "localizations" : {
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %@"
+          }
+        }
+      }
     },
     "View" : {
 
