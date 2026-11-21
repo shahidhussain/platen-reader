@@ -373,17 +373,6 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
 }
 
 
-extension View {
-    /// The version line under the large title (iOS 26 and later).
-    @ViewBuilder func versionSubtitle() -> some View {
-        if #available(iOS 26, *) {
-            navigationSubtitle(Text(verbatim: AppVersion.line))
-        } else {
-            self
-        }
-    }
-}
-
 // MARK: - Home: the reader's folders
 
 /// The Home tab: the folders the reader chose (Choose Folder…), as a list:
@@ -397,7 +386,8 @@ extension View {
 /// lists) shows handles to drag the folders into an order of the reader's
 /// own, which the list then keeps (`RecentList.isOrderedByHand`), and
 /// delete buttons; while editing, Sort by Date goes back to newest first.
-/// The gear at the foot of the list opens Settings.
+/// The gear in the navigation bar opens Settings. Each row starts with a
+/// small fan of the folder's covers (`FolderRowPicture`).
 struct RecentFoldersView: View {
     @ObservedObject private var recents = RecentList.folders
     @ObservedObject var navigation: HomeNavigation
@@ -429,21 +419,9 @@ struct RecentFoldersView: View {
                     for item in offsets.map({ recents.items[$0] }) { recents.remove(item) }
                 }
                 } header: {
-                    // Before iOS 26 the version cannot sit under the title
-                    // (navigationSubtitle), so it heads the list instead.
-                    if #available(iOS 26, *) {
-                        Text("Folders")
-                    } else {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(verbatim: AppVersion.line).textCase(nil)
-                            Text("Folders")
-                        }
-                    }
+                    Text("Folders")
                 } footer: {
-                    VStack(spacing: 0) {
-                        if recents.items.isEmpty { emptyFolders }
-                        settingsButton
-                    }
+                    if recents.items.isEmpty { emptyFolders }
                 }
             }
             .listStyle(.insetGrouped)
@@ -452,10 +430,9 @@ struct RecentFoldersView: View {
             .sheet(isPresented: $showingSettings) { ReaderSettingsView() }
             .environment(\.editMode, $editMode)
             .onChange(of: recents.items.isEmpty) { _, empty in if empty { editMode = .inactive } }
-            // The app's name and version head the home screen (the tab
-            // below still says Home).
+            // The app's name heads the home screen (the tab below still
+            // says Home). Its version is in Settings, under About.
             .navigationTitle(Text(verbatim: "Platen Reader"))
-            .versionSubtitle()
             .toolbar {
                 if !recents.items.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
@@ -465,11 +442,14 @@ struct RecentFoldersView: View {
                         .fontWeight(editMode.isEditing ? .semibold : .regular)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     if editMode.isEditing {
                         Button("Sort by Date") { withAnimation { recents.sortByDate() } }
                             .disabled(!recents.isOrderedByHand)
                     } else {
+                        // Settings: about the app, not a book, so here
+                        // rather than among the reader's buttons.
+                        Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                         Button(action: actions.chooseFolder) { Label("Choose Folder…", systemImage: "plus") }
                     }
                 }
@@ -495,25 +475,7 @@ struct RecentFoldersView: View {
         }
     }
 
-    /// Settings: about the app, not a book, so here rather than among the
-    /// reader's buttons. A small capsule button centred below the list (as
-    /// iOS puts actions under a list), so it does not read as one of the
-    /// folders.
-    private var settingsButton: some View {
-        Button { showingSettings = true } label: {
-            Label("Settings", systemImage: "gearshape")
-                .font(.subheadline.weight(.medium))
-        }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .tint(.secondary)
-        .disabled(editMode.isEditing)
-        .frame(maxWidth: .infinity)
-        .padding(.top, 28)
-        .textCase(nil)
-    }
-
-    /// No folders yet (the gear stays below it).
+    /// No folders yet.
     private var emptyFolders: some View {
         ContentUnavailableView {
             Label("No Folders", systemImage: "folder")
@@ -529,12 +491,8 @@ struct RecentFoldersView: View {
         let state = reach[item.id] ?? .checking
         let gone = state == .unavailable
         let kind = item.storageKind
-        return HStack(spacing: 14) {
-            Image(systemName: kind.symbol)
-                .font(.title3)
-                .foregroundStyle(gone ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
-                .frame(width: 32)
-                .accessibilityLabel(kind.label)
+        return HStack(spacing: 12) {
+            FolderRowPicture(item: item, gone: gone)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
                     .foregroundStyle(gone ? .secondary : .primary)

@@ -469,6 +469,9 @@ struct BookTile: View {
 struct PlainCover: View {
     let title: String
     let author: String?
+    /// False for a cover too small to read (the Home tab's folder fans):
+    /// its colour only.
+    var showsText = true
 
     private static let colours: [Color] = [
         Color(red: 0.36, green: 0.42, blue: 0.52), Color(red: 0.50, green: 0.36, blue: 0.33),
@@ -487,23 +490,27 @@ struct PlainCover: View {
             .fill(colour.gradient)
             .aspectRatio(2 / 3, contentMode: .fit)
             .overlay {
-                VStack(spacing: 8) {
-                    Text(title)
-                        .font(.system(.subheadline, design: .serif).weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(5)
-                        .minimumScaleFactor(0.7)
-                    if let author {
-                        Text(author)
-                            .font(.system(.caption2, design: .serif))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                    }
-                }
-                .foregroundStyle(.white)
-                .padding(10)
+                if showsText { words }
             }
             .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
+    }
+
+    private var words: some View {
+        VStack(spacing: 8) {
+            Text(title)
+                .font(.system(.subheadline, design: .serif).weight(.semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(5)
+                .minimumScaleFactor(0.7)
+            if let author {
+                Text(author)
+                    .font(.system(.caption2, design: .serif))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(10)
     }
 }
 

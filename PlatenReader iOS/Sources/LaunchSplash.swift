@@ -74,6 +74,11 @@ final class LaunchSplash {
         version.textColor = .secondaryLabel
         version.textAlignment = .center
         version.alpha = 0
+        // Not shown while a book loads (design review, 21 Nov 2026: the
+        // version belongs in Settings, under About), but kept in the layout:
+        // the progress bar and the glide to the welcome screen place
+        // themselves by it.
+        version.isHidden = true
         version.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(version)
 
@@ -85,7 +90,6 @@ final class LaunchSplash {
         ])
         view.isAccessibilityElement = true
         view.accessibilityLabel = "Platen Reader"
-        view.accessibilityValue = AppVersion.line
 
         let window = UIWindow(windowScene: scene)
         window.windowLevel = .normal + 1
