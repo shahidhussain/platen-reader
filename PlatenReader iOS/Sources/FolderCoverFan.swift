@@ -6,7 +6,7 @@ import SwiftUI
 /// glance; a folder glyph until some are known.
 ///
 /// Only real cover pictures are used (never a book's plain stand-in, nor a
-/// PDF's first page), and
+/// PDF's first page when it is a page of text: `CoverLook`), and
 /// once chosen they stay for the day: the same three every time the list is
 /// shown. The next day three others are drawn at random from the folder
 /// (`FolderFans`), so the fan changes a little each day.
@@ -139,11 +139,10 @@ enum FolderFans {
         if record?.day != day() || files.isEmpty {
             // Time for a fresh three (or the first).
             if let listing = FolderListingCache.listing(of: RecentItem.pathURL(item.path)) {
-                // Books with covers of their own: a PDF's "cover" is only
-                // its first page (often a page of text), and text files have
-                // none.
+                // Text files have no cover. PDFs do (their first page),
+                // unless it is a page of text (checked in `pick`).
                 let books = listing.filter {
-                    $0.kind == .book && $0.isDownloaded && ![.pdf, .text].contains(BookFileType($0.url))
+                    $0.kind == .book && $0.isDownloaded && BookFileType($0.url) != .text
                 }
                 let avoid = Set(record?.keys ?? [])
                 let picked: [(key: String, file: URL)] = await withCheckedContinuation { continuation in
@@ -190,6 +189,9 @@ enum FolderFans {
             guard let size = book.size, let modified = book.modified else { continue }
             let key = CoverCache.key(path: book.url.standardizedFileURL.path, size: size, modified: modified)
             guard let entry = cache.cached(key: key), let image = entry.imageURL else { continue }
+            // A PDF's "cover" is its first page: left out when that is a
+            // page of text, which would show as a blank card.
+            if BookFileType(book.url) == .pdf, CoverLook.isTextLike(file: image) { continue }
             let title = (entry.info.title ?? book.name).lowercased()
             guard titles.insert(title).inserted else { continue }
             if avoid.contains(key) { seen.append((key, image)) } else { fresh.append((key, image)) }
