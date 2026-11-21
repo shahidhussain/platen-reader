@@ -34,10 +34,21 @@ struct RecentItem: Codable, Identifiable, Equatable, Sendable {
     var locationText: String { location ?? StoragePlace(path: path).location }
 
     /// "Middlemarch" for "Middlemarch.kepub.epub"; a folder's own name.
-    var displayName: String { title ?? FolderScanner.displayName(URL(fileURLWithPath: path)) }
+    var displayName: String { title ?? FolderScanner.displayName(Self.pathURL(path)) }
 
     /// The folder it is in ("Kids"), to tell apart two items of one name.
-    var place: String { URL(fileURLWithPath: path).deletingLastPathComponent().lastPathComponent }
+    var place: String { Self.pathURL(path).deletingLastPathComponent().lastPathComponent }
+
+    /// A saved path as a URL, for working with its name and folders only,
+    /// without touching the disk. Plain `URL(fileURLWithPath:)` asks the
+    /// file system whether the path is a folder, and for a book on a network
+    /// share that has gone away (or a cloud folder not answering) that
+    /// question can hang: building the Recent Books list on the main thread
+    /// once waited more than 10 seconds and iOS ended the app. Saying it is
+    /// not a folder costs nothing here: only the path's text is used.
+    nonisolated static func pathURL(_ path: String) -> URL {
+        URL(fileURLWithPath: path, isDirectory: false)
+    }
 }
 
 /// Where a file or folder is kept, for the icon in Recent Folders.
@@ -176,7 +187,7 @@ final class RecentList: ObservableObject {
 
     /// The form paths are compared in.
     private nonisolated static func key(_ path: String) -> String {
-        FolderScanner.canonicalPath(URL(fileURLWithPath: path))
+        FolderScanner.canonicalPath(RecentItem.pathURL(path)) // never the disk (see pathURL)
     }
 
     /// Whether this file or folder is on the list.
