@@ -148,6 +148,12 @@ final class RecentList: ObservableObject {
     enum Kind: String { case books, folders }
 
     @Published private(set) var items: [RecentItem] = []
+    /// True once the reader has put the list in an order of their own (by
+    /// dragging, in Recent Folders). The list then keeps that order: an
+    /// item opened again stays where it is, a new one goes at the top, and
+    /// when the list is full the one opened longest ago goes. `sortByDate()`
+    /// goes back to newest first. Kept in a small file of its own.
+    @Published private(set) var isOrderedByHand = false
     let kind: Kind
     let directory: URL
     let limit: Int
@@ -164,24 +170,28 @@ final class RecentList: ObservableObject {
         self.kind = kind
         self.directory = directory
         self.limit = limit
+        isOrderedByHand = FileManager.default.fileExists(atPath: orderURL.path)
         if let data = try? Data(contentsOf: listURL),
            let saved = try? JSONDecoder.recents.decode([RecentItem].self, from: data) {
             // One entry per place, the newest kept (lists saved by earlier
             // versions could hold one place under two spellings of its path).
-            items = Self.merged(saved)
+            items = Self.merged(saved, byHand: isOrderedByHand)
         }
     }
 
     /// One entry per place: of entries at the same place, the one opened
-    /// most lately, dated by the latest of them. Newest first.
-    private nonisolated static func merged(_ list: [RecentItem]) -> [RecentItem] {
+    /// most lately, dated by the latest of them. Newest first; or, for a
+    /// list ordered by hand, where the first of them was.
+    private nonisolated static func merged(_ list: [RecentItem], byHand: Bool) -> [RecentItem] {
         var byPlace: [String: RecentItem] = [:]
+        var order: [String] = []
         for item in list {
             let key = key(item.path)
-            guard var kept = byPlace[key] else { byPlace[key] = item; continue }
+            guard var kept = byPlace[key] else { byPlace[key] = item; order.append(key); continue }
             if item.lastOpened > kept.lastOpened { kept = item }
             byPlace[key] = kept
         }
+        if byHand { return order.compactMap { byPlace[$0] } }
         return byPlace.values.sorted { $0.lastOpened > $1.lastOpened }
     }
 
@@ -197,6 +207,8 @@ final class RecentList: ObservableObject {
     }
 
     private var listURL: URL { directory.appendingPathComponent("\(kind.rawValue).json") }
+    /// Present when the list is ordered by hand (`isOrderedByHand`).
+    private var orderURL: URL { directory.appendingPathComponent("\(kind.rawValue)-ordered-by-hand") }
 
     /// Where an item's cover copy is (books only).
     func coverURL(for item: RecentItem) -> URL? {
@@ -223,10 +235,22 @@ final class RecentList: ObservableObject {
         item.location = item.location ?? place.location
         if let title, !title.isEmpty { item.title = title }
         if let author, !author.isEmpty { item.author = author }
-        items.removeAll { $0.id == item.id }
-        items.insert(item, at: 0)
-        for dropped in items.dropFirst(limit) { removeCover(of: dropped) }
-        items = Array(items.prefix(limit))
+        if isOrderedByHand, let i = items.firstIndex(where: { $0.id == item.id }) {
+            items[i] = item // stays where the reader put it
+        } else {
+            items.removeAll { $0.id == item.id }
+            items.insert(item, at: 0)
+        }
+        // Full: the one opened longest ago goes: the last, or, in a list
+        // ordered by hand, wherever it is (never the one just opened).
+        while items.count > limit {
+            let oldest = isOrderedByHand
+                ? items.filter({ $0.id != item.id }).min(by: { $0.lastOpened < $1.lastOpened })
+                : items.last
+            guard let oldest else { break }
+            items.removeAll { $0.id == oldest.id }
+            removeCover(of: oldest)
+        }
         save()
         refinePlace(of: item, url: url)
         return item
@@ -288,6 +312,32 @@ final class RecentList: ObservableObject {
             }
         }
         save()
+    }
+
+    /// The reader dragged items to new places: the list keeps their order
+    /// from now on (`isOrderedByHand`).
+    func move(fromOffsets source: IndexSet, toOffset destination: Int) {
+        items.move(fromOffsets: source, toOffset: destination)
+        setOrderedByHand(true)
+        save()
+    }
+
+    /// Back to newest first.
+    func sortByDate() {
+        items.sort { $0.lastOpened > $1.lastOpened }
+        setOrderedByHand(false)
+        save()
+    }
+
+    private func setOrderedByHand(_ byHand: Bool) {
+        guard byHand != isOrderedByHand else { return }
+        isOrderedByHand = byHand
+        if byHand {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: orderURL.path, contents: Data())
+        } else {
+            try? FileManager.default.removeItem(at: orderURL)
+        }
     }
 
     /// Takes an item off the list (its cover copy too). The book or folder
@@ -359,7 +409,7 @@ final class RecentList: ObservableObject {
         items[i].path = path
         let place = StoragePlace(path: path)
         if items[i].storage != .network { items[i].storage = place.kind; items[i].location = place.location }
-        let merged = Self.merged(items)
+        let merged = Self.merged(items, byHand: isOrderedByHand)
         for gone in items where !merged.contains(where: { $0.id == gone.id }) { removeCover(of: gone) }
         items = merged
         save()

@@ -305,7 +305,9 @@ final class LaunchSplash {
         guard !gone else { return }
         gone = true
         let view = root.view!
-        view.isUserInteractionEnabled = false
+        // Touches stay with the splash until it has gone (it is under a
+        // second). Let through while it glided away, a tap on the tab bar
+        // underneath changed the tab, but the page did not follow.
         let reduce = UIAccessibility.isReduceMotionEnabled
         if !following, !reduce, glideToWelcome() { return }
         // In two steps: the mark and words go first (growing a little), then
@@ -336,7 +338,6 @@ final class LaunchSplash {
         let targets = WelcomeLayout.current
         guard let window, let markTarget = targets.mark, markTarget.width > 0 else { return false }
         let view = root.view!
-        view.isUserInteractionEnabled = false
 
         /// The transform that puts `item` over `target` (window
         /// coordinates), scaled to the target's width if `scale`.

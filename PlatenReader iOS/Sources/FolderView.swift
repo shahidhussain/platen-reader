@@ -112,11 +112,11 @@ struct FolderGridView: View {
         }
         .animation(.easeOut(duration: 0.3), value: model.coverProgress.done < model.coverProgress.total)
         .navigationTitle(folder.lastPathComponent)
-        // The title sits in the bar with the buttons, and there is no Back
-        // button: a swipe across the page goes back (SwipeBack), as does
-        // tapping the Recent Folders tab. The grid gets the space.
+        // The title sits in the bar with the buttons, so the grid gets the
+        // space. iOS's own Back button is at the top left (long-press it for
+        // the whole way back); a swipe across the page goes back too
+        // (SwipeBack), as does tapping the Recent Folders tab.
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
         // The search field opens from the search button (and closes with
         // Cancel, clearing the search).
         .searchable(text: $query, isPresented: $searching,

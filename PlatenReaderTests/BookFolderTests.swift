@@ -127,6 +127,47 @@ final class RecentsTests: XCTestCase {
     }
 
     @MainActor
+    func testAnOrderSetByHandIsKept() throws {
+        let folder = try temporaryFolder()
+        let store = folder.appendingPathComponent("recents")
+        let list = RecentList(kind: .folders, directory: store, limit: 4)
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        for (i, name) in ["A", "B", "C"].enumerated() {
+            list.opened(file(folder, name), now: start.addingTimeInterval(Double(i)))
+        }
+        XCTAssertEqual(list.items.map(\.name), ["C", "B", "A"])
+        XCTAssertFalse(list.isOrderedByHand)
+
+        // Drag A to the top: the order is the reader's from now on.
+        list.move(fromOffsets: [2], toOffset: 0)
+        XCTAssertEqual(list.items.map(\.name), ["A", "C", "B"])
+        XCTAssertTrue(list.isOrderedByHand)
+
+        // Opening one again leaves it where it is; a new one goes on top.
+        list.opened(file(folder, "B"), now: start.addingTimeInterval(10))
+        XCTAssertEqual(list.items.map(\.name), ["A", "C", "B"])
+        list.opened(file(folder, "D"), now: start.addingTimeInterval(11))
+        XCTAssertEqual(list.items.map(\.name), ["D", "A", "C", "B"])
+
+        // Full: the one opened longest ago (A, at 0) goes, wherever it is.
+        list.opened(file(folder, "E"), now: start.addingTimeInterval(12))
+        XCTAssertEqual(list.items.map(\.name), ["E", "D", "C", "B"])
+
+        // Kept across launches.
+        let relaunched = RecentList(kind: .folders, directory: store, limit: 4)
+        XCTAssertTrue(relaunched.isOrderedByHand)
+        XCTAssertEqual(relaunched.items.map(\.name), ["E", "D", "C", "B"])
+
+        // Sort by Date: newest first again, and opening moves to the top.
+        relaunched.sortByDate()
+        XCTAssertFalse(relaunched.isOrderedByHand)
+        XCTAssertEqual(relaunched.items.map(\.name), ["E", "D", "B", "C"])
+        relaunched.opened(file(folder, "C"), now: start.addingTimeInterval(13))
+        XCTAssertEqual(relaunched.items.first?.name, "C")
+        XCTAssertFalse(RecentList(kind: .folders, directory: store).isOrderedByHand)
+    }
+
+    @MainActor
     func testAnItemThatHasGoneIsNotReachable() throws {
         let folder = try temporaryFolder()
         let list = RecentList(kind: .books, directory: folder.appendingPathComponent("recents"))

@@ -269,7 +269,10 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
 /// path (the end of it always shown) and when. Tapping one shows it inside
 /// this tab. Each is checked in the background; one that does not answer is
 /// greyed. A long press removes it (a sideways swipe moves between the
-/// home screen's sections); + adds a folder.
+/// home screen's sections); + adds a folder. Edit (top left, as in iOS's own
+/// lists) shows handles to drag the folders into an order of the reader's
+/// own, which the list then keeps (`RecentList.isOrderedByHand`), and
+/// delete buttons; while editing, Sort by Date goes back to newest first.
 struct RecentFoldersView: View {
     @ObservedObject private var recents = RecentList.folders
     @ObservedObject var navigation: HomeNavigation
@@ -277,6 +280,7 @@ struct RecentFoldersView: View {
 
     @State private var reach: [RecentItem.ID: Reach] = [:]
     @State private var cannotOpen: RecentItem?
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         NavigationStack(path: $navigation.folderPath) {
@@ -284,14 +288,23 @@ struct RecentFoldersView: View {
                 ForEach(recents.items) { item in
                     Button { open(item) } label: { row(item) }
                         .buttonStyle(.plain) // ordinary text, not the tint
+                        // While editing, rows are only moved or deleted (not
+                        // greyed, as disabling them would make them look gone).
+                        .allowsHitTesting(!editMode.isEditing)
                         .contextMenu {
                             Button(role: .destructive) { recents.remove(item) } label: {
                                 Label("Remove from Recents", systemImage: "minus.circle")
                             }
                         }
                 }
+                .onMove { recents.move(fromOffsets: $0, toOffset: $1) }
+                .onDelete { offsets in
+                    for item in offsets.map({ recents.items[$0] }) { recents.remove(item) }
+                }
             }
             .listStyle(.insetGrouped)
+            .environment(\.editMode, $editMode)
+            .onChange(of: recents.items.isEmpty) { _, empty in if empty { editMode = .inactive } }
             .overlay {
                 if recents.items.isEmpty {
                     ContentUnavailableView {
@@ -305,8 +318,21 @@ struct RecentFoldersView: View {
             }
             .navigationTitle("Recent Folders")
             .toolbar {
+                if !recents.items.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(editMode.isEditing ? "Done" : "Edit") {
+                            withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                        }
+                        .fontWeight(editMode.isEditing ? .semibold : .regular)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: actions.chooseFolder) { Label("Choose Folder…", systemImage: "plus") }
+                    if editMode.isEditing {
+                        Button("Sort by Date") { withAnimation { recents.sortByDate() } }
+                            .disabled(!recents.isOrderedByHand)
+                    } else {
+                        Button(action: actions.chooseFolder) { Label("Choose Folder…", systemImage: "plus") }
+                    }
                 }
             }
             .navigationDestination(for: URL.self) { folder in
@@ -365,7 +391,7 @@ struct RecentFoldersView: View {
             Spacer(minLength: 8)
             if state == .checking {
                 ProgressView().controlSize(.small)
-            } else {
+            } else if !editMode.isEditing { // the drag handle stands there instead
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
