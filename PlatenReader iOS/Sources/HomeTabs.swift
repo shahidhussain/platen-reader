@@ -356,6 +356,17 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
 }
 
 
+extension View {
+    /// The version line under the large title (iOS 26 and later).
+    @ViewBuilder func versionSubtitle() -> some View {
+        if #available(iOS 26, *) {
+            navigationSubtitle(Text(verbatim: AppVersion.line))
+        } else {
+            self
+        }
+    }
+}
+
 // MARK: - Home: the reader's folders
 
 /// The Home tab: the folders the reader chose (Choose Folder…), as a list:
@@ -400,6 +411,17 @@ struct RecentFoldersView: View {
                 .onDelete { offsets in
                     for item in offsets.map({ recents.items[$0] }) { recents.remove(item) }
                 }
+                } header: {
+                    // Before iOS 26 the version cannot sit under the title
+                    // (navigationSubtitle), so it heads the list instead.
+                    if #available(iOS 26, *) {
+                        Text("Folders")
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(verbatim: AppVersion.line).textCase(nil)
+                            Text("Folders")
+                        }
+                    }
                 } footer: {
                     VStack(spacing: 0) {
                         if recents.items.isEmpty { emptyFolders }
@@ -413,7 +435,10 @@ struct RecentFoldersView: View {
             .sheet(isPresented: $showingSettings) { ReaderSettingsView() }
             .environment(\.editMode, $editMode)
             .onChange(of: recents.items.isEmpty) { _, empty in if empty { editMode = .inactive } }
-            .navigationTitle("Home")
+            // The app's name and version head the home screen (the tab
+            // below still says Home).
+            .navigationTitle(Text(verbatim: "Platen Reader"))
+            .versionSubtitle()
             .toolbar {
                 if !recents.items.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {

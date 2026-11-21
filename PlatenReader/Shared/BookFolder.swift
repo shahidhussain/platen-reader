@@ -66,7 +66,7 @@ enum BookFileType: String, CaseIterable, Identifiable, Sendable {
 /// How the folder view orders its books (folders always come first, by
 /// name).
 enum FolderSort: String, CaseIterable, Identifiable, Sendable {
-    case name, modified, created, size
+    case name, title, author, modified, created, size
     var id: String { rawValue }
 
     var label: String {
@@ -75,18 +75,41 @@ enum FolderSort: String, CaseIterable, Identifiable, Sendable {
         // the folder knows every file's name at once, but titles only once
         // each book has been read (and never for one only in iCloud).
         case .name: return String(localized: "File Name")
+        case .title: return String(localized: "Title")
+        case .author: return String(localized: "Author")
         case .modified: return String(localized: "Date Modified")
         case .created: return String(localized: "Date Created")
         case .size: return String(localized: "Size")
         }
     }
 
-    /// Names A to Z; dates newest first; sizes largest first. Ties by name.
-    func sorted(_ entries: [FolderEntry]) -> [FolderEntry] {
-        entries.sorted { a, b in
+    /// Names, titles and authors A to Z; dates newest first; sizes largest
+    /// first. Ties by file name. Titles and authors come from `info` (what
+    /// has been read of each book so far): a book with no title known sorts
+    /// by its file name, and one with no author known goes after those
+    /// with one. Authors sort as the book gives them (usually first name
+    /// first).
+    func sorted(_ entries: [FolderEntry], info: [URL: BookCoverInfo] = [:]) -> [FolderEntry] {
+        func title(_ e: FolderEntry) -> String { info[e.url]?.title ?? e.name }
+        func author(_ e: FolderEntry) -> String? { info[e.url]?.authors.first }
+        func ordered(_ x: String, _ y: String) -> Bool? {
+            let order = x.localizedStandardCompare(y)
+            return order == .orderedSame ? nil : order == .orderedAscending
+        }
+        return entries.sorted { a, b in
             if a.kind != b.kind { return a.kind == .folder }
             if a.kind == .book, self != .name {
                 switch self {
+                case .title:
+                    if let answer = ordered(title(a), title(b)) { return answer }
+                case .author:
+                    switch (author(a), author(b)) {
+                    case let (x?, y?): if let answer = ordered(x, y) { return answer }
+                    case (.some, nil): return true
+                    case (nil, .some): return false
+                    case (nil, nil): break
+                    }
+                    if let answer = ordered(title(a), title(b)) { return answer }
                 case .modified where a.modified != b.modified:
                     return (a.modified ?? .distantPast) > (b.modified ?? .distantPast)
                 case .created where a.created != b.created:

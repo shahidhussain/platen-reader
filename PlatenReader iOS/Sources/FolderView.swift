@@ -39,7 +39,7 @@ struct FolderGridView: View {
     /// authors too.
     private var shown: [FolderEntry] {
         let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
-        return filter.sort.sorted(model.entries).filter { entry in
+        return filter.sort.sorted(model.entries, info: model.covers).filter { entry in
             if entry.kind == .book, !filter.shows(entry.url) { return false }
             guard searching else { return true }
             let info = model.covers[entry.url]

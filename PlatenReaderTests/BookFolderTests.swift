@@ -1,4 +1,5 @@
 import XCTest
+import PlatenCore
 
 /// Tests of the folder view's shared logic (Shared/BookFolder.swift): what
 /// a folder lists, iCloud's stand-ins for books not yet downloaded, and the
@@ -346,5 +347,20 @@ final class FolderSortTests: XCTestCase {
         XCTAssertEqual(FolderSort.modified.sorted(all).map(\.name), ["Z", "Book 2", "Alpha", "Book 10"])
         XCTAssertEqual(FolderSort.created.sorted(all).map(\.name), ["Z", "Book 10", "Alpha", "Book 2"])
         XCTAssertEqual(FolderSort.size.sorted(all).map(\.name), ["Z", "Alpha", "Book 10", "Book 2"])
+    }
+
+    /// Title and author orders use what has been read of each book; a book
+    /// with no title known goes by its file name, one with no author last.
+    func testTitleAndAuthorOrders() {
+        let a = book("a", modified: 0, created: 0, size: 0)
+        let b = book("b", modified: 0, created: 0, size: 0)
+        let c = book("Middle", modified: 0, created: 0, size: 0) // nothing read yet
+        let info: [URL: BookCoverInfo] = [
+            a.url: BookCoverInfo(title: "Zebra Days", authors: ["Anne Ames"]),
+            b.url: BookCoverInfo(title: "Apples", authors: ["Zoe Zed"]),
+        ]
+        let all = [a, b, c]
+        XCTAssertEqual(FolderSort.title.sorted(all, info: info).map(\.name), ["b", "Middle", "a"])
+        XCTAssertEqual(FolderSort.author.sorted(all, info: info).map(\.name), ["a", "b", "Middle"])
     }
 }
