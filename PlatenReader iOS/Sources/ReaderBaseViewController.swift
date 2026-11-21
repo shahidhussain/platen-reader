@@ -70,7 +70,18 @@ class ReaderBaseViewController: UIViewController {
             favourites.addBook(url)
         }
         state.isFavourite = favourites.contains(url)
-        UISelectionFeedbackGenerator().selectionChanged()
+        if state.isFavourite { heartbeatHaptics() } else { UISelectionFeedbackGenerator().selectionChanged() }
+    }
+
+    /// Taps in time with the heart's two beats (OverlayBar's favourite
+    /// button): a firm tap and a softer one, twice.
+    private func heartbeatHaptics() {
+        let firm = UIImpactFeedbackGenerator(style: .medium)
+        let soft = UIImpactFeedbackGenerator(style: .light)
+        firm.prepare(); soft.prepare()
+        for (delay, generator, strength) in [(0.0, firm, 1.0), (0.24, soft, 0.8), (0.65, firm, 0.85), (0.89, soft, 0.6)] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { generator.impactOccurred(intensity: strength) }
+        }
     }
 
     // MARK: - View setup

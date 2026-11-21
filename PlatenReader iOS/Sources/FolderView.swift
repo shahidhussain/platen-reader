@@ -122,6 +122,14 @@ struct FolderGridView: View {
         .searchable(text: $query, isPresented: $searching,
                     placement: .navigationBarDrawer(displayMode: .automatic),
                     prompt: Text("Title, author or file name"))
+        // A note in the log of what each search found, once typing pauses,
+        // to tell "not in the folder's listing yet" from "not matched".
+        .task(id: query) {
+            guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            logSearch()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
@@ -170,6 +178,18 @@ struct FolderGridView: View {
         .onReceive(NotificationCenter.default.publisher(for: .platenFolderShouldRefresh)) { _ in
             model.refresh()
         }
+    }
+
+    private func logSearch() {
+        let books = model.entries.filter { $0.kind == .book }
+        let found = shown
+        let byName = books.filter { FolderSearch.matches(query, name: $0.name) }.count
+        let titled = books.filter { model.covers[$0.url]?.title != nil }.count
+        log.info("folder search: \(found.count) shown of \(model.entries.count) entries (\(books.count) books, \(titled) with titles read, \(byName) matching by file name), loaded: \(model.hasLoaded)")
+        #if DEBUG
+        // Debug builds only: the words and names themselves.
+        log.info("folder search for \(query, privacy: .public) in \(folder.lastPathComponent, privacy: .public): \(found.map(\.name).joined(separator: " | "), privacy: .public)")
+        #endif
     }
 
     private func tapped(_ entry: FolderEntry) {

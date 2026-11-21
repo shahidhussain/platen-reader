@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// The heart's size and its ring, as the heartbeat animation moves them.
+struct Heartbeat {
+    var scale = 1.0
+    var ring = 0.8
+    var ringOpacity = 0.0
+}
+
 /// Callbacks from the overlay to the reader.
 struct OverlayActions {
     var previousPage: () -> Void
@@ -91,6 +98,9 @@ struct OverlayBar: View {
     /// The popover that is open, if any: one at a time.
     @State private var openPopover: Popover?
     private enum Popover { case typography, layout }
+    /// Counts favourites marked, to start the heart's beats.
+    @State private var heartbeats = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The bar is slightly see-through, and solid while the pointer is on it.
     @State private var hovering = false
     #if os(iOS)
@@ -358,7 +368,12 @@ struct OverlayBar: View {
         }
     }
 
-    /// iOS: the heart, filled (in red) when the book is a favourite.
+    /// iOS: the heart, filled (in red) when the book is a favourite. Marking
+    /// a book as a favourite is a small moment of "I love this book", so the
+    /// heart beats twice (lub-dub, lub-dub) with a soft ring going out from
+    /// it on each beat, and the phone taps in time (the reader's
+    /// `toggleFavourite`). Taking it off is quiet. With Reduce Motion the
+    /// heart just fills.
     private var favouriteButton: some View {
         Button {
             actions.toggleFavourite?()
@@ -368,8 +383,47 @@ struct OverlayBar: View {
                   systemImage: state.isFavourite ? "heart.fill" : "heart")
                 .foregroundStyle(state.isFavourite ? Color.red : Color.primary)
                 .contentTransition(.symbolEffect(.replace))
+                .keyframeAnimator(initialValue: Heartbeat(), trigger: heartbeats) { content, beat in
+                    content
+                        .scaleEffect(beat.scale)
+                        .background {
+                            Circle()
+                                .stroke(Color.red, lineWidth: 1.5)
+                                .scaleEffect(beat.ring)
+                                .opacity(beat.ringOpacity)
+                                .allowsHitTesting(false)
+                        }
+                } keyframes: { _ in
+                    // Two heartbeats: a strong beat and a softer echo, a
+                    // pause, then again a little gentler.
+                    KeyframeTrack(\.scale) {
+                        SpringKeyframe(1.35, duration: 0.12, spring: .snappy)
+                        SpringKeyframe(1.0, duration: 0.12, spring: .snappy)
+                        SpringKeyframe(1.2, duration: 0.11, spring: .snappy)
+                        SpringKeyframe(1.0, duration: 0.3, spring: .smooth)
+                        SpringKeyframe(1.25, duration: 0.12, spring: .snappy)
+                        SpringKeyframe(1.0, duration: 0.12, spring: .snappy)
+                        SpringKeyframe(1.12, duration: 0.11, spring: .snappy)
+                        SpringKeyframe(1.0, duration: 0.35, spring: .smooth)
+                    }
+                    KeyframeTrack(\.ring) {
+                        LinearKeyframe(0.8, duration: 0.01)
+                        CubicKeyframe(1.8, duration: 0.6)
+                        LinearKeyframe(0.8, duration: 0.07)
+                        CubicKeyframe(1.8, duration: 0.6)
+                    }
+                    KeyframeTrack(\.ringOpacity) {
+                        LinearKeyframe(0.45, duration: 0.01)
+                        CubicKeyframe(0, duration: 0.6)
+                        LinearKeyframe(0.4, duration: 0.07)
+                        CubicKeyframe(0, duration: 0.6)
+                    }
+                }
         }
         .help(state.isFavourite ? String(localized: "Remove from Favourites") : String(localized: "Add to Favourites"))
+        .onChange(of: state.isFavourite) { _, favourite in
+            if favourite, !reduceMotion { heartbeats += 1 }
+        }
     }
 
     private func toggle(_ popover: Popover) {
