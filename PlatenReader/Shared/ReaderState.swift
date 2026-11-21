@@ -75,6 +75,8 @@ final class ReaderState: ObservableObject {
     @Published var toc: [TOCItem] = []
     @Published var bookmarks: [BookRecord.Bookmark] = []
     @Published var isPageBookmarked = false
+    /// iOS: the book is one of the reader's favourites (the heart button).
+    @Published var isFavourite = false
 
     // Jumps: "Back to p. 87" after a jump, until the reader moves on.
     @Published var backLabel: String?

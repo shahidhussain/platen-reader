@@ -2,8 +2,8 @@ import Combine
 import Foundation
 import PlatenCore
 
-/// A book or folder the reader opened lately, for the home screen's Recent
-/// Books and Recent Folders tabs.
+/// A book or folder on one of the home screen's lists: Recent Books, the
+/// Home tab's folders, or Favourites.
 ///
 /// It is found again through a bookmark (a reference that survives the item
 /// being moved or renamed, and keeps permission to read it), never through
@@ -145,7 +145,7 @@ struct StoragePlace: Equatable, Sendable {
 /// removed from the list (a long press), and nothing else is kept.
 @MainActor
 final class RecentList: ObservableObject {
-    enum Kind: String { case books, folders }
+    enum Kind: String { case books, folders, favorites }
 
     @Published private(set) var items: [RecentItem] = []
     /// True once the reader has put the list in an order of their own (by
@@ -160,6 +160,10 @@ final class RecentList: ObservableObject {
 
     static let books = RecentList(kind: .books)
     static let folders = RecentList(kind: .folders)
+    /// Books the reader marked as favourites (the heart in the reader): the
+    /// home screen's Favourites tab, "what I am reading now". Newest first
+    /// unless put in an order by hand; never trimmed by age.
+    static let favorites = RecentList(kind: .favorites, limit: 1000)
 
     /// Application Support/Platen Reader/recents (or the test home).
     nonisolated static var defaultDirectory: URL {
@@ -204,6 +208,30 @@ final class RecentList: ObservableObject {
     func contains(_ url: URL) -> Bool {
         let path = FolderScanner.canonicalPath(url)
         return items.contains { Self.key($0.path) == path }
+    }
+
+    /// The entry for this file or folder, if it is on the list.
+    func item(at url: URL) -> RecentItem? {
+        let path = FolderScanner.canonicalPath(url)
+        return items.first { Self.key($0.path) == path }
+    }
+
+    /// A book was opened (Recent Books) or marked as a favourite: it goes on
+    /// the list (`opened`), then, in the background, its title, author and a
+    /// copy of its cover are added, so the list shows them even when the
+    /// book cannot be reached later. Call while access to the book is held
+    /// (the reader holds it while the book is open).
+    @discardableResult
+    func addBook(_ url: URL) -> RecentItem? {
+        guard let item = opened(url) else { return nil }
+        DispatchQueue.global(qos: .utility).async {
+            let entry = CoverCache.standard().cover(for: url)
+            let jpeg = entry.imageURL.flatMap { try? Data(contentsOf: $0) }
+            DispatchQueue.main.async { [weak self] in
+                self?.update(item.id, title: entry.info.title, author: entry.info.authors.first, cover: jpeg)
+            }
+        }
+        return item
     }
 
     private var listURL: URL { directory.appendingPathComponent("\(kind.rawValue).json") }
@@ -384,19 +412,46 @@ final class RecentList: ObservableObject {
     func reachability(of item: RecentItem, timeout: TimeInterval = 6) async -> Reached {
         let answer: Reached = await withCheckedContinuation { continuation in
             let once = ResumeOnce(continuation)
-            Self.checkQueue.async {
-                guard Self.isReachable(item), let url = Self.resolve(item) else { return once.resume(.no) }
-                once.resume(.yes(url))
-            }
+            Self.checks.check(item) { once.resume($0) }
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { once.resume(.noAnswer) }
         }
         if case .yes(let url) = answer { found(item.id, at: url) }
         return answer
     }
 
+    /// The checks under way, one per item at most.
+    private nonisolated static let checks = ChecksUnderWay()
+
+    /// Runs at most one check per item at a time. Asking about an item whose
+    /// check is still running waits for that check's answer rather than
+    /// starting another. Without this, a file system that stopped answering
+    /// (it happened: iOS's own file service hung for minutes) left a new
+    /// stuck thread behind every time the lists were checked (each return to
+    /// the app, each list change), 64 of them in the end, until iOS ended
+    /// the app and nothing at all would open meanwhile.
+    final class ChecksUnderWay: @unchecked Sendable {
+        private let lock = NSLock()
+        private var waiting: [RecentItem.ID: [(Reached) -> Void]] = [:]
+
+        func check(_ item: RecentItem, answer: @escaping (Reached) -> Void) {
+            let first = lock.withLock { () -> Bool in
+                if waiting[item.id] != nil { waiting[item.id]!.append(answer); return false }
+                waiting[item.id] = [answer]
+                return true
+            }
+            guard first else { return }
+            RecentList.checkQueue.async {
+                let result: Reached
+                if RecentList.isReachable(item), let url = RecentList.resolve(item) { result = .yes(url) } else { result = .no }
+                let answers = self.lock.withLock { self.waiting.removeValue(forKey: item.id) ?? [] }
+                for answer in answers { answer(result) }
+            }
+        }
+    }
+
     /// Checks run here, side by side: one stuck on a share does not hold up
     /// the others.
-    private nonisolated static let checkQueue = DispatchQueue(label: "org.platenreader.recents-check",
+    fileprivate nonisolated static let checkQueue = DispatchQueue(label: "org.platenreader.recents-check",
                                                               qos: .userInitiated, attributes: .concurrent)
 
     /// An item was found at `url`. Its stored path is brought up to date (an

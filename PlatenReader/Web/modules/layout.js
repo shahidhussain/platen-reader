@@ -25,6 +25,12 @@ const bookCSS = s => `
     html {
         color-scheme: ${s.theme.dark ? 'dark' : 'light'};
         font-size: ${s.fontSize}px !important;
+        /* iOS enlarges text it judges too small for a wide block, and a
+           chapter laid out as pages is one very wide block of columns, so
+           the text size could change on switching to scrolling and back.
+           The size chosen is the size shown. */
+        -webkit-text-size-adjust: none !important;
+        text-size-adjust: none !important;
     }
     html, body {
         background-color: ${s.transparent ? 'transparent' : s.theme.background} !important;

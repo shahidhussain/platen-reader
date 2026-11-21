@@ -126,6 +126,24 @@ final class RecentsTests: XCTestCase {
         XCTAssertEqual(list.items.map(\.name), ["5", "4", "3"])
     }
 
+    /// Favourites are a list of their own, found by file, and kept apart
+    /// from Recent Books.
+    @MainActor
+    func testFavouritesAreAListOfTheirOwn() throws {
+        let folder = try temporaryFolder()
+        let store = folder.appendingPathComponent("recents")
+        let favourites = RecentList(kind: .favorites, directory: store)
+        let books = RecentList(kind: .books, directory: store)
+        let book = file(folder, "Middlemarch.epub")
+        XCTAssertNil(favourites.item(at: book))
+        favourites.opened(book)
+        XCTAssertEqual(favourites.item(at: book)?.name, "Middlemarch.epub")
+        XCTAssertTrue(books.items.isEmpty)
+        XCTAssertEqual(RecentList(kind: .favorites, directory: store).items.map(\.name), ["Middlemarch.epub"])
+        favourites.remove(try XCTUnwrap(favourites.item(at: book)))
+        XCTAssertFalse(favourites.contains(book))
+    }
+
     @MainActor
     func testAnOrderSetByHandIsKept() throws {
         let folder = try temporaryFolder()

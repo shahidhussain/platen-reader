@@ -12,9 +12,12 @@ struct OverlayActions {
     /// Called whenever the user interacts, so the overlay does not auto-hide
     /// while it is being used.
     var interacted: () -> Void
-    /// iOS: what the gear button's popover shows (the settings). The Mac
-    /// has Platen Reader > Settings… instead, so leaves this out.
-    var settingsContent: (() -> AnyView)? = nil
+    /// iOS: marks the book as a favourite, or no longer (the heart button;
+    /// the home screen's Favourites tab lists them). The Mac has no home
+    /// screen to list them on, so leaves this out and shows no heart.
+    /// Settings are not among the reader's buttons: every button there is
+    /// about the book being read; Settings are on the home screen.
+    var toggleFavourite: (() -> Void)? = nil
 }
 
 extension View {
@@ -85,7 +88,7 @@ struct OverlayBar: View {
     @State private var dragFraction: Double?
     /// The popover that is open, if any: one at a time.
     @State private var openPopover: Popover?
-    private enum Popover { case typography, layout, settings }
+    private enum Popover { case typography, layout }
     /// The bar is slightly see-through, and solid while the pointer is on it.
     @State private var hovering = false
     #if os(iOS)
@@ -114,7 +117,7 @@ struct OverlayBar: View {
 
     // MARK: - iOS: the buttons, and the floating slider
 
-    /// Contents, bookmark, layout, Aa and settings, side by side on one
+    /// Contents, bookmark, layout, Aa and the favourite heart, side by side on one
     /// piece of glass.
     private var buttonGroup: some View {
         HStack(spacing: 0) {
@@ -123,7 +126,7 @@ struct OverlayBar: View {
             bookmarkButton.scaleEffect(x: 1.2, y: 1).frame(width: 44, height: 44)
             layoutButton.frame(width: 44, height: 44)
             typographyButton.frame(width: 44, height: 44)
-            if actions.settingsContent != nil { settingsButton.frame(width: 44, height: 44) }
+            if actions.toggleFavourite != nil { favouriteButton.frame(width: 44, height: 44) }
         }
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
@@ -198,7 +201,7 @@ struct OverlayBar: View {
                 bookmarkButton
                 layoutButton
                 typographyButton
-                if actions.settingsContent != nil { settingsButton }
+                if actions.toggleFavourite != nil { favouriteButton }
             }
             .frame(minHeight: 32)
         }
@@ -338,17 +341,18 @@ struct OverlayBar: View {
         }
     }
 
-    /// iOS: the settings, in a popover like the others.
-    private var settingsButton: some View {
+    /// iOS: the heart, filled (in red) when the book is a favourite.
+    private var favouriteButton: some View {
         Button {
-            toggle(.settings)
+            actions.toggleFavourite?()
+            actions.interacted()
         } label: {
-            Label(String(localized: "Settings"), systemImage: "gearshape")
+            Label(state.isFavourite ? String(localized: "Remove from Favourites") : String(localized: "Add to Favourites"),
+                  systemImage: state.isFavourite ? "heart.fill" : "heart")
+                .foregroundStyle(state.isFavourite ? Color.red : Color.primary)
+                .contentTransition(.symbolEffect(.replace))
         }
-        .popover(isPresented: isOpen(.settings), arrowEdge: popoverEdge) {
-            actions.settingsContent?()
-                .platenPopover()
-        }
+        .help(state.isFavourite ? String(localized: "Remove from Favourites") : String(localized: "Add to Favourites"))
     }
 
     private func toggle(_ popover: Popover) {

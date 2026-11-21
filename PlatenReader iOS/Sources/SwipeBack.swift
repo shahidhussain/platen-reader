@@ -1,7 +1,7 @@
 import UIKit
 
 /// Going back by swiping, in the home screen's navigation (folders inside
-/// Recent Folders): a swipe from the edge and (iOS 26) a swipe anywhere
+/// the Home tab): a swipe from the edge and (iOS 26) a swipe anywhere
 /// across the page, whenever there is somewhere to go back to. (The folder
 /// view once hid its Back button, which turns UIKit's back swipe off; this
 /// turned it on again, and keeps it on for any view that hides it.)

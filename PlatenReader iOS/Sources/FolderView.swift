@@ -9,7 +9,7 @@ extension Notification.Name {
 }
 
 /// One folder's grid of covers (about three across on an iPhone), the
-/// folders inside it first, shown in the Recent Folders tab. Tapping a
+/// folders inside it first, shown in the Home tab. Tapping a
 /// folder goes into it, with the usual Back button; tapping a book opens it.
 /// Search (by file name, title and author) and a filter by kind of book are
 /// in the toolbar.
@@ -115,7 +115,7 @@ struct FolderGridView: View {
         // The title sits in the bar with the buttons, so the grid gets the
         // space. iOS's own Back button is at the top left (long-press it for
         // the whole way back); a swipe across the page goes back too
-        // (SwipeBack), as does tapping the Recent Folders tab.
+        // (SwipeBack), as does tapping the Home tab.
         .navigationBarTitleDisplayMode(.inline)
         // The search field opens from the search button (and closes with
         // Cancel, clearing the search).
@@ -160,7 +160,8 @@ struct FolderGridView: View {
         .onAppear {
             model.onDownloaded = openBook
             model.start()
-            RecentList.folders.openedSoon(folder) // for the Recent Folders tab
+            // Not added to the Home list: only folders the reader chose
+            // go there (Choose Folder…), not every folder browsed into.
         }
         .onDisappear { model.stop() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in

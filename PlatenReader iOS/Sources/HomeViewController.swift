@@ -8,21 +8,21 @@ import UniformTypeIdentifiers
 ///
 /// - At launch it goes back to the book that was open when Platen was last
 ///   left (`LastOpenBook`).
-/// - Otherwise it shows three tabs (HomeTabs): Home (the welcome, for now:
-///   the app's name, "Open Book…" and "Choose Folder…"), Recent Books and
-///   Recent Folders.
+/// - Otherwise it shows the home screen (HomeTabs): the welcome the first
+///   time ("Open Book…" and "Choose Folder…"), then three tabs: Home (the
+///   reader's folders, and Settings), Recent Books and Favourites.
 /// - "Open Book…" shows the system's document picker, which opens the book
 ///   where it is (Files, iCloud Drive, SMB shares, any file provider) through
 ///   a security-scoped URL. Nothing is ever copied into the app.
 ///   "Choose Folder…" picks a folder the same way (opening one book gives no
-///   access to its folder); it joins Recent Folders, kept as a bookmark, and
+///   access to its folder); it joins the Home list, kept as a bookmark, and
 ///   opens there.
 /// - Books opened from other apps go straight to the reader (SceneDelegate
 ///   calls `openBook(at:)`).
 ///
 /// Platen has no library of its own; folders are the library.
 final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
-    /// The tab showing, and the folders open in Recent Folders.
+    /// The tab showing, and the folders open in the Home tab.
     let navigation = HomeNavigation()
     /// The picker on screen is choosing a folder, not a book.
     private var pickingFolder = false
@@ -53,8 +53,8 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        // The tabs (Home, Recent Books, Recent Folders), whose Home tab is
-        // the folder view once a folder is chosen, or the welcome until then.
+        // The home screen: the welcome the first time, then the tabs (Home,
+        // Recent Books, Favourites).
         let tabs = UIHostingController(rootView: HomeTabs(navigation: navigation, actions: HomeActions(
             openBook: { [weak self] in self?.openBook(at: $0) },
             chooseBook: { [weak self] in self?.chooseBook() },
@@ -176,7 +176,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
                 NotificationCenter.default.post(name: .platenFolderShouldRefresh, object: nil)
             }
             LastOpenBook.remember(url)
-            self.addToRecents(url)
+            RecentList.books.addBook(url)
             reader.modalPresentationStyle = .fullScreen
             self.reader = reader
             self.onReaderCreated?(reader)
@@ -195,23 +195,6 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
             presented.dismiss(animated: false, completion: show)
         } else {
             show()
-        }
-    }
-}
-
-extension HomeViewController {
-    /// Puts the book at the top of Recent Books, then (in the background)
-    /// adds its title, author and a copy of its cover, so the list shows them
-    /// even when the book cannot be reached later. The reader holds access
-    /// to the book meanwhile.
-    func addToRecents(_ url: URL) {
-        guard let item = RecentList.books.opened(url) else { return }
-        DispatchQueue.global(qos: .utility).async {
-            let entry = CoverCache.standard().cover(for: url)
-            let jpeg = entry.imageURL.flatMap { try? Data(contentsOf: $0) }
-            DispatchQueue.main.async {
-                RecentList.books.update(item.id, title: entry.info.title, author: entry.info.authors.first, cover: jpeg)
-            }
         }
     }
 }

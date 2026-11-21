@@ -94,7 +94,6 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     override var pageView: UIView { pdfView }
     override var hasShownPage: Bool { model != nil }
     override var failureFallbackTitle: String { String(localized: "This PDF could not be opened.") }
-    override var hidesTextSettings: Bool { true }
 
     // MARK: - View setup
 
