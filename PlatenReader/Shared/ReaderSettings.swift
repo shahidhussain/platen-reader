@@ -115,9 +115,11 @@ enum Theme: String, CaseIterable, Identifiable {
 
     var link: String {
         switch self {
-        case .light: return "#0b57d0"
+        // Honey, as the app's accent (Colours.xcassets), dark enough on
+        // white for text (5:1); sepia keeps its own warm brown.
+        case .light: return "#9e6213"
         case .sepia: return "#8a4b1f"
-        case .dark, .black: return "#8ab4f8"
+        case .dark, .black: return "#e8b45a"
         }
     }
 

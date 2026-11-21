@@ -76,7 +76,7 @@ struct WelcomeView: View {
             content
                 .background {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color.accentColor.opacity(dropTargeted ? 0.8 : 0),
+                        .strokeBorder(Color.honey.opacity(dropTargeted ? 0.8 : 0),
                                       style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
                         .padding(12)
                 }

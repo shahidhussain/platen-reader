@@ -41,7 +41,7 @@ extension ReaderBaseViewController {
     /// A brief tint over the picture, so it is clear which one was chosen.
     private func highlight(_ rect: CGRect, in view: UIView) {
         let tint = UIView(frame: rect)
-        tint.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.25)
+        tint.backgroundColor = (UIColor(named: "Honey") ?? .systemOrange).withAlphaComponent(0.25)
         tint.isUserInteractionEnabled = false
         view.addSubview(tint)
         UIView.animate(withDuration: 0.6, delay: 0.4) { tint.alpha = 0 } completion: { _ in tint.removeFromSuperview() }

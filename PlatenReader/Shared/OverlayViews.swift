@@ -54,6 +54,12 @@ struct ReaderPageBand: View {
 }
 
 extension Color {
+    /// The app's accent, a warm honey (Shared/Colours.xcassets: light and
+    /// dark variants). Named, rather than `accentColor`, where it must not
+    /// follow the Mac's own accent colour (System Settings → Appearance),
+    /// such as the progress slider.
+    static let honey = Color("Honey")
+
     /// "#rrggbb" → Color (sRGB), for the themes' colours.
     init(hex: String) {
         let value = UInt32(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0
@@ -177,7 +183,7 @@ struct OverlayBar: View {
                             .lineLimit(1)
                     }
                     .buttonStyle(.borderless)
-                    .tint(.accentColor)
+                    .tint(.honey)
                     Spacer(minLength: 8)
                 }
                 Text(locationText)
@@ -431,7 +437,7 @@ struct ProgressSlider: View {
                     .frame(height: track)
                     .padding(.horizontal, knob / 2)
                 Capsule()
-                    .fill(Color.accentColor)
+                    .fill(Color.honey)
                     .frame(width: max(0, abs(position(value) - position(0))), height: track)
                     .offset(x: rightToLeft ? position(value) : knob / 2)
                 ForEach(Array(ticks.dropFirst().dropLast().enumerated()), id: \.offset) { _, tick in
@@ -513,13 +519,13 @@ struct TypographyPopover: View {
             // The glow of the page's own colours around it (books and PDFs;
             // not in the Black theme, whose point is a black screen).
             Toggle("Ambient Light", isOn: $settings.ambientLight)
-                .tint(Color(uiColor: .systemGreen))
+                .tint(.honey)
                 .popoverRow()
             if state.isPDF {
                 PopoverDivider()
                 // White pages dark, for reading in the dark.
                 Toggle("Invert Colours", isOn: $settings.invertPDF)
-                    .tint(Color(uiColor: .systemGreen))
+                    .tint(.honey)
                     .popoverRow()
             }
         }
