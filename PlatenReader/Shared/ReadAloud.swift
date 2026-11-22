@@ -161,6 +161,10 @@ enum AppleVoices {
 protocol SpeechEngine: AnyObject {
     var onStart: ((Int) -> Void)? { get set }
     var onFinish: ((Int) -> Void)? { get set }
+    /// A word about to be spoken: the sentence's id and the word's place in
+    /// its text (UTF-16, as JavaScript counts). Engines without word timing
+    /// never call it; the page then underlines the whole sentence.
+    var onWord: ((Int, NSRange) -> Void)? { get set }
     /// Speaking speed: 1 is normal, 0.5 half, 2 twice.
     var speed: Double { get set }
     /// Adds sentences after those already queued.
@@ -193,8 +197,12 @@ final class ReadAloudController {
     var onPhase: ((ReadAloudPhase) -> Void)?
     /// Asks the page for the next block (it answers with `receive`).
     var requestNext: (() -> Void)?
-    /// Highlights a sentence in the page.
+    /// A sentence is starting: the page turns to it (and underlines it, if
+    /// no word timing follows).
     var mark: ((String) -> Void)?
+    /// A word is starting: the page underlines it (the sentence's place,
+    /// and the word's start and length in the sentence's text).
+    var markWord: ((String, Int, Int) -> Void)?
 
     private var queued: [Int: ReadAloudSentence] = [:]
     private var order: [Int] = []
@@ -211,6 +219,10 @@ final class ReadAloudController {
         lookaheadCount = lookahead
         engine.onStart = { [weak self] id in self?.started(id) }
         engine.onFinish = { [weak self] id in self?.finished(id) }
+        engine.onWord = { [weak self] id, range in
+            guard let self, let mark = self.queued[id]?.mark else { return }
+            self.markWord?(mark, range.location, range.length)
+        }
     }
 
     /// Reading begins; the caller has asked the page for the first block.

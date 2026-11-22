@@ -160,6 +160,23 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertFalse(engine.paused)
     }
 
+    func testEachWordIsPassedOnWithItsSentencesPlace() {
+        let engine = FakeEngine()
+        let controller = ReadAloudController(engine: engine, language: "en", lookahead: 2)
+        var words: [String] = []
+        controller.requestNext = {}
+        controller.markWord = { mark, start, length in words.append("\(mark):\(start)+\(length)") }
+        controller.start()
+        controller.receive(block(["Call me Ishmael.", "Some years ago."]))
+        engine.startNext()
+        engine.speakWord(NSRange(location: 0, length: 4))
+        engine.speakWord(NSRange(location: 8, length: 7))
+        engine.finishCurrent()
+        engine.startNext()
+        engine.speakWord(NSRange(location: 5, length: 5))
+        XCTAssertEqual(words, ["0:0+4", "0:8+7", "1:5+5"])
+    }
+
     func testBlocksWithNothingToReadAreSkipped() {
         let engine = FakeEngine()
         let controller = ReadAloudController(engine: engine, language: "en", lookahead: 2)
@@ -176,6 +193,7 @@ final class ReadAloudTests: XCTestCase {
 private final class FakeEngine: SpeechEngine {
     var onStart: ((Int) -> Void)?
     var onFinish: ((Int) -> Void)?
+    var onWord: ((Int, NSRange) -> Void)?
     var speed: Double = 1
     private(set) var queue: [(id: Int, text: String)] = []
     private(set) var texts: [String] = []
@@ -193,6 +211,10 @@ private final class FakeEngine: SpeechEngine {
         let next = queue.removeFirst()
         current = next.id
         onStart?(next.id)
+    }
+
+    func speakWord(_ range: NSRange) {
+        if let current { onWord?(current, range) }
     }
 
     func finishCurrent() {

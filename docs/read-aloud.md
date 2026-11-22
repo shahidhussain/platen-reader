@@ -1,7 +1,7 @@
 # Read aloud
 
 The speaker button reads the book aloud from the current page with Apple's
-voices, highlighting the sentence being read and turning pages as it goes.
+voices, underlining the word being read and turning pages as it goes.
 iOS first; the Mac follows with the same shared code. What ships is in "How
 it works" below.
 
@@ -202,8 +202,11 @@ app does not offer the download (Debug builds can try it from a folder:
   `modules/readaloud.js` sends Swift about 20 sentences at a time from the
   first sentence on the current page, reading ahead into later chapters
   (documents loaded off screen; iOS suspends the web view in the background),
-  each sentence with its CFI, and highlights the sentence being spoken as a
-  foliate annotation, turning pages and chapters to it.
+  each sentence with its CFI. As each is spoken the page turns to it, and the
+  word being read is underlined (Apple's voices report each word; a sentence
+  is underlined whole when no word timing comes): a thin accent-coloured
+  line drawn as a foliate annotation. Not a highlight, which looked too heavy
+  and means something else in a book (the reader asked, 22 Nov 2026).
 - **Speech (Swift, Shared).** `ReadAloud.swift` holds `ReadAloudController`
   (the queue of sentences, asking for more while 40 remain), the
   `SpeechEngine` protocol, `SpeechEngineChooser` (language and choice) and

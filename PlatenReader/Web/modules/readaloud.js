@@ -18,11 +18,15 @@
 // - Marks. Each sentence is sent with its CFI, foliate's location of it,
 //   which holds whatever chapter it is in. `mark(cfi)` is called as Swift
 //   starts speaking the sentence: the page turns to it if needed (another
-//   chapter, or a later page) and it is highlighted as a foliate annotation
-//   (drawn on foliate's overlay, as search results are, so the book's own
-//   markup is never changed; the CSS Highlight API left stale marks behind
-//   in WebKit's column layout).
-// - `stop` takes the highlight away.
+//   chapter, or a later page). `word(cfi, start, length)` follows for each
+//   word (Apple's voices report them), and the word being read is
+//   underlined: a thin line, not a highlight, which looked too heavy and
+//   means something else in a book (the reader asked, 22 Nov 2026). Without
+//   word timing the whole sentence is underlined instead. Underlines are
+//   foliate annotations, drawn on its overlay as search results are, so the
+//   book's own markup is never changed (the CSS Highlight API left stale
+//   marks behind in WebKit's column layout).
+// - `stop` takes the underline away.
 
 import { reader } from './state.js'
 import { post } from './bridge.js'
@@ -32,8 +36,12 @@ import { Overlayer } from '../foliate/overlayer.js'
 
 // Sentences sent for each request.
 const BATCH = 20
-// The highlight's colour: the accent, at the overlay's usual opacity.
+// The underline: the accent colour, thin.
 const COLOUR = '#f08c1e'
+const WIDTH = 2
+// How long to wait for the first word before underlining the whole
+// sentence instead (an engine without word timing).
+const WORD_WAIT = 600
 
 let active = false
 // Where the text has got to: the section being read ahead, its document and
@@ -48,7 +56,7 @@ function listenForDrawing() {
     if (drawing || !reader.view) return
     drawing = true
     reader.view.addEventListener('draw-annotation', e => {
-        if (e.detail.annotation?.platenReadAloud) e.detail.draw(Overlayer.highlight, { color: COLOUR })
+        if (e.detail.annotation?.platenReadAloud) e.detail.draw(Overlayer.underline, { color: COLOUR, width: WIDTH })
     })
 }
 
@@ -179,34 +187,120 @@ async function more() {
     return sendMore(null)
 }
 
-// Swift is starting to speak the sentence at `cfi`: show it.
+// Swift is starting to speak the sentence at `cfi`: turn to it, and wait
+// for its words; if none come, underline the whole sentence.
 let marking = Promise.resolve()
+let sentenceTimer = null
+let currentSentence = null
+let wordSeen = false
+
 function mark(cfi) {
     if (!active || !cfi) return
+    currentSentence = cfi
+    wordSeen = false
+    clearTimeout(sentenceTimer)
     // One at a time, in order (turning to another chapter takes a moment).
-    marking = marking.then(() => show(cfi)).catch(() => {})
+    marking = marking.then(() => showSentence(cfi)).catch(() => {})
+    sentenceTimer = setTimeout(() => {
+        if (active && !wordSeen && currentSentence === cfi)
+            marking = marking.then(() => underline(cfi)).catch(() => {})
+    }, WORD_WAIT)
 }
 
-async function show(cfi) {
-    if (!active) return
+// A word is starting: `start` and `length` count UTF-16 units in the
+// sentence's text as sent (its white space collapsed, as `sendMore` did).
+function word(cfi, start, length) {
+    if (!active || !cfi) return
+    wordSeen = true
+    clearTimeout(sentenceTimer)
+    marking = marking.then(async () => {
+        const shown = await showSentence(cfi)
+        if (!shown) return
+        const sentence = shown.anchor(shown.doc)
+        const range = sentence && wordRange(sentence, start, length)
+        if (!range) return underline(cfi)
+        // Apple sometimes reports a lone comma or dash as a word: the
+        // underline stays where it was.
+        if (!/[\p{L}\p{N}]/u.test(range.toString())) return
+        // The sentence may run over to the next page.
+        if (!isOnScreen(range)) reader.view.renderer.scrollToAnchor?.(range, true)
+        return underline(reader.view.getCFI(shown.index, range))
+    }).catch(() => {})
+}
+
+// The sentence's chapter and page on screen; its index, document and anchor.
+async function showSentence(cfi) {
+    if (!active) return null
     const { index, anchor } = reader.view.resolveCFI(cfi)
     let shown = onScreen()
     if (shown?.index !== index) {
+        clearHighlight()
         await reader.view.goTo(cfi)
         shown = onScreen()
     }
-    if (!shown?.doc || shown.index !== index) return
+    if (!shown?.doc || shown.index !== index) return null
+    const range = anchor(shown.doc)
+    if (range && !isOnScreen(range)) reader.view.renderer.scrollToAnchor?.(range, true)
+    return { index, doc: shown.doc, anchor }
+}
+
+async function underline(cfi) {
+    if (!active) return
     listenForDrawing()
     clearHighlight()
     highlighted = { value: cfi, platenReadAloud: true }
     await reader.view.addAnnotation(highlighted)
-    // To the page holding the sentence, if it is not already showing.
-    const range = anchor(shown.doc)
-    if (range) reader.view.renderer.scrollToAnchor?.(range, true)
+}
+
+// Whether a range is on the page showing (it begins at or after the start
+// of what is visible, and ends at or before its end).
+function isOnScreen(range) {
+    const visible = reader.view.lastLocation?.range
+    if (!visible || visible.startContainer.ownerDocument !== range.startContainer.ownerDocument) return false
+    return range.compareBoundaryPoints(Range.START_TO_START, visible) >= 0
+        && range.compareBoundaryPoints(Range.END_TO_END, visible) <= 0
+}
+
+// The part of `sentence` from `start` for `length` characters of its text
+// with white space collapsed and trimmed, as it was sent to Swift.
+function wordRange(sentence, start, length) {
+    const doc = sentence.startContainer.ownerDocument
+    const root = sentence.commonAncestorContainer
+    const places = [] // each kept character's text node and offset
+    let lastWasSpace = true // leading white space is trimmed
+    const take = (node, from, to) => {
+        const text = node.data
+        for (let i = from; i < to; i++) {
+            if (/\s/.test(text[i])) {
+                if (!lastWasSpace) { places.push([node, i]); lastWasSpace = true }
+            } else {
+                places.push([node, i])
+                lastWasSpace = false
+            }
+        }
+    }
+    if (root.nodeType === Node.TEXT_NODE) {
+        take(root, sentence.startOffset, sentence.endOffset)
+    } else {
+        const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            if (!sentence.intersectsNode(n)) continue
+            const from = n === sentence.startContainer ? sentence.startOffset : 0
+            const to = n === sentence.endContainer ? sentence.endOffset : n.data.length
+            take(n, from, to)
+        }
+    }
+    const first = places[start], last = places[start + length - 1]
+    if (!first || !last) return null
+    const range = doc.createRange()
+    range.setStart(first[0], first[1])
+    range.setEnd(last[0], last[1] + 1)
+    return range
 }
 
 function stop() {
     active = false
+    clearTimeout(sentenceTimer)
     cursor = null
     clearHighlight()
 }
@@ -238,4 +332,4 @@ function preview() {
     return `book:${Array.isArray(book) ? book[0] : book ?? ''} blocks:${langs.join(',')} first:${first ?? ''}`
 }
 
-export const readAloud = { start, more, mark, stop, parseBlock, preview }
+export const readAloud = { start, more, mark, word, stop, parseBlock, preview }

@@ -8,6 +8,7 @@ import AVFoundation
 final class AppleSpeechEngine: NSObject, SpeechEngine {
     var onStart: ((Int) -> Void)?
     var onFinish: ((Int) -> Void)?
+    var onWord: ((Int, NSRange) -> Void)?
     var speed: Double = 1
 
     /// A voice the reader chose in Settings, used where it speaks the book's
@@ -75,6 +76,15 @@ extension AppleSpeechEngine: AVSpeechSynthesizerDelegate {
         let key = ObjectIdentifier(utterance)
         Task { @MainActor in
             if let id = self.ids[key] { self.onStart?(id) }
+        }
+    }
+
+    /// Each word as it is about to be spoken, for the page's underline.
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange,
+                                       utterance: AVSpeechUtterance) {
+        let key = ObjectIdentifier(utterance)
+        Task { @MainActor in
+            if let id = self.ids[key] { self.onWord?(id, characterRange) }
         }
     }
 
