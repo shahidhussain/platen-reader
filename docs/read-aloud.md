@@ -42,7 +42,47 @@ and are not used anywhere.
   app's acknowledgements. French, Spanish, Japanese and Mandarin are left
   out (their lexicons are eSpeak-derived, or not needed).
 
-**Choice: vendored KokoroAne (Core ML).** Recorded 22 Nov 2026.
+**Choice: vendored KokoroAne (Core ML).** Recorded 22 Nov 2026, and
+**reopened the same day** (see "Core ML on iOS: crashes" below).
+
+### Core ML on iOS: crashes (found 22 Nov 2026)
+
+Tracing KokoroAne's English path (FluidAudio at
+`3ecbf6b3a06a69afc938c298e561b4257325429f`) turned up its own "Known OS
+issues" notes:
+
+- Core ML's Kokoro chain crashes inside Apple's BNNS library on iOS 26.4 to
+  26.6 and on iOS 27 (`EXC_BAD_ACCESS` / `SIGSEGV` in `libBNNS`). FluidAudio
+  says: "there is currently no OS version or routing on iOS that is
+  demonstrated safe for long sessions" (their issue #889 asks whether to
+  turn it off on iOS by default). An iPhone XR (A12, iOS 18) was killed for
+  memory while loading the Vocoder (#979).
+- On iOS 27, Core ML may use the Neural Engine in the background only with
+  the `com.apple.developer.background-tasks.continued-processing.inference`
+  entitlement.
+- Sizes (compiled models only): the seven-stage chain about 90 MB, plus
+  voices (0.5 MB each) and the English G2P (BART model, Misaki lexicon). The
+  newer "v3" adds about 120 MB and uses the GPU on iOS 26 and earlier, so
+  it cannot read in the background.
+
+A reader that may crash partway through a chapter cannot ship, so the
+Core ML route is on hold.
+
+### The other route: ONNX Runtime on the CPU
+
+Kokoro's published ONNX model (`onnx-community/Kokoro-82M-v1.0-ONNX`,
+Apache-2.0; `model_fp16.onnx` 163.2 MB, `model_quantized.onnx` 92.4 MB, the
+"about 165 MB" in the spec) run by ONNX Runtime (MIT) on the CPU: allowed in
+the background, and ONNX Runtime has its own CPU kernels (not BNNS). Against
+it: Microsoft's Swift package repository
+(`microsoft/onnxruntime-swift-package-manager`) is no longer reachable, so its
+binary (an xcframework, tens of MB) would be packaged here and added to every
+install, and its speed on an iPhone's CPU is unmeasured (no Python wheel for
+this Mac's Python to time it here). The English G2P would be misaki's
+lexicons (Apache-2.0) in Swift, with CMUdict (BSD) for words they lack.
+
+The decision between these (or waiting) is the user's: see the PR.
+
 
 ### Hosting the voice
 
