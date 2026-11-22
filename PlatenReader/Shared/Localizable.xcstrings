@@ -14,6 +14,9 @@
     "%@, page %lld" : {
 
     },
+    "%@, picture" : {
+
+    },
     "%lld pages left in chapter" : {
 
     },
@@ -26,13 +29,37 @@
     "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
 
     },
+    "A book’s title and author are known once Platen has read it; until then, and for books only in iCloud, its file name is shown." : {
+
+    },
+    "A record of how the app has been running (how long books took to open, moments it was slow to respond, errors), kept on this device to help with a problem report. It holds no book titles or file names, and leaves the device only if you share it." : {
+
+    },
     "About %@" : {
+
+    },
+    "Add to Favourites" : {
 
     },
     "Advanced" : {
 
     },
+    "Ambient Light" : {
+
+    },
     "Appearance" : {
+
+    },
+    "Asking the file system…" : {
+
+    },
+    "Author" : {
+
+    },
+    "Author, then Title" : {
+
+    },
+    "Authors" : {
 
     },
     "Automatic" : {
@@ -74,10 +101,22 @@
     "Books will open at the beginning. This cannot be undone." : {
 
     },
+    "Books you open appear here." : {
+
+    },
+    "Breaks long words at the ends of lines, so lines are more even and justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher." : {
+
+    },
     "Bring All to Front" : {
 
     },
     "Cancel" : {
+
+    },
+    "Change the filter to see the other books here." : {
+
+    },
+    "Choose a folder of books to find it here." : {
 
     },
     "Choose Folder…" : {
@@ -104,6 +143,9 @@
     "Close Book" : {
 
     },
+    "Cloud storage" : {
+
+    },
     "Contents" : {
 
     },
@@ -125,16 +167,37 @@
     "Copy with Citation" : {
 
     },
+    "Created" : {
+
+    },
     "Dark" : {
+
+    },
+    "Date Created" : {
+
+    },
+    "Date Modified" : {
 
     },
     "Default Text Size" : {
 
     },
+    "Done" : {
+
+    },
     "Downloading" : {
 
     },
+    "Downloading “%@” from iCloud…" : {
+
+    },
+    "Downloading from iCloud…" : {
+
+    },
     "Edit" : {
+
+    },
+    "Edit Home" : {
 
     },
     "End of book" : {
@@ -152,7 +215,19 @@
     "EPUB, KEPUB, MOBI, AZW3, PDF or plain text. You can also drop a book here." : {
 
     },
+    "External drive" : {
+
+    },
+    "Favourite" : {
+
+    },
+    "Favourites" : {
+
+    },
     "File" : {
+
+    },
+    "File Name" : {
 
     },
     "File Types" : {
@@ -182,7 +257,13 @@
     "Folder: %@" : {
 
     },
+    "Folders" : {
+
+    },
     "Font" : {
+
+    },
+    "Get Info" : {
 
     },
     "Go" : {
@@ -203,16 +284,52 @@
     "Hide Others" : {
 
     },
+    "Home" : {
+
+    },
     "Hyphenate Text" : {
 
     },
     "Hyphenate text in paginated mode" : {
 
     },
+    "iCloud Drive" : {
+
+    },
     "In iCloud" : {
 
     },
+    "In iCloud, not on this device" : {
+
+    },
+    "Invert Colours" : {
+
+    },
+    "iOS updates a file’s last-accessed date only now and then, so it can be well behind." : {
+
+    },
+    "It is in iCloud and not yet on this device. Connect to the internet to download it." : {
+
+    },
+    "It may have been moved or deleted, or it is on a drive or network share that is not connected, or in iCloud while this device is offline." : {
+
+    },
+    "It may have been moved or deleted, or it is on a drive or network share that is not connected." : {
+
+    },
+    "Justify Text" : {
+
+    },
+    "Kind" : {
+
+    },
     "Larger Text" : {
+
+    },
+    "Last Accessed" : {
+
+    },
+    "Last Opened in Platen" : {
 
     },
     "last page in chapter" : {
@@ -236,7 +353,13 @@
     "Line Width" : {
 
     },
+    "Lines flush at both sides, where the book asks for it. Off, lines end where their words do (ragged right), which leaves no wide gaps between words on a narrow screen." : {
+
+    },
     "Location" : {
+
+    },
+    "Looking for books…" : {
 
     },
     "Make Platen the Default" : {
@@ -245,16 +368,22 @@
     "Make Platen the Default for All Ebooks" : {
 
     },
+    "Making covers: %lld of %lld" : {
+
+    },
     "Medium" : {
 
     },
     "Minimise" : {
 
     },
-    "More" : {
+    "Modified" : {
 
     },
     "Narrow" : {
+
+    },
+    "Network share" : {
 
     },
     "Next Chapter" : {
@@ -272,6 +401,18 @@
     "No Books Here" : {
 
     },
+    "No Books of These Kinds" : {
+
+    },
+    "No Favourites" : {
+
+    },
+    "No Folders" : {
+
+    },
+    "No Recent Books" : {
+
+    },
     "No results for “%@”" : {
 
     },
@@ -279,6 +420,24 @@
 
     },
     "None" : {
+
+    },
+    "Not available" : {
+
+    },
+    "Not connected" : {
+
+    },
+    "Offline" : {
+
+    },
+    "OK" : {
+
+    },
+    "On My iPhone" : {
+
+    },
+    "On this device" : {
 
     },
     "One Page" : {
@@ -291,6 +450,12 @@
 
     },
     "Open…" : {
+
+    },
+    "Opening “%@”…" : {
+
+    },
+    "Opening the book…" : {
 
     },
     "or press C" : {
@@ -327,10 +492,19 @@
     "Paginated" : {
 
     },
+    "Path" : {
+
+    },
     "Picture" : {
 
     },
+    "Plain Text" : {
+
+    },
     "Plain text is left out, since most text files are not books. Use its own button to open all text files in Platen." : {
+
+    },
+    "Platen Reader Diagnostics" : {
 
     },
     "Platen does not open password-protected PDFs. Open it in another app." : {
@@ -357,10 +531,16 @@
     "Quit %@" : {
 
     },
+    "Reading" : {
+
+    },
     "Reading controls: click the left of the page for the previous page, the right for the next page, and the middle to show controls, or press C." : {
 
     },
     "Reading positions and bookmarks" : {
+
+    },
+    "Recent Books" : {
 
     },
     "Remove Bookmark" : {
@@ -369,13 +549,22 @@
     "Remove Bookmark (⌘D)" : {
 
     },
+    "Remove from Favourites" : {
+
+    },
+    "Remove from List" : {
+
+    },
+    "Remove from Recents" : {
+
+    },
     "Save Image…" : {
 
     },
-    "Save to Photos" : {
+    "Save to Files…" : {
 
     },
-    "Save to Files…" : {
+    "Save to Photos" : {
 
     },
     "Saved to Photos" : {
@@ -393,6 +582,12 @@
     "Search Book for Selection" : {
 
     },
+    "Sections" : {
+
+    },
+    "See All" : {
+
+    },
     "Select All" : {
 
     },
@@ -406,6 +601,9 @@
 
     },
     "Settings…" : {
+
+    },
+    "Share Diagnostics…" : {
 
     },
     "Share Selection…" : {
@@ -441,16 +639,25 @@
     "Shows the click zones again for the next five books you open." : {
 
     },
+    "Size" : {
+
+    },
     "Slide" : {
 
     },
     "Smaller Text" : {
 
     },
+    "Sort By" : {
+
+    },
     "Start of book" : {
 
     },
     "Start of document" : {
+
+    },
+    "Stored" : {
 
     },
     "Text" : {
@@ -477,6 +684,9 @@
     "The window is too narrow for two pages. Make it wider to see them side by side." : {
 
     },
+    "This book can’t be opened" : {
+
+    },
     "This book could not be opened." : {
 
     },
@@ -486,10 +696,28 @@
     "This cannot be undone." : {
 
     },
+    "This folder can’t be opened" : {
+
+    },
     "This PDF could not be opened." : {
 
     },
     "This PDF is protected by a password." : {
+
+    },
+    "Title" : {
+
+    },
+    "Title, author or file name" : {
+
+    },
+    "Title, then Author" : {
+
+    },
+    "These pages are already spreads, so they show one at a time." : {
+
+    },
+    "Touch and hold a book’s cover, in a folder or in Recent Books, and choose Add to Favourites." : {
 
     },
     "Two Pages" : {
@@ -498,10 +726,33 @@
     "Two pages show side by side when you turn to landscape." : {
 
     },
+    "Under Each Cover" : {
+
+    },
     "Untitled" : {
 
     },
+    "Version %@" : {
+      "comment" : "The app's version on the start-up screens, such as “Version 0.8.1 · 3f2a9c1”.",
+      "localizations" : {
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %@"
+          }
+        }
+      }
+    },
     "View" : {
+
+    },
+    "View Options" : {
+
+    },
+    "Website" : {
+
+    },
+    "Where" : {
 
     },
     "Wide" : {

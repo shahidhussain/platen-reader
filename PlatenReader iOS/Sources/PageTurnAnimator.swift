@@ -18,8 +18,11 @@ import UIKit
 final class PageTurnAnimator {
     enum Style { case none, slide, curl }
 
-    /// Takes a picture of the page as it is on screen now.
-    typealias Snapshot = (@escaping (UIImage?) -> Void) -> Void
+    /// Takes a picture of the page as it is on screen now. `forCurl`: the
+    /// picture will curl, so it carries everything behind the page too (its
+    /// glow); a slide's picture is just the page, which slides over what
+    /// stays behind it.
+    typealias Snapshot = (_ forCurl: Bool, @escaping (UIImage?) -> Void) -> Void
     /// Turns the page underneath with no animation, then reports whether it
     /// moved (false at the start or end), once the new page is drawn.
     typealias TurnUnderneath = (PageTurn, @escaping (Bool) -> Void) -> Void
@@ -57,6 +60,28 @@ final class PageTurnAnimator {
     /// page, which curls away whole.
     var curlSpine: (() -> CGFloat?)?
 
+    /// Called as a slide or a swipe moves the pages, with how far it has
+    /// got (0: the old page, 1: the new one), inside the slide's animation
+    /// when it animates, so what stays behind the pages (the ambient glow,
+    /// `AmbientGlowView`) can fade from the old page's to the new one's in
+    /// step with them: with a finger, as far as the finger has gone.
+    var slideProgress: ((CGFloat) -> Void)?
+    /// The slide is over: whether the new page stayed (false: put back).
+    var slideEnded: ((_ turned: Bool) -> Void)?
+    /// A slide has reported progress and not yet ended.
+    private var sliding = false
+
+    private func reportSlide(_ progress: CGFloat) {
+        sliding = true
+        slideProgress?(progress)
+    }
+
+    private func endSlide(turned: Bool) {
+        guard sliding else { return }
+        sliding = false
+        slideEnded?(turned)
+    }
+
     /// Called when a turn finds nowhere to go: the reader is at the start
     /// or end of the book. The reader says so (ReaderChrome.showNotice).
     var onEdge: ((PageTurn) -> Void)?
@@ -72,10 +97,21 @@ final class PageTurnAnimator {
     /// True while a turn is being drawn or a finger is moving the page.
     var isBusy: Bool { cover != nil || pager != nil || swipe != nil }
 
+    /// True while a page curl is being prepared or drawn (only the page
+    /// curls: what is behind it stays, so the PDF reader fades its glow
+    /// over `curlDuration` to land with it).
+    var isCurling: Bool { pager != nil }
+    /// About how long the system's page curl takes.
+    static let curlDuration: TimeInterval = 0.5
+
     /// The picture of the old page, laid over the live page.
     private var cover: UIView?
     /// The system's page curl, while one runs.
-    private var pager: UIPageViewController?
+    private var pager: UIPageViewController? {
+        didSet { if pager != nil, oldValue == nil { curlBegan = CACurrentMediaTime() } }
+    }
+    /// When the curl on screen began (see `turn`).
+    private var curlBegan: CFTimeInterval = 0
     /// True once `pager` has started its animated turn. UIKit turns
     /// autorotation off for the whole app while a page view controller
     /// animates, and back on only when the animation completes; a pager
@@ -91,7 +127,18 @@ final class PageTurnAnimator {
     /// Turns a page in the given style. `leafMovesLeft`: the old page leaves
     /// towards the left (a forward turn in a left-to-right book).
     func turn(_ request: PageTurn, leafMovesLeft: Bool, style: Style) {
-        // A turn asked for while another is drawn (fast taps, a held arrow
+        // A turn asked for during a page curl is dropped: the curl plays
+        // out, and only taps after it turn. (Cutting curls short to turn
+        // at once, as slides do below, lost some quick taps anyway, at
+        // random: UIKit ignores touches while a curl animates. One page per
+        // curl is the same every time.) A curl still there well after it
+        // should have ended is stuck, and is cleared as before rather than
+        // blocking every turn.
+        if isCurling, CACurrentMediaTime() - curlBegan < Self.curlDuration * 3 {
+            log.info("page turn dropped during a curl")
+            return
+        }
+        // A turn asked for while a slide is drawn (fast taps, a held arrow
         // key) skips the rest of that one and turns at once.
         if isBusy {
             finishNow()
@@ -112,22 +159,36 @@ final class PageTurnAnimator {
         // meantime turns instantly instead of starting another slide.
         let placeholder = UIView()
         cover = placeholder
-        snapshot { [weak self] image in
+        snapshot(false) { [weak self] image in
             guard let self, self.generation == turn else { return }
             guard let image else { self.cover = nil; return self.turnOrReportEdge(request) }
             let cover = self.addCover(image)
+            // The picture is see-through around the text (the glow shows
+            // through it), so the live page hides while it turns beneath.
+            self.pageView.alpha = 0
+            // Before turning: the new page's glow, made as it turns, is
+            // then held back to fade in with the slide.
+            self.reportSlide(0)
             self.turnOrReportEdge(request) { moved in
                 guard self.generation == turn else { return }
-                guard moved else { return self.removeCover() }
+                guard moved else {
+                    self.pageView.alpha = 1
+                    self.endSlide(turned: false)
+                    return self.removeCover()
+                }
                 // The new page starts beside the old one, and both move
                 // together, as paper on a table would.
                 let offset = leafMovesLeft ? width : -width
                 self.pageView.transform = CGAffineTransform(translationX: offset, y: 0)
+                self.pageView.alpha = 1
                 UIView.animate(withDuration: Self.slideDuration, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
                     cover.transform = CGAffineTransform(translationX: -offset, y: 0)
                     self.pageView.transform = .identity
+                    self.reportSlide(1)
                 } completion: { _ in
-                    if self.generation == turn { self.removeCover() }
+                    guard self.generation == turn else { return }
+                    self.endSlide(turned: true)
+                    self.removeCover()
                 }
             }
         }
@@ -153,7 +214,7 @@ final class PageTurnAnimator {
         pager.view.frame = region.offsetBy(dx: pageView.frame.minX, dy: pageView.frame.minY)
         self.pager = pager
 
-        snapshot { [weak self] full in
+        snapshot(true) { [weak self] full in
             guard let self, self.generation == turn else { return }
             guard let before = full.flatMap({ self.crop($0, to: region) }) else {
                 self.pager = nil
@@ -169,7 +230,7 @@ final class PageTurnAnimator {
             self.turnOrReportEdge(request) { moved in
                 guard self.generation == turn else { return }
                 guard moved else { return self.removePager() } // at the start or end
-                self.snapshot { full in
+                self.snapshot(true) { full in
                     guard self.generation == turn, let after = full.flatMap({ self.crop($0, to: region) }) else {
                         return self.removePager()
                     }
@@ -223,7 +284,7 @@ final class PageTurnAnimator {
             guard let full, let l = crop(full, to: left), let r = crop(full, to: right) else { return nil }
             return [picturePage(l), picturePage(r)]
         }
-        snapshot { [weak self] full in
+        snapshot(true) { [weak self] full in
             guard let self, self.generation == turn else { return }
             guard let before = halves(full) else {
                 self.pager = nil
@@ -237,7 +298,7 @@ final class PageTurnAnimator {
             self.turnOrReportEdge(request) { moved in
                 guard self.generation == turn else { return }
                 guard moved else { return self.removePager() }
-                self.snapshot { full in
+                self.snapshot(true) { full in
                     guard self.generation == turn, let after = halves(full) else { return self.removePager() }
                     let started = CACurrentMediaTime()
                     self.pagerAnimating = true
@@ -299,7 +360,7 @@ final class PageTurnAnimator {
 
         // Until the picture is ready (a few tens of milliseconds), the live
         // page itself follows the finger: it is still the old page.
-        snapshot { [weak self] image in
+        snapshot(false) { [weak self] image in
             guard let self, self.generation == turn, var swipe = self.swipe else { return }
             guard let image else {
                 // No picture: let go of the page and turn when the finger lifts.
@@ -311,6 +372,8 @@ final class PageTurnAnimator {
             let cover = self.addCover(image)
             cover.transform = self.pageView.transform
             swipe.covered = true
+            // Before turning, as for a tap's slide.
+            self.reportSlide(0)
             self.swipe = swipe
             // Hide the live page while it turns: the strip the old page
             // uncovers shows the page colour until the new page is ready.
@@ -376,6 +439,7 @@ final class PageTurnAnimator {
             cover?.transform = CGAffineTransform(translationX: dx, y: 0)
             if swipe.moved == true {
                 pageView.transform = CGAffineTransform(translationX: dx - swipe.sign * width, y: 0)
+                reportSlide(swipe.distance / max(width, 1))
             }
         }
     }
@@ -402,14 +466,17 @@ final class PageTurnAnimator {
             if commit {
                 self.cover?.transform = CGAffineTransform(translationX: swipe.sign * width, y: 0)
                 self.pageView.transform = .identity
+                self.reportSlide(1)
             } else {
                 self.cover?.transform = .identity
                 self.pageView.transform = CGAffineTransform(translationX: -swipe.sign * width, y: 0)
+                self.reportSlide(0)
             }
         } completion: { _ in
             guard self.generation == turn else { return }
             self.swipe = nil
             if commit {
+                self.endSlide(turned: true)
                 self.removeCover()
             } else {
                 // The old page is back on top: turn the live page back
@@ -418,6 +485,7 @@ final class PageTurnAnimator {
                 self.pageView.transform = .identity
                 self.turnUnderneath(swipe.request.opposite) { _ in
                     guard self.generation == turn else { return }
+                    self.endSlide(turned: false)
                     self.pageView.alpha = 1
                     self.removeCover()
                 }
@@ -431,8 +499,11 @@ final class PageTurnAnimator {
         swipe = nil
         UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
             self.pageView.transform = .identity
+            if self.sliding { self.slideProgress?(0) }
         } completion: { _ in
-            if self.generation == turn { self.removeCover() }
+            guard self.generation == turn else { return }
+            self.endSlide(turned: false)
+            self.removeCover()
         }
     }
 
@@ -443,6 +514,8 @@ final class PageTurnAnimator {
     func finishNow() {
         generation += 1
         swipe = nil
+        // Whatever turned underneath is the page now; its glow with it.
+        endSlide(turned: true)
         pageView.layer.removeAllAnimations()
         pageView.transform = .identity
         pageView.alpha = 1
@@ -462,7 +535,9 @@ final class PageTurnAnimator {
         let view = UIImageView(image: image)
         view.frame = pageView.frame
         view.contentMode = .scaleToFill
-        view.backgroundColor = host.view.backgroundColor
+        // See-through: a slide's picture is the page alone, over what
+        // stays behind (the theme's colour, the glow).
+        view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
         pageView.superview?.insertSubview(view, aboveSubview: pageView)
         cover?.removeFromSuperview()

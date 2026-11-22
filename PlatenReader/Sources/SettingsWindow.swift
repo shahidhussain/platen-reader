@@ -59,6 +59,7 @@ private struct AppearanceSettingsView: View {
                         Text(value == 0 ? String(localized: "Publisher Default") : value.formatted(.number.precision(.fractionLength(1...2)))).tag(value)
                     }
                 }
+                Toggle("Justify text", isOn: $settings.justify)
                 Toggle("Hyphenate text in paginated mode", isOn: $settings.hyphenate)
                 Picker("Appearance", selection: $settings.appearance) {
                     ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }

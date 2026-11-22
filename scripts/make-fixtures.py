@@ -172,14 +172,15 @@ def simple(name, title, chapter_files, extra_files=(), version="3.0", extra_meta
 
 
 def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7D659A2FEAA0C55AD015",
-               pictures=False):
+               pictures=False, square=False):
     """A small PDF written by hand (no PDF library needed): text pages in
     Helvetica, an outline with one entry per chapter, a title in the
     document information, and a document ID in the trailer, which Platen
     uses to recognise the file again (PDFIdentity). With pictures, every
     page has a picture (an image XObject) in its lower half, and the last
     page is landscape, filled by a picture (for long-press save and share,
-    and the One Page layout)."""
+    and the One Page layout). With square, every page is square (as many
+    picture books' are), so Two Pages pairs them in landscape."""
     objects = []  # bodies, numbered from 1
 
     def add(body):
@@ -206,8 +207,8 @@ def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7
             lines = [f"{name}" if p == 0 else f"{name} (continued)", ""]
             lines += [f"Page {len(page_ids) + 1} of the {title.lower()}. Line {i + 1} of the text."
                       for i in range(20)]
-            text = "BT /F1 12 Tf 72 720 Td 16 TL " + " ".join(f"({esc(l)}) '" for l in lines) + " ET"
-            box, xobjects = "0 0 612 792", ""
+            text = f"BT /F1 12 Tf 72 {560 if square else 720} Td 16 TL " + " ".join(f"({esc(l)}) '" for l in lines) + " ET"
+            box, xobjects = ("0 0 612 612" if square else "0 0 612 792"), ""
             if image:
                 last = c == len(chapters) - 1 and p == pages_per_chapter - 1
                 if last:  # landscape, filled by the picture
@@ -334,6 +335,22 @@ def main():
     made.append(simple("fixed-layout.epub", "Fixed Layout", pages,
                        extra_meta='<meta property="rendition:layout">pre-paginated</meta><meta property="rendition:spread">landscape</meta>'))
 
+    # A fixed-layout picture book like Lory Dory (device testing, 21 Nov
+    # 2026): landscape pages in strong colours, set in the middle of a
+    # phone's screen with room above and below. With ambient light that room
+    # glows in the page's colours, as round a PDF's page (the iOS matrix
+    # checks it); it used to stay dark, with smudges at the corners.
+    pages = []
+    for i, colour in enumerate(["#f5d63d", "#4aa3e0", "#e0604a"], 1):
+        pages.append((f"page{i}.xhtml", f"""<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Page {i}</title>
+<meta name="viewport" content="width=1000, height=600"/>
+<style>body{{margin:0;width:1000px;height:600px;background:{colour};font:bold 40px sans-serif;display:flex;align-items:center;justify-content:center}}</style></head>
+<body><div>One night Grandpa was tucking me in. ({i})</div></body></html>"""))
+    made.append(simple("fixed-layout-wide.epub", "Wide Fixed Layout", pages,
+                       extra_meta='<meta property="rendition:layout">pre-paginated</meta>'
+                                  '<meta property="rendition:spread">none</meta>'))
+
     # Publisher sizes in px, pt and keywords, which ignore the root font
     # size: the text size setting must still change them (reader.js rewrites
     # them to rem). Also content wider than a page (a fixed-width table and a
@@ -356,8 +373,11 @@ def main():
     colours = xhtml("Colours", """<h1 class="block3">Black heading</h1>
 <p>""" + paragraph(rng) + """</p>
 <h2 class="block3">Another black heading</h2>
-<p class="ghost">White text. """ + paragraph(rng) + """</p>""",
-        extra_head='<style>.block3 { color: black } .ghost { color: #fff }</style>')
+<p class="ghost">White text. """ + paragraph(rng) + """</p>
+<div class="toc"><p class="toc1"><a href="c1.xhtml"><span class="i">Dark blue contents link</span></a></p>
+<p class="toc1"><a href="c1.xhtml">Another dark blue link</a></p></div>""",
+        extra_head='<style>.block3 { color: black } .ghost { color: #fff } '
+                   '.toc a { text-decoration: none } .i { font-style: italic; color: #103870 }</style>')
     made.append(simple("low-contrast.epub", "Low Contrast", [("c1.xhtml", colours)]))
 
     # DRM: Adobe ADEPT markers (content is not actually encrypted).
@@ -423,16 +443,40 @@ def main():
     open(p, "wb").write(("Café notes\n\n" + textwrap.fill(paragraph(rng, 5), 70) + "\n\n\u201cQuoted,\u201d she said.\n").encode("cp1252"))
     made.append(p)
 
+    # A short story as older text files come (device testing, 21 Nov 2026):
+    # Windows line endings and encoding, a title page of short lines
+    # ("THE HILL", "by", the author), one long line per paragraph, and a
+    # surname-first "Author - Title" file name. It opens titled "The Hill",
+    # by "R.J. Van Writer", with a centred title page.
+    p = os.path.join(OUT, "Writer, R J Van - The Hill.txt")
+    story = "THE HILL\r\n\r\n\r\n\r\nby\r\n\r\n\r\n\r\nR.J. Van Writer\r\n\r\n\r\n\r\n\r\n"
+    story += "\r\n\r\n".join(paragraph(rng, 6).replace("\n", " ") for _ in range(6)) + "\r\n\r\n\u2018Help Wanted!' it says. A fa\u00e7ade.\r\n"
+    open(p, "wb").write(story.encode("cp1252"))
+    made.append(p)
+
     # A PDF with an outline (Contents) and a document ID (spec, "PDF").
     p = os.path.join(OUT, "outline.pdf")
     simple_pdf(p, "Sample Report", ["Introduction", "Methods", "Results"])
     made.append(p)
+
+    # Body text set smaller by the book's CSS (body at 75%): it must still
+    # come out at the text size chosen (bookfixes.js, normaliseBodyTextSize).
+    rng2 = random.Random(7)
+    small = xhtml("Small print", "<h1>Small print</h1>" + "".join(f"<p>{paragraph(rng2)}</p>" for _ in range(8)),
+                  extra_head="<style>body { font-size: 75%; } h1 { font-size: 1.6em; }</style>")
+    made.append(simple("small-body-text.epub", "Small Body Text", [("ch1.xhtml", small)]))
 
     # A PDF with pictures (long press: save and share) and a landscape last
     # page (One Page layout).
     p = os.path.join(OUT, "pictures.pdf")
     simple_pdf(p, "Picture Book", ["Plates", "Panorama"], pictures=True,
                doc_id="5E884898DA28047151D0E56F8DC62927")
+    made.append(p)
+
+    # A picture book with square pages: Two Pages shows two side by side in
+    # landscape (they were taken for spreads, and shown one at a time).
+    p = os.path.join(OUT, "square-pages.pdf")
+    simple_pdf(p, "Square Book", ["Bears", "Hats"], doc_id="2C26B46B68FFC68FF99B453C1D304134", square=True)
     made.append(p)
 
     # Footnotes: a marked footnote (epub:type="noteref" to an aside in the
@@ -456,6 +500,44 @@ def main():
                        version="2.0", extra_meta='<meta name="cover" content="c1"/>',
                        manifest_extra=['<item id="pic" href="images/cover.png" media-type="image/png"/>'],
                        extra_files=[("OEBPS/images/cover.png", png(400, 600, (176, 64, 48)))]))
+
+    # A picture book shaped like a real one (device testing, 21 Nov 2026):
+    # square, brightly coloured pages, each a picture alone, so on a tall
+    # phone there is room above and below each; and a contents page styled
+    # as Calibre often leaves it, the colour on a span inside each link, dark
+    # blue (unreadable on the Dark theme until made lighter). The iOS
+    # matrix (scripts/ios-matrix.py) checks that the room round a picture
+    # glows with ambient light, and that the bands blend with the glow.
+    plate = lambda pic: xhtml("Plate", f'<div class="plate"><img src="images/{pic}.png" alt="A plate"/></div>')
+    contents = xhtml("Contents", """<h1 class="calibre3">Contents</h1>
+<p class="calibre5"><a href="p1.xhtml"><span class="calibre6">The orange plate</span></a></p>
+<p class="calibre5"><a href="p2.xhtml"><span class="calibre6">The blue plate</span></a></p>""",
+        extra_head='<style>.calibre6 { color: #103870; font-style: italic } .calibre5 { margin: 0.5em 0 }</style>')
+    made.append(simple("picture-book.epub", "The Square Picture Book",
+                       [("p1.xhtml", plate("orange")), ("contents.xhtml", contents), ("p2.xhtml", plate("blue")),
+                        ("end.xhtml", xhtml("The End", "<h1>The End</h1><p>Goodnight.</p>"))],
+                       manifest_extra=['<item id="orange" href="images/orange.png" media-type="image/png"/>',
+                                       '<item id="blue" href="images/blue.png" media-type="image/png"/>'],
+                       extra_files=[("OEBPS/images/orange.png", png(600, 600, (238, 120, 40))),
+                                    ("OEBPS/images/blue.png", png(600, 600, (40, 110, 220)))]))
+
+    # A full-page plate partway through a chapter: text, then a page that
+    # is one picture and nothing else, then more text. On iOS that page
+    # shows the picture natively, as large as the screen allows, just like
+    # a chapter that is one picture.
+    words = " ".join(["The ship drifted on through the long grey afternoon."] * 6)
+    text = "".join(f"<p>{words}</p>" for _ in range(3))
+    plate = xhtml("Plates",
+                  f'<h1>Plates</h1>{text}'
+                  '<div style="break-before: column"><img src="images/plate.png" alt="A plate"/></div>'
+                  # WebKit's columns ignore break-after, so the text after
+                  # the plate starts its own page the way books do it: a
+                  # heading that breaks before itself.
+                  f'<h2 style="break-before: column">Afterwards</h2>{text}')
+    made.append(simple("plate-page.epub", "The Plate Between",
+                       [("ch1.xhtml", plate)],
+                       manifest_extra=['<item id="pic" href="images/plate.png" media-type="image/png"/>'],
+                       extra_files=[("OEBPS/images/plate.png", png(600, 800, (40, 96, 160)))]))
 
     for m in made:
         print(f"{os.path.getsize(m):>10,}  {os.path.relpath(m, ROOT)}")

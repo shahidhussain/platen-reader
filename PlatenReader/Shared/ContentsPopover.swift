@@ -67,7 +67,7 @@ private struct ContentsList: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(current ? Color.accentColor.opacity(0.15) : Color.clear)
+                    .listRowBackground(current ? Color.platenAccent.opacity(0.15) : Color.clear)
                     .accessibilityAddTraits(current ? .isSelected : [])
                     .id(item.id)
                 }
@@ -167,7 +167,7 @@ private struct SearchPanel: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .listRowBackground(hit.id == state.currentHitID ? Color.accentColor.opacity(0.15) : Color.clear)
+                            .listRowBackground(hit.id == state.currentHitID ? Color.platenAccent.opacity(0.15) : Color.clear)
                         }
                     }
                 }

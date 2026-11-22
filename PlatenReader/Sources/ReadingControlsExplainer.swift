@@ -51,9 +51,9 @@ struct ReadingControlsExplainer: View {
             HStack(spacing: spacing) {
                 ForEach(zones) { zone in
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.14))
+                        .fill(Color.platenAccent.opacity(0.14))
                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color.accentColor.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
+                            .strokeBorder(Color.platenAccent.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
                         .overlay(
                             VStack(spacing: 6) {
                                 if let symbol = zone.symbol {

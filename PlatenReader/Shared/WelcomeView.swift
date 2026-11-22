@@ -28,8 +28,16 @@ struct WelcomeView: View {
                 .font(.system(size: 56, weight: .light))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true) // decoration: VoiceOver should start on the title
-            Text("Platen Reader")
-                .font(.largeTitle.weight(.semibold))
+                .reportsFrame(\.mark)
+            VStack(spacing: 4) {
+                Text("Platen Reader")
+                    .font(.largeTitle.weight(.semibold))
+                    .reportsFrame(\.title)
+                Text(verbatim: AppVersion.line)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .reportsFrame(\.version)
+            }
             Button(action: open) {
                 Text("Open Book…")
                     .font(.title3.weight(.medium))
@@ -55,14 +63,11 @@ struct WelcomeView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
             Spacer()
-            // A little whimsy.
-            VStack(spacing: 2) {
-                Text(verbatim: "Poo-tee-weet?")
-                    .font(.system(.title3, design: .serif).italic())
-                Text(verbatim: "— Kurt Vonnegut")
-                    .font(.callout)
-            }
-            .foregroundStyle(.secondary)
+            // A little whimsy, unattributed: an Easter egg for those who
+            // know where it is from (Slaughterhouse-Five).
+            Text(verbatim: "Poo-tee-weet?")
+                .font(.system(.footnote, design: .serif).italic())
+                .foregroundStyle(.tertiary)
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -71,7 +76,7 @@ struct WelcomeView: View {
             content
                 .background {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color.accentColor.opacity(dropTargeted ? 0.8 : 0),
+                        .strokeBorder(Color.platenAccent.opacity(dropTargeted ? 0.8 : 0),
                                       style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
                         .padding(12)
                 }
@@ -85,6 +90,36 @@ struct WelcomeView: View {
                 }
         } else {
             content
+        }
+    }
+}
+
+/// Where the welcome's mark, title and version line are on screen (in
+/// window coordinates), while it is showing. The iOS start-up animation
+/// (LaunchSplash) moves its own mark, title and version to these places as
+/// it ends, so that it hands over to the welcome without a jump. Nil when
+/// the welcome is not on screen (a folder's covers are the home screen, or
+/// a book is open).
+@MainActor
+struct WelcomeLayout {
+    var mark: CGRect?
+    var title: CGRect?
+    var version: CGRect?
+
+    static var current = WelcomeLayout()
+}
+
+private extension View {
+    /// Keeps `WelcomeLayout.current` up to date with this view's frame.
+    func reportsFrame(_ key: WritableKeyPath<WelcomeLayout, CGRect?>) -> some View {
+        background {
+            GeometryReader { geometry in
+                let frame = geometry.frame(in: .global)
+                Color.clear
+                    .onAppear { WelcomeLayout.current[keyPath: key] = frame }
+                    .onChange(of: frame) { _, frame in WelcomeLayout.current[keyPath: key] = frame }
+                    .onDisappear { WelcomeLayout.current[keyPath: key] = nil }
+            }
         }
     }
 }

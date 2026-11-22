@@ -46,6 +46,13 @@ final class ReaderState: ObservableObject {
     }
 
     // Book
+    /// While the book opens, how far it has got (the loading bar); nil once
+    /// the first page is on screen, or the book could not be opened.
+    @Published var opening: OpeningStage? = .reading
+    /// What to call the book while it opens, before its own title is read:
+    /// its title from Recent Books if it has been opened before, else its
+    /// file name (set by the reader as it starts).
+    @Published var openingTitle = ""
     @Published var title = ""
     @Published var author = ""
     @Published var isFixedLayout = false
@@ -72,6 +79,20 @@ final class ReaderState: ObservableObject {
     @Published var toc: [TOCItem] = []
     @Published var bookmarks: [BookRecord.Bookmark] = []
     @Published var isPageBookmarked = false
+    /// The page's background colour ("#rrggbb", from the theme), for the
+    /// band behind the controls (`PageBand`), so no text shows behind them.
+    @Published var pageColour = "#ffffff"
+    /// With ambient light (iOS): the colours of the bands behind the top and
+    /// bottom controls, taken from the glow at those edges (`GlowBand`), so
+    /// the bands blend into it; nil without a glow, when they are the
+    /// page's colour.
+    @Published var topBandColour: String?
+    @Published var bottomBandColour: String?
+    /// Whether the controls need a band behind them at all (iOS): false when
+    /// what is behind them already lets them read clearly
+    /// (`GlowBand.needsBand`), so no band, edge or fade is drawn.
+    @Published var topBandNeeded = true
+    @Published var bottomBandNeeded = true
 
     // Jumps: "Back to p. 87" after a jump, until the reader moves on.
     @Published var backLabel: String?
@@ -99,6 +120,10 @@ final class ReaderState: ObservableObject {
     /// True while a popover from the overlay (Aa) is open, so the overlay
     /// does not hide underneath it.
     @Published var overlayPopoverOpen = false
+
+    /// A PDF in Two Pages, held in landscape, whose pages are already
+    /// spreads (each clearly wider than tall), so they show one at a time.
+    @Published var pagesAreSpreads = false
 
     /// How many pages are side by side on screen right now.
     @Published var columnsOnScreen = 1

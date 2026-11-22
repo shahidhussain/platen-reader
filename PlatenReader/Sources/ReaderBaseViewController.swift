@@ -160,6 +160,7 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
     func applyWindowTheme() {
         let theme = currentTheme
         view.window?.backgroundColor = theme.nsBackground
+        state.pageColour = theme.background
         // Chrome and the overlay follow the page's lightness.
         view.window?.appearance = theme.appearance
     }

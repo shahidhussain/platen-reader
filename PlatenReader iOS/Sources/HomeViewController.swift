@@ -1,4 +1,3 @@
-import Combine
 import PlatenCore
 import SwiftUI
 import UIKit
@@ -9,30 +8,30 @@ import UniformTypeIdentifiers
 ///
 /// - At launch it goes back to the book that was open when Platen was last
 ///   left (`LastOpenBook`).
-/// - Otherwise, once the reader has chosen a folder, it shows the folder the
-///   last book came from as a grid of covers (`FolderBrowserView`). Until
-///   then it shows the welcome screen (the Mac's, full screen): the app's
-///   name, "Open Book…" and "Choose Folder…".
+/// - Otherwise it shows the home screen (HomeTabs): the welcome the first
+///   time ("Open Book…" and "Choose Folder…"), then three tabs: Home (the
+///   reader's folders, and Settings), Recent Books and Favourites.
 /// - "Open Book…" shows the system's document picker, which opens the book
 ///   where it is (Files, iCloud Drive, SMB shares, any file provider) through
 ///   a security-scoped URL. Nothing is ever copied into the app.
-///   "Choose Folder…" picks a folder the same way, kept as a bookmark
-///   (`LibraryFolder`): opening one book gives no access to its folder.
+///   "Choose Folder…" picks a folder the same way (opening one book gives no
+///   access to its folder); it joins the Home list, kept as a bookmark, and
+///   opens there.
 /// - Books opened from other apps go straight to the reader (SceneDelegate
 ///   calls `openBook(at:)`).
 ///
 /// Platen has no library of its own; folders are the library.
 final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
-    private let library = LibraryFolder.shared
-    /// The welcome or the folder view, whichever is showing.
-    private var content: UIViewController?
-    private var showsFolder = false
-    private var cancellables: Set<AnyCancellable> = []
+    /// The tab showing, and the folders open in the Home tab.
+    let navigation = HomeNavigation()
     /// The picker on screen is choosing a folder, not a book.
     private var pickingFolder = false
 
     /// The book or PDF on screen, if any.
     private(set) var reader: ReaderBaseViewController?
+    /// Told when a reader is made (the start-up animation follows the
+    /// first book's progress).
+    var onReaderCreated: ((ReaderBaseViewController) -> Void)?
 
     /// A book asked for before this screen was in the window (at launch, from
     /// another app). Presenting then would lay the book out at zero size, so
@@ -54,48 +53,40 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        showContent()
-        // A folder chosen (or lost): the welcome gives way to the folder view.
-        library.$root
-            .map { $0 != nil }
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.showContent() }
-            .store(in: &cancellables)
+        // The home screen: the welcome the first time, then the tabs (Home,
+        // Recent Books, Favourites).
+        let tabs = UIHostingController(rootView: HomeTabs(navigation: navigation, actions: HomeActions(
+            openBook: { [weak self] in self?.openBook(at: $0) },
+            chooseBook: { [weak self] in self?.chooseBook() },
+            chooseFolder: { [weak self] in self?.chooseFolder() }
+        )))
+        addChild(tabs)
+        tabs.view.frame = view.bounds
+        tabs.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // Below the launch cover, if it is up.
+        if let launchCover { view.insertSubview(tabs.view, belowSubview: launchCover) } else { view.addSubview(tabs.view) }
+        tabs.didMove(toParent: self)
+        moveLibraryFolderToRecents()
     }
 
-    /// The folder view if a folder has been chosen, else the welcome.
-    private func showContent() {
-        let wantsFolder = library.root != nil
-        guard content == nil || wantsFolder != showsFolder else { return }
-        showsFolder = wantsFolder
-        let next: UIViewController
-        if wantsFolder {
-            next = UIHostingController(rootView: FolderBrowserView(
-                library: library,
-                openBook: { [weak self] in self?.openBook(at: $0) },
-                chooseBook: { [weak self] in self?.chooseBook() },
-                chooseFolder: { [weak self] in self?.chooseFolder() }
-            ))
-        } else {
-            let welcome = WelcomeView(open: { [weak self] in self?.chooseBook() },
-                                      chooseFolder: { [weak self] in self?.chooseFolder() })
-            next = UIHostingController(rootView: welcome)
-            next.view.backgroundColor = .clear
+    /// Before the tabs, one chosen folder was the home screen (kept under
+    /// "libraryFolder"); it becomes a recent folder, once. Resolved in the
+    /// background, as it may be on a share that is not connected.
+    private func moveLibraryFolderToRecents() {
+        guard let data = AppDefaults.store.data(forKey: "libraryFolder") else { return }
+        AppDefaults.store.removeObject(forKey: "libraryFolder")
+        AppDefaults.store.removeObject(forKey: "libraryCurrentFolder")
+        DispatchQueue.global(qos: .utility).async {
+            var stale = false
+            guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else { return }
+            let scoped = url.startAccessingSecurityScopedResource()
+            let bookmark = try? url.bookmarkData()
+            if scoped { url.stopAccessingSecurityScopedResource() }
+            guard let bookmark else { return }
+            DispatchQueue.main.async {
+                if !RecentList.folders.contains(url) { RecentList.folders.opened(url, bookmark: bookmark) }
+            }
         }
-        if let content {
-            content.willMove(toParent: nil)
-            content.view.removeFromSuperview()
-            content.removeFromParent()
-        }
-        addChild(next)
-        next.view.frame = view.bounds
-        next.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        // Below the launch cover, if it is up.
-        if let launchCover { view.insertSubview(next.view, belowSubview: launchCover) } else { view.addSubview(next.view) }
-        next.didMove(toParent: self)
-        content = next
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -126,14 +117,21 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: false)
         picker.delegate = self
         picker.allowsMultipleSelection = false
-        picker.directoryURL = library.root
         present(picker, animated: true)
+    }
+
+    /// A folder chosen (or, testing, named at launch): it joins Recent
+    /// Folders and opens there. Access to it is held while the app runs.
+    func showChosenFolder(_ url: URL) {
+        FolderAccess.hold(url)
+        RecentList.folders.opened(url)
+        navigation.show(folder: url)
     }
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { return }
         if pickingFolder {
-            library.choose(url)
+            showChosenFolder(url)
         } else {
             // The picker dismisses itself; the reader is presented once it has.
             present(book: url)
@@ -168,8 +166,8 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
         let show = { [weak self] in
             guard let self else { return }
             // PDFs are shown by PDFKit; everything else by the book reader.
-            let isPDF = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .pdf)) == true
-                || url.pathExtension.lowercased() == "pdf"
+            // (By name: asking the file system could wait on a network share.)
+            let isPDF = BookFileType(url) == .pdf
             let reader: ReaderBaseViewController = isPDF ? PDFReaderViewController(url: url) : ReaderViewController(url: url)
             reader.onClose = { [weak self, weak reader] in
                 LastOpenBook.forget() // closed on purpose: next launch, the home screen
@@ -178,10 +176,10 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
                 NotificationCenter.default.post(name: .platenFolderShouldRefresh, object: nil)
             }
             LastOpenBook.remember(url)
-            // Its folder is the one the folder view shows from now on.
-            self.library.bookOpened(url)
+            RecentList.books.addBook(url)
             reader.modalPresentationStyle = .fullScreen
             self.reader = reader
+            self.onReaderCreated?(reader)
             self.present(reader, animated: animated) { [weak self] in
                 self?.launchCover?.removeFromSuperview()
                 self?.launchCover = nil
@@ -208,17 +206,56 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
 enum LastOpenBook {
     private static let key = "lastOpenBook"
 
-    /// The book to reopen at launch, if there is one and it can still be
-    /// reached.
-    static var url: URL? {
-        guard let data = AppDefaults.store.data(forKey: key) else { return nil }
-        var stale = false
-        guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
-            forget() // deleted, or no longer reachable
-            return nil
+    /// True if there is a book to go back to.
+    static var isSaved: Bool { AppDefaults.store.data(forKey: key) != nil }
+
+    /// Finds the book to reopen at launch, and calls `completion` on the
+    /// main thread with where it is now, or nil: none saved, deleted, or no
+    /// answer within `timeout` seconds.
+    ///
+    /// Resolving a bookmark asks the file system where the file is, and for
+    /// a book on a network share that has gone away (or a cloud folder not
+    /// answering) that can hang. Done on the main thread at launch, as it
+    /// was, it could freeze the app until iOS ended it (it did just that to
+    /// Recent Books, for the same reason). So it runs on a background queue
+    /// of its own, and launch stops waiting at the time limit and shows the
+    /// home screen. The book is only forgotten if it is truly gone, not on a
+    /// timeout, so a share that comes back reopens it next time.
+    @MainActor static func find(timeout: TimeInterval, completion: @escaping @MainActor (URL?) -> Void) {
+        guard let data = AppDefaults.store.data(forKey: key) else { return completion(nil) }
+        let answer = AnswerOnce(completion)
+        DispatchQueue(label: "org.platenreader.last-book", qos: .userInitiated).async {
+            var stale = false
+            guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
+                DispatchQueue.main.async { forget() } // deleted, or no longer reachable
+                return answer.send(nil)
+            }
+            if stale {
+                // Moved: keep a fresh bookmark (made here too, off the main thread).
+                let scoped = url.startAccessingSecurityScopedResource()
+                let fresh = try? url.bookmarkData()
+                if scoped { url.stopAccessingSecurityScopedResource() }
+                if let fresh { DispatchQueue.main.async { AppDefaults.store.set(fresh, forKey: key) } }
+            }
+            answer.send(url)
         }
-        if stale { remember(url) }
-        return url
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { answer.send(nil) }
+    }
+
+    /// Hands the first answer to the main thread; later ones are dropped.
+    private final class AnswerOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var sent = false
+        private let completion: @MainActor (URL?) -> Void
+        init(_ completion: @escaping @MainActor (URL?) -> Void) { self.completion = completion }
+        func send(_ url: URL?) {
+            lock.lock()
+            let first = !sent
+            sent = true
+            lock.unlock()
+            guard first else { return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.completion(url) } }
+        }
     }
 
     static func remember(_ url: URL) {

@@ -35,6 +35,13 @@ public enum BookCover {
         public var info: BookCoverInfo
         /// A JPEG no larger than the size asked for on its longest side.
         public var jpeg: Data?
+
+        /// Also made by the apps, for a picture from elsewhere (iCloud's
+        /// stored thumbnail of a book not yet downloaded).
+        public init(info: BookCoverInfo, jpeg: Data? = nil) {
+            self.info = info
+            self.jpeg = jpeg
+        }
     }
 
     /// Reads the cover of the book at `url`.

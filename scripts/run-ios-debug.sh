@@ -6,7 +6,7 @@
 # Usage:
 #   scripts/run-ios-debug.sh <book> ["<step>;<step>;…"]
 #
-# Steps run 1.5 s apart after the first page renders (see
+# Steps run 1.5 s apart (each after the one before) once the first page renders (see
 # "PlatenReader iOS/Sources/DebugHooks.swift"): "@tap:left|centre|right",
 # "@close", or JavaScript such as "platen.next()" (string results are logged
 # as "step result:"). A screenshot is taken after the first render and after

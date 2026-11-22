@@ -38,17 +38,24 @@ enum PDFAmbientBackground {
         }
     }
 
+    /// The same glow from a picture of what is on screen (a book's page,
+    /// snapshotted small): see-through parts count as the theme's colour.
+    static func make(from snapshot: UIImage, theme: UIColor, done: @escaping (UIImage?) -> Void) {
+        guard let cg = snapshot.cgImage else { return done(nil) }
+        var themeHue: CGFloat = 0, themeSaturation: CGFloat = 0, themeBrightness: CGFloat = 0, alpha: CGFloat = 0
+        theme.getHue(&themeHue, saturation: &themeSaturation, brightness: &themeBrightness, alpha: &alpha)
+        queue.async {
+            let image = picture(width: pageSize.width, height: pageSize.height, paper: theme.cgColor,
+                                themeBrightness: themeBrightness) { bitmap, size in
+                bitmap.draw(cg, in: CGRect(origin: .zero, size: size))
+            }
+            DispatchQueue.main.async { done(image) }
+        }
+    }
+
     private static func picture(of pages: [CGPDFPage], themeBrightness: CGFloat) -> UIImage? {
-        let width = pageSize.width * pages.count, height = pageSize.height
-        // 1. The pages, tiny, side by side, in RGBA bytes we can read.
-        var pixels = [UInt8](repeating: 255, count: width * height * 4)
-        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
-            guard let bitmap = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
-                                         bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            bitmap.setFillColor(UIColor.white.cgColor) // paper, under any transparency
-            bitmap.fill(CGRect(x: 0, y: 0, width: width, height: height))
-            bitmap.interpolationQuality = .low
+        picture(width: pageSize.width * pages.count, height: pageSize.height, paper: UIColor.white.cgColor,
+                themeBrightness: themeBrightness) { bitmap, _ in
             for (index, page) in pages.enumerated() {
                 let target = CGRect(x: index * pageSize.width, y: 0, width: pageSize.width, height: pageSize.height)
                 bitmap.saveGState()
@@ -61,6 +68,22 @@ enum PDFAmbientBackground {
                 bitmap.drawPDFPage(page)
                 bitmap.restoreGState()
             }
+        }
+    }
+
+    /// Draws something tiny (`draw`, on `paper`), then makes the glow of it.
+    private static func picture(width: Int, height: Int, paper: CGColor, themeBrightness: CGFloat,
+                                draw: (CGContext, CGSize) -> Void) -> UIImage? {
+        // 1. The pages, tiny, side by side, in RGBA bytes we can read.
+        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
+            guard let bitmap = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                         bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            bitmap.setFillColor(paper) // under any transparency
+            bitmap.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            bitmap.interpolationQuality = .low
+            draw(bitmap, CGSize(width: width, height: height))
             return true
         }
         guard drawn else { return nil }

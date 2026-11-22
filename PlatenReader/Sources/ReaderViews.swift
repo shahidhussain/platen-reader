@@ -31,6 +31,12 @@ final class PassThroughEffectView: NSVisualEffectView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+/// The band of the page's colour behind the controls (`PageBand`): drawn
+/// only, so clicks go through it to the page or the title bar.
+final class PageBandView: NSHostingView<ReaderPageBand> {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// The root view: tracks the pointer so the title bar can be revealed at the
 /// top edge and the overlay kept alive while the pointer moves.
 final class ReaderRootView: NSView {

@@ -20,6 +20,12 @@ final class ReaderMessageTests: XCTestCase {
         XCTAssertEqual(message("firstRender"), .firstRender)
     }
 
+    func testLonePictureCarriesItsBytesOrNothing() {
+        XCTAssertEqual(message("lonePicture", ["data": Data("pic".utf8).base64EncodedString(), "mimeType": "image/png"]),
+                       .lonePicture(Data("pic".utf8)))
+        XCTAssertEqual(message("lonePicture"), .lonePicture(nil))
+    }
+
     func testUnknownOrMalformedMessagesAreDropped() {
         XCTAssertNil(message("somethingNew"))
         XCTAssertNil(ReaderMessage("not a dictionary"))
@@ -151,6 +157,15 @@ final class BridgeTypesTests: XCTestCase {
         XCTAssertFalse(PageTurn.prev.isForward)
     }
 
+    /// Chapter ticks on the progress slider: never at the very ends, and
+    /// never bunched closer than the minimum spacing.
+    func testSliderTicksAreSpacedOut() {
+        // A 300-point track: 6 points is 2% of it.
+        let ticks = [0, 0.005, 0.01, 0.015, 0.03, 0.06, 0.061, 0.5, 0.99, 1]
+        XCTAssertEqual(ProgressSlider.spaced(ticks, width: 300), [0.03, 0.06, 0.5])
+        XCTAssertEqual(ProgressSlider.spaced([], width: 300), [])
+    }
+
     func testWebSettingsPayload() {
         var web = WebSettings(flow: .scrolled, pageLayout: .two, animated: true, fontSize: 18, lineHeight: 1.5,
                               lineWidth: .wide, fontFamily: "Georgia", hyphenate: false, theme: .sepia)
@@ -158,6 +173,11 @@ final class BridgeTypesTests: XCTestCase {
         XCTAssertEqual(payload["flow"] as? String, "scrolled")
         XCTAssertEqual(payload["pageLayout"] as? String, "two")
         XCTAssertEqual(payload["lineWidth"] as? String, "wide")
+        // Justified unless asked otherwise (phones start ragged right).
+        XCTAssertEqual(payload["justify"] as? Bool, true)
+        web.justify = false
+        XCTAssertEqual(web.payload["justify"] as? Bool, false)
+        web.justify = true
         XCTAssertEqual((payload["theme"] as? [String: Any])?["background"] as? String, Theme.sepia.background)
         // The Mac sends none of the touch settings.
         XCTAssertNil(payload["touch"])

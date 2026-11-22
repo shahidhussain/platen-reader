@@ -89,6 +89,55 @@ final class TextBookTests: XCTestCase {
         XCTAssertEqual(book.package?.languages, ["en"])
     }
 
+    /// "Jane Austen - Sense and Sensibility.txt", whose text says "by Jane
+    /// Austen": the title and author come from the name, the right way
+    /// round. The other order works too; with nothing in the text to say
+    /// which part is the author, the whole name stays the title.
+    func testTitleAndAuthorFromFileNameWhenTheTextAgrees() throws {
+        let story = "Sense and Sensibility, by Jane Austen\n\n" + chapters(2)
+        var book = try open(story, name: "Jane Austen - Sense and Sensibility.txt")
+        XCTAssertEqual(book.title, "Sense and Sensibility")
+        XCTAssertEqual(book.authors, ["Jane Austen"])
+        book = try open(story, name: "Sense and Sensibility - Jane Austen.txt")
+        XCTAssertEqual(book.title, "Sense and Sensibility")
+        book = try open(chapters(2), name: "Jane Austen - Sense and Sensibility.txt")
+        XCTAssertEqual(book.title, "Jane Austen - Sense and Sensibility")
+        XCTAssertEqual(book.authors, [])
+    }
+
+    /// A title page as plain text sets it out ("FULFILMENT", "by", the
+    /// author, each on its own): centred lines, not indented paragraphs;
+    /// and the author written as on the page, matched to a surname-first
+    /// file name.
+    func testTitlePageIsCentredAndNamesTheAuthor() throws {
+        let story = "FULFILMENT\n\n\n\nby\n\n\n\nA.E. Van Vogt\n\n\n\n\n" + String(repeating: "I sit on a hill and think about the valley below, as I always have. ", count: 4)
+            + "\n\nAnother paragraph.\n"
+        let book = try open(story, name: "Vogt, A E Van - Fulfilment.txt")
+        XCTAssertEqual(book.title, "Fulfilment")
+        XCTAssertEqual(book.authors, ["A.E. Van Vogt"])
+        let text = try html(book)
+        XCTAssertTrue(text.contains("<p class=\"title name\">FULFILMENT</p>"))
+        XCTAssertTrue(text.contains("<p class=\"title\">by</p>"))
+        XCTAssertFalse(text.contains("<p class=\"title\">I sit"))
+    }
+
+    /// Short lines at the start of ordinary prose are not a title page
+    /// unless a real paragraph follows them.
+    func testShortOpeningLinesWithoutAParagraphAreNotATitlePage() throws {
+        let book = try open("One.\n\nTwo.\n\nThree.\n")
+        XCTAssertFalse(try html(book).contains("class=\"title"))
+    }
+
+    /// An old Project Gutenberg file's notice before the first chapter has
+    /// its own Contents entry.
+    func testGutenbergNoticeHasAContentsEntry() throws {
+        let notice = "The Project Gutenberg Etext of A Book\n\n" + wrapped(9) + "\n\n"
+        let book = try open(notice + chapters(2))
+        let nav = String(decoding: try book.resource(at: "text/nav.xhtml").data, as: UTF8.self)
+        XCTAssertTrue(nav.contains("<li><a href=\"section-1.xhtml\">Project Gutenberg Notice</a></li>"))
+        XCTAssertTrue(nav.contains(">CHAPTER 1</a>"))
+    }
+
     func testWindows1252AndUTF16AreDecoded() throws {
         let cp1252 = Data([0x43, 0x61, 0x66, 0xE9, 0x20, 0x93, 0x6F, 0x6B, 0x94]) // Café “ok”
         XCTAssertEqual(TextBook.decode(cp1252), "Café \u{201C}ok\u{201D}")

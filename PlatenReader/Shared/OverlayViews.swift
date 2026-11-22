@@ -12,9 +12,73 @@ struct OverlayActions {
     /// Called whenever the user interacts, so the overlay does not auto-hide
     /// while it is being used.
     var interacted: () -> Void
-    /// iOS: what the gear button's popover shows (the settings). The Mac
-    /// has Platen Reader > Settings… instead, so leaves this out.
-    var settingsContent: (() -> AnyView)? = nil
+}
+
+/// The band behind the controls at the top or bottom of the page: the
+/// page's own colour, solid at the screen's edge and fading into the page
+/// towards the text (as Apple Books does), so no letter is ever seen behind
+/// a control, in any theme. `fade` is how tall the fading part is; it is
+/// drawn inside the view, at the side facing the page.
+struct PageBand: View {
+    let colour: String
+    let edge: VerticalEdge
+    var fade: CGFloat = 24
+
+    var body: some View {
+        let page = Color(hex: colour)
+        VStack(spacing: 0) {
+            if edge == .bottom {
+                LinearGradient(stops: Self.easedStops(page).reversed().map { .init(color: $0.color, location: 1 - $0.location) },
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: fade)
+                page
+            } else {
+                page
+                LinearGradient(stops: Self.easedStops(page), startPoint: .top, endPoint: .bottom)
+                    .frame(height: fade)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// The fade from the band into the page: an S-curve (smoothstep), not a
+    /// straight line, so it eases out of the band and into the page with no
+    /// visible edge at either end. A straight fade over a bright picture
+    /// read as a hard line where it began (device testing, 21 Nov 2026).
+    static func easedStops(_ colour: Color) -> [Gradient.Stop] {
+        (0...12).map { step in
+            let t = Double(step) / 12
+            let eased = t * t * (3 - 2 * t)
+            return .init(color: colour.opacity(1 - eased), location: t)
+        }
+    }
+}
+
+/// `PageBand` in the colour of the reader's page, following the theme.
+struct ReaderPageBand: View {
+    @ObservedObject var state: ReaderState
+    let edge: VerticalEdge
+    var fade: CGFloat = 24
+
+    var body: some View {
+        PageBand(colour: state.pageColour, edge: edge, fade: fade)
+    }
+}
+
+extension Color {
+    /// The app's accent, a bright warm orange (Shared/Colours.xcassets: light and
+    /// dark variants). Named, rather than `accentColor`, where it must not
+    /// follow the Mac's own accent colour (System Settings → Appearance),
+    /// such as the progress slider.
+    static let platenAccent = Color("Accent")
+
+    /// "#rrggbb" → Color (sRGB), for the themes' colours.
+    init(hex: String) {
+        let value = UInt32(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0
+        self.init(.sRGB, red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255,
+                  blue: Double(value & 0xFF) / 255)
+    }
 }
 
 extension View {
@@ -66,8 +130,9 @@ extension View {
 /// The overlay's controls: location line, progress slider with chapter
 /// ticks, page buttons, Contents, Back and the Aa (typography) button. On the
 /// Mac they are one bar at the bottom, and the top part is the real window
-/// title bar, faded in by the view controller. On iOS they are split (see
-/// `Part`), beside a floating Close button and the title (ReaderChrome).
+/// title bar, faded in by the view controller. On iOS they are the bottom
+/// bar (`Part.bottomBar`), under the top bar of Close and the title
+/// (ReaderChrome).
 struct OverlayBar: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var settings = ReaderSettings.shared
@@ -77,15 +142,16 @@ struct OverlayBar: View {
     var part: Part = .whole
 
     /// The Mac draws the whole bar as one panel at the bottom of the window.
-    /// iOS splits it, in the way of Apple's own iOS 26 apps: the buttons are
-    /// a small glass group at the bottom right, just above the slider, which
-    /// floats at the bottom with ‹ and › at its ends.
-    enum Part { case whole, buttons, scrubber }
+    /// iOS draws a bottom bar across the screen, on a band of the page's
+    /// colour: where the reader is (or "Back to …" after a jump), the
+    /// slider, then one row of buttons. Pages turn by tapping or swiping the
+    /// page's edges, so there are no ‹ › buttons on iOS.
+    enum Part { case whole, bottomBar }
 
     @State private var dragFraction: Double?
     /// The popover that is open, if any: one at a time.
     @State private var openPopover: Popover?
-    private enum Popover { case typography, layout, settings }
+    private enum Popover { case typography, layout }
     /// The bar is slightly see-through, and solid while the pointer is on it.
     @State private var hovering = false
     #if os(iOS)
@@ -107,50 +173,17 @@ struct OverlayBar: View {
     var body: some View {
         switch part {
         case .whole: wholeBar
-        case .buttons: buttonGroup
-        case .scrubber: scrubber
+        case .bottomBar: bottomBar
         }
     }
 
-    // MARK: - iOS: the buttons, and the floating slider
+    // MARK: - iOS: the bottom bar
 
-    /// Contents, bookmark, layout, Aa and settings, side by side on one
-    /// piece of glass.
-    private var buttonGroup: some View {
-        HStack(spacing: 0) {
-            contentsButton.frame(width: 44, height: 44)
-            // The system's bookmark symbol is narrow beside the others.
-            bookmarkButton.scaleEffect(x: 1.2, y: 1).frame(width: 44, height: 44)
-            layoutButton.frame(width: 44, height: 44)
-            typographyButton.frame(width: 44, height: 44)
-            if actions.settingsContent != nil { settingsButton.frame(width: 44, height: 44) }
-        }
-        .buttonStyle(.borderless)
-        .labelStyle(.iconOnly)
-        .font(.body.weight(.medium))
-        .imageScale(.large)
-        .padding(.horizontal, 4)
-        .overlaySurface(Capsule())
-        .tint(.primary)
-        .popoverBookkeeping(state: state, actions: actions, openPopover: $openPopover)
-    }
-
-    /// The slider between round ‹ › buttons, with where the reader is in
-    /// small text below. Only the buttons are on glass: the slider and the
-    /// text sit straight on the page.
-    private var scrubber: some View {
+    /// Where the reader is, the slider, and the buttons, on the page's own
+    /// colour (ReaderChrome puts the band behind it). The buttons are plain
+    /// symbols on the band, as in Apple Books, not pieces of glass.
+    private var bottomBar: some View {
         VStack(spacing: 2) {
-            HStack(spacing: 8) {
-                previousButton
-                    .frame(width: 44, height: 44)
-                    .overlaySurface(Circle())
-                slider
-                    .padding(.horizontal, 4)
-                    .frame(height: 44)
-                nextButton
-                    .frame(width: 44, height: 44)
-                    .overlaySurface(Circle())
-            }
             HStack(spacing: 8) {
                 // Shown only after a jump, until the reader moves on.
                 if let back = state.backLabel {
@@ -159,13 +192,12 @@ struct OverlayBar: View {
                     } label: {
                         Label(String(localized: "Back to \(back)"), systemImage: "arrow.uturn.backward")
                             .labelStyle(.titleAndIcon)
-                            .font(.footnote)
+                            .font(.footnote.weight(.semibold))
                             .lineLimit(1)
-                            .padding(.horizontal, 10)
-                            .frame(minHeight: 28)
-                            .overlaySurface(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
+                    .tint(.platenAccent)
+                    Spacer(minLength: 8)
                 }
                 Text(locationText)
                     .font(.footnote)
@@ -173,16 +205,26 @@ struct OverlayBar: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .frame(minHeight: 28)
                     .accessibilityLabel(Text("Location"))
                     .accessibilityValue(Text(locationText))
             }
+            .frame(maxWidth: .infinity, minHeight: 24)
+            slider
+                .frame(height: 36)
+            HStack(spacing: 0) {
+                contentsButton.frame(maxWidth: .infinity, minHeight: 44)
+                bookmarkButton.scaleEffect(x: 1.15, y: 1).frame(maxWidth: .infinity, minHeight: 44)
+                layoutButton.frame(maxWidth: .infinity, minHeight: 44)
+                typographyButton.frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .labelStyle(.iconOnly)
+            .font(.body.weight(.medium))
+            .imageScale(.large)
+            .tint(.primary)
         }
         .buttonStyle(.borderless)
-        .labelStyle(.iconOnly)
-        .font(.body.weight(.semibold))
-        .tint(.primary)
-        .glassGroup(spacing: 8)
+        .frame(maxWidth: 600)
+        .popoverBookkeeping(state: state, actions: actions, openPopover: $openPopover)
     }
 
     // MARK: - The Mac's bar
@@ -198,7 +240,6 @@ struct OverlayBar: View {
                 bookmarkButton
                 layoutButton
                 typographyButton
-                if actions.settingsContent != nil { settingsButton }
             }
             .frame(minHeight: 32)
         }
@@ -338,19 +379,6 @@ struct OverlayBar: View {
         }
     }
 
-    /// iOS: the settings, in a popover like the others.
-    private var settingsButton: some View {
-        Button {
-            toggle(.settings)
-        } label: {
-            Label(String(localized: "Settings"), systemImage: "gearshape")
-        }
-        .popover(isPresented: isOpen(.settings), arrowEdge: popoverEdge) {
-            actions.settingsContent?()
-                .platenPopover()
-        }
-    }
-
     private func toggle(_ popover: Popover) {
         openPopover = openPopover == popover ? nil : popover
         if openPopover != nil { state.sidebarVisible = false } // one popover at a time
@@ -409,6 +437,25 @@ struct ProgressSlider: View {
     private var restOfTrack: Color { Color.primary.opacity(colorScheme == .dark ? 0.35 : 0.15) }
     private var tickColour: Color { Color.primary.opacity(colorScheme == .dark ? 0.5 : 0.3) }
 
+    /// The least room between two chapter ticks, in points. Many short
+    /// chapters together (front matter, a run of brief sections) otherwise
+    /// draw as a solid bar of ticks.
+    static let minimumTickSpacing: CGFloat = 6
+
+    /// The chapter starts to mark on a track `width` points long: not the
+    /// book's start or end, and none closer than `minimumTickSpacing` to
+    /// the last one kept (or to the track's ends).
+    static func spaced(_ ticks: [Double], width: CGFloat) -> [Double] {
+        let gap = Double(minimumTickSpacing / max(width, 1))
+        var kept: [Double] = []
+        var last = 0.0
+        for tick in ticks.sorted() where tick - last >= gap && 1 - tick >= gap {
+            kept.append(tick)
+            last = tick
+        }
+        return kept
+    }
+
     var body: some View {
         GeometryReader { geo in
             let usable = max(geo.size.width - knob, 1)
@@ -422,10 +469,10 @@ struct ProgressSlider: View {
                     .frame(height: track)
                     .padding(.horizontal, knob / 2)
                 Capsule()
-                    .fill(Color.accentColor)
+                    .fill(Color.platenAccent)
                     .frame(width: max(0, abs(position(value) - position(0))), height: track)
                     .offset(x: rightToLeft ? position(value) : knob / 2)
-                ForEach(Array(ticks.dropFirst().dropLast().enumerated()), id: \.offset) { _, tick in
+                ForEach(Array(Self.spaced(ticks, width: usable).enumerated()), id: \.offset) { _, tick in
                     Rectangle()
                         .fill(tickColour)
                         .frame(width: 1, height: 10)
@@ -500,6 +547,19 @@ struct TypographyPopover: View {
             }
             LabeledContent("Appearance") { appearancePicker.labelsHidden() }
                 .popoverRow()
+            PopoverDivider()
+            // The glow of the page's own colours around it (books and PDFs;
+            // not in the Black theme, whose point is a black screen).
+            Toggle("Ambient Light", isOn: $settings.ambientLight)
+                .tint(.platenAccent)
+                .popoverRow()
+            if state.isPDF {
+                PopoverDivider()
+                // White pages dark, for reading in the dark.
+                Toggle("Invert Colours", isOn: $settings.invertPDF)
+                    .tint(.platenAccent)
+                    .popoverRow()
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Text and Appearance"))
@@ -691,9 +751,12 @@ struct LayoutPopover: View {
     #endif
 
     /// A line under the choices, when one is needed: a PDF in Two Pages held
-    /// in portrait (one page shows until the device is turned), or a window
-    /// too narrow for two pages.
+    /// in portrait (one page shows until the device is turned) or whose
+    /// pages are spreads already, or a window too narrow for two pages.
     private var note: LocalizedStringKey? {
+        if state.isPDF, state.pagesAreSpreads {
+            return "These pages are already spreads, so they show one at a time."
+        }
         if state.isPDF, state.flow == .paginated, settings.pageLayout == .two, state.columnsOnScreen < 2 {
             return "Two pages show side by side when you turn to landscape."
         }

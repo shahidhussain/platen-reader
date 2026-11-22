@@ -14,7 +14,17 @@ PRODUCT_BUNDLE_IDENTIFIER = org.platenreader.PlatenReader
 PRODUCT_NAME = Platen Reader
 PRODUCT_MODULE_NAME = PlatenReader
 
-MARKETING_VERSION = 0.1
+// The version counts towards 1.0, the launch (the spec's "Decisions made"):
+// the Mac app as a DMG with Sparkle, and the iOS app on the App Store. 0.1
+// was the first Mac release (M1, November 2026). 0.8 (18 Nov 2026): the Mac
+// reader is close to complete, PDFs are in, and the iOS app reads books and
+// PDFs with its own home screen; still to come are the DMG, Sparkle, the
+// VoiceOver pass and App Store submission. 0.9 marks the release candidates
+// (TestFlight and the last Mac betas). Bump the second number for each
+// release with something new. Meanwhile the third number goes up by one with
+// every change made (each request's commit), so a build on a test device can
+// be matched to it: 0.8.1 is the first of these.
+MARKETING_VERSION = 0.8.28
 CURRENT_PROJECT_VERSION = 1
 
 // The minimum systems from the spec's "Decisions made".
@@ -22,6 +32,13 @@ MACOSX_DEPLOYMENT_TARGET = 14.0
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
 
 SWIFT_VERSION = 5.0
+
+// The app's accent: a bright warm orange, the icon's honey turned up into
+// a design statement (light #F0861A, dark #FF9F0A, iOS's own dark orange).
+// Defined once, in PlatenReader/Shared/Colours.xcassets ("Accent"), which
+// both apps include. Code that must use it whatever the Mac's own accent
+// colour is uses `Color.platenAccent`.
+ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = Accent
 
 // Your own signing team, for running the iOS app on a real iPhone or iPad.
 // It is personal, so it is kept out of the repository: create

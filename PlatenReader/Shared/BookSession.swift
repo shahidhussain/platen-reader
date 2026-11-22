@@ -32,6 +32,9 @@ protocol BookSessionHost: AnyObject {
     func sessionClicked(_ zone: ClickZone)
     /// A click on a picture: show it full size.
     func sessionShowPicture(_ picture: ReaderMessage.Picture)
+    /// The page on screen is just one picture (its bytes), or nil when it
+    /// no longer is (iOS shows it natively).
+    func sessionShowLonePicture(_ data: Data?)
     /// The text on screen, for VoiceOver; `speak` when it should be read out.
     func sessionPageText(_ text: String, speak: Bool)
     /// Something to tell VoiceOver users ("Bookmark added").
@@ -47,6 +50,7 @@ extension BookSessionHost {
     func sessionDidJump() {}
     func sessionDidChangeFlow() {}
     func sessionShowPicture(_ picture: ReaderMessage.Picture) {}
+    func sessionShowLonePicture(_ data: Data?) {}
     func sessionPageText(_ text: String, speak: Bool) {}
 }
 
@@ -120,6 +124,12 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
     private func loadBook() {
         openStarted = CFAbsoluteTimeGetCurrent()
         let url = self.url
+        // A book only in iCloud is downloaded first (by the coordinated read
+        // below); say so, as that can take a while.
+        let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
+        if values?.isUbiquitousItem == true, let status = values?.ubiquitousItemDownloadingStatus, status == .notDownloaded {
+            state.opening = .downloading
+        }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // Coordinated, so offloaded iCloud files download first and file
             // providers (SMB, cloud apps) hand over a readable copy.
@@ -128,8 +138,13 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
                 guard let self else { return }
                 switch result {
                 case .success(let book):
+                    if self.state.opening == .downloading { self.state.opening = .reading }
                     let elapsed = (CFAbsoluteTimeGetCurrent() - self.openStarted) * 1000
-                    log.info("Read \(url.lastPathComponent, privacy: .public) in \(elapsed, format: .fixed(precision: 0)) ms")
+                    // The kind and size of book, which the diagnostics file
+                    // keeps in place of its name ("Read <name> (epub, 2.1 MB)").
+                    let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { $0 } ?? 0
+                    let size = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+                    log.info("Read \(url.lastPathComponent, privacy: .name) (\(book.format.rawValue, privacy: .public), \(size, privacy: .public)) in \(elapsed, format: .fixed(precision: 0)) ms")
                     for warning in book.warnings { log.notice("\(warning, privacy: .public)") }
                     if book.isRepaired { log.notice("Opened a damaged book using a rebuilt package") }
                     self.book = book
@@ -164,6 +179,7 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
     private func sendBookIfReady() {
         guard shellReady, let book, !isOpenInPage, let webView else { return }
         isOpenInPage = true
+        state.opening = .preparing
         let settings = currentSettings
         lastSettings = settings
         var options: [String: Any] = [
@@ -181,7 +197,8 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
     }
 
     private func fail(_ error: Error) {
-        log.error("Could not open \(self.url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+        log.error("Could not open \(self.url.lastPathComponent, privacy: .name): \(String(describing: error), privacy: .public)")
+        state.opening = nil
         host?.sessionDidFail(error)
     }
 
@@ -247,6 +264,7 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
 
         case .firstRender:
             hasRendered = true
+            state.opening = nil
             let elapsed = (CFAbsoluteTimeGetCurrent() - openStarted) * 1000
             log.info("First page visible after \(elapsed, format: .fixed(precision: 0)) ms")
             host?.sessionDidRenderFirstPage()
@@ -259,6 +277,9 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
             log.debug("contents: \(contents.toc.count) entries\(contents.synthesised ? " (built from headings)" : "", privacy: .public)")
 
         case .relocate(let place):
+            // foliate has opened the book and placed the first page; its
+            // chapter is now loading and being laid out (the long wait).
+            if !hasRendered, state.opening == .preparing { state.opening = .layingOut }
             if let cfi = place.cfi, var record {
                 record.lastCFI = cfi
                 self.record = record
@@ -279,6 +300,9 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
 
         case .image(let picture):
             host?.sessionShowPicture(picture)
+
+        case .lonePicture(let data):
+            host?.sessionShowLonePicture(data)
 
         case .externalLink(let url):
             // Links to the web open in the browser, never in the reader.
@@ -413,6 +437,39 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
         webView.callAsyncJavaScript("return platen.tapTarget(x, y)", arguments: ["x": point.x, "y": point.y],
                                     in: nil, in: .page) { result in
             completion(((try? result.get()) as? String).flatMap(TapTarget.init) ?? .page)
+        }
+    }
+
+    /// Asks the page for the picture under a held finger (iOS); if there is
+    /// one, it arrives as an `image` message (`sessionShowPicture`).
+    func pictureAt(_ point: CGPoint, completion: @escaping (Bool) -> Void) {
+        guard isOpenInPage, let webView else { return completion(false) }
+        webView.callAsyncJavaScript("return platen.pictureAt(x, y)", arguments: ["x": point.x, "y": point.y],
+                                    in: nil, in: .page) { result in
+            completion(((try? result.get()) as? Bool) ?? false)
+        }
+    }
+
+    /// During a page turn (iOS): whether the page now on screen is a
+    /// picture-only page whose picture the reader has ("same"), one about to
+    /// be sent ("new"), or not one ("none").
+    func lonePictureState(completion: @escaping (String) -> Void) {
+        guard isOpenInPage, let webView else { return completion("none") }
+        webView.callAsyncJavaScript("return platen.lonePictureState()", arguments: [:], in: nil, in: .page) { result in
+            completion(((try? result.get()) as? String) ?? "none")
+        }
+    }
+
+    /// Where a fixed-layout book's pages are on screen (one, or two in a
+    /// spread), in the web view's coordinates: the area the ambient glow is
+    /// made from (iOS). Empty for other books.
+    func fixedLayoutPageRects(completion: @escaping ([CGRect]) -> Void) {
+        guard isOpenInPage, state.isFixedLayout, let webView else { return completion([]) }
+        webView.callAsyncJavaScript("return platen.pageRects()", arguments: [:], in: nil, in: .page) { result in
+            let rects = ((try? result.get()) as? [[Double]] ?? []).compactMap { r -> CGRect? in
+                r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil
+            }
+            completion(rects)
         }
     }
 

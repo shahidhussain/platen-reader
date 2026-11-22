@@ -2,61 +2,95 @@ import PlatenCore
 import SwiftUI
 import UIKit
 
-/// The settings on iOS, in a popover from the gear button among the
-/// overlay's buttons (the same style as Contents, Layout and Aa). It holds
-/// what the other popovers do not: text size, font, line spacing and
-/// appearance are in Aa, so they are not repeated here. The Mac's File Types
-/// tab has no iOS counterpart. Changes apply to the open book straight away.
+/// The settings on iOS: a sheet from the gear at the foot of the home
+/// screen. They are about how the app works, so they live there, not among
+/// the reader's buttons (every one of which is about the book being read).
+///
+/// Only what the reader's own popovers do not hold is here: one page or
+/// scroll and the line width are in the Layout popover; text size, font,
+/// line spacing and appearance in Aa. Each setting is in one place only.
+/// The Mac's File Types tab has no iOS counterpart. Changes apply to any
+/// open book straight away.
 struct ReaderSettingsView: View {
     @ObservedObject var settings = ReaderSettings.shared
-    /// Hyphenation does not apply to fixed-layout books (or PDFs).
-    let isFixedLayout: Bool
-
+    @Environment(\.dismiss) private var dismiss
     @State private var confirmClear = false
 
     var body: some View {
-        Form {
-            Section("Layout") {
-                // Scroll or pages, for every book (the Layout button changes
-                // the same setting).
-                Picker("Layout", selection: Binding(
-                    get: {
-                        let layout = settings.defaultLayout
-                        return layout == .twoPages && UIDevice.current.userInterfaceIdiom == .phone ? .onePage : layout
-                    },
-                    set: { settings.defaultLayout = $0 })) {
-                    // iPhone: books always show one page, so no Two Pages.
-                    ForEach(ReadingLayout.allCases.filter {
-                        $0 != .twoPages || UIDevice.current.userInterfaceIdiom != .phone
-                    }) { Text($0.label).tag($0) }
+        NavigationStack {
+            Form {
+                Section("Reading") {
+                    Picker("Page Turn", selection: $settings.pageTurnStyle) {
+                        ForEach(PageTurnStyle.allCases) { Text($0.label).tag($0) }
+                    }
+                    Toggle("Show Pages Left in Chapter", isOn: $settings.showPagesLeftInChapter)
+                    // The explanation is the toggle's second line (the
+                    // system's title-and-subtitle row), so it wraps beside
+                    // the switch, which sits centred on both lines, instead
+                    // of running under it with the title pressed against it
+                    // (device testing, 22 Nov 2026).
+                    Toggle(isOn: $settings.justify) {
+                        Text("Justify Text")
+                        Text("Lines flush at both sides, where the book asks for it. Off, lines end where their words do (ragged right), which leaves no wide gaps between words on a narrow screen.")
+                    }
+                    Toggle(isOn: $settings.hyphenate) {
+                        Text("Hyphenate Text")
+                        Text("Breaks long words at the ends of lines, so lines are more even and justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher.")
+                    }
                 }
-                Picker("Line Width", selection: $settings.lineWidth) {
-                    ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
+                Section {
+                    Button("Clear Reading Positions and Bookmarks…", role: .destructive) { confirmClear = true }
+                } footer: {
+                    Text("Platen keeps only where you are in each book and your bookmarks, on this device.")
                 }
-                Picker("Page Turn", selection: $settings.pageTurnStyle) {
-                    ForEach(PageTurnStyle.allCases) { Text($0.label).tag($0) }
+                Section {
+                    ShareLink(item: DiagnosticsFile(), preview: SharePreview("Platen Reader Diagnostics")) {
+                        Text("Share Diagnostics…")
+                    }
+                } footer: {
+                    Text("A record of how the app has been running (how long books took to open, moments it was slow to respond, errors), kept on this device to help with a problem report. It holds no book titles or file names, and leaves the device only if you share it.")
                 }
-                Toggle("Show Pages Left in Chapter", isOn: $settings.showPagesLeftInChapter)
-                Toggle("Hyphenate Text", isOn: $settings.hyphenate)
-                    .disabled(isFixedLayout)
+                Section {
+                    LabeledContent("Platen Reader", value: AppVersion.line)
+                    // Opens the website in the reader's browser; the app
+                    // itself loads nothing (spec: no network).
+                    Link(destination: AppLinks.website) {
+                        LabeledContent("Website") {
+                            Image(systemName: "arrow.up.right")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } footer: {
+                    // A little whimsy, unattributed (Slaughterhouse-Five).
+                    Text(verbatim: "Poo-tee-weet?")
+                        .font(.system(.footnote, design: .serif).italic())
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 24)
+                }
             }
-
-            Section {
-                Button("Clear Reading Positions and Bookmarks…", role: .destructive) { confirmClear = true }
-            } footer: {
-                Text("Platen keeps only where you are in each book and your bookmarks, on this device.")
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .confirmationDialog("Clear all reading positions and bookmarks?", isPresented: $confirmClear,
+                                titleVisibility: .visible) {
+                Button("Clear", role: .destructive) { try? PositionStore.shared.removeAll() }
+            } message: {
+                Text("This cannot be undone.")
             }
         }
-        .formStyle(.grouped)
-        // A form in a popover has no height of its own on iOS.
-        .frame(width: 340, height: 460)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("Settings"))
-        .confirmationDialog("Clear all reading positions and bookmarks?", isPresented: $confirmClear,
-                            titleVisibility: .visible) {
-            Button("Clear", role: .destructive) { try? PositionStore.shared.removeAll() }
-        } message: {
-            Text("This cannot be undone.")
+    }
+}
+
+/// The diagnostics file (`DiagnosticLog`) as the share sheet takes it: a
+/// copy made when the reader chooses where to send it, named for the day.
+private struct DiagnosticsFile: Transferable {
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .plainText) { _ in
+            SentTransferredFile(try DiagnosticLog.shared.export())
         }
     }
 }

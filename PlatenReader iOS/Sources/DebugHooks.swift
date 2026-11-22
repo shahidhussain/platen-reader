@@ -21,23 +21,36 @@ import Foundation
 ///   page renders. A step is `@tap:<left|centre|right>` (as if that zone
 ///   were tapped), `@turn:<left|right|next|prev>` (a page turn, curled if
 ///   that is the setting), `@doubleturn:<…>` (two turns 0.15 s apart, the second
-///   while the first is drawn), `@snapshot` (a snapshot of the web view), `@orientation` (logs the device's
-///   and the app's orientation),
+///   while the first is drawn), `@snapshot` (a snapshot of the web view), `@theme:<light|sepia|dark|black>`, `@orientation` (logs the device's
+///   and the app's orientation), `@ambient:<on|off>`,
+///   `@layout:<one|two|scroll>`, `@rotate:<landscape|portrait>`,
+///   `@controls:<show|hide>`, `@shot:<name>` (saves the window as
+///   tmp/shots/<name>.png in the app's container), `@wait` (nothing),
+///   `@report` (logs the reader's state as
+///   `report: {json}`, for scripts/ios-matrix.py),
 ///   `@close`, or JavaScript such as `platen.next()`. PDFs take `@turn:<…>`,
 ///   `@doubleturn:<…>`, `@swipe:<left|right>` (a finger drawn across the
-///   page over 0.3 s; left brings the next page), `@orientation` and
+///   page over 0.3 s; left brings the next page), `@zoom:<factor>` (zoom to
+///   that many times the fit), `@fit` (back to the fit), `@orientation` and
 ///   `@close`. Each
 ///   step is logged as `step: …`; take screenshots between them with
 ///   `xcrun simctl io booted screenshot`.
 extension ReaderBaseViewController {
     func runDebugStepsIfAny() {
         guard let list = ProcessInfo.processInfo.environment["PLATEN_STEPS"] else { return }
-        let steps = list.split(separator: ";").map(String.init)
-        for (i, step) in steps.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5 * Double(i + 1)) { [weak self] in
-                log.notice("step: \(step, privacy: .public)")
-                self?.runDebugStep(step)
-            }
+        runDebugSteps(list.split(separator: ";").map(String.init)[...])
+    }
+
+    /// Each step 1.5 s after the one before it ran (not at fixed times
+    /// from the start: when the main thread is busy for a moment, the steps
+    /// after it keep their spacing instead of running together).
+    private func runDebugSteps(_ steps: ArraySlice<String>) {
+        guard let step = steps.first else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self else { return }
+            log.notice("step: \(step, privacy: .public)")
+            self.runDebugStep(step)
+            self.runDebugSteps(steps.dropFirst())
         }
     }
 }

@@ -1,22 +1,25 @@
 // Platen Reader: Reader settings turned into CSS and paginator layout.
 
 import { reader } from './state.js'
+import { applyBodyTextSize, applyJustification } from './bookfixes.js'
 
 // ---------------------------------------------------------------------------
 // Settings → CSS and layout
 
 
-// Approximate characters per line for each line-width setting.
-// Narrow is a classic book measure; Wide lets text run much closer to the
-// edges of a large window.
-const lineWidthChars = { narrow: 66, medium: 80, wide: 120 }
-// With two pages side by side: how much of each half of the window a page
-// may use (the rest is margin and the gap at the spine).
-const twoPageShare = { narrow: 0.72, medium: 0.86, wide: 1 }
-// Average glyph width as a fraction of font size, for typical book faces.
-const charWidthEm = 0.5
-// Spec: show two pages when each column can hold about 50 characters.
-const minCharsForTwoColumns = 50
+// Approximate characters per line for each line-width setting. Medium,
+// the default, is a classic book measure (60 to 75 characters is the
+// comfortable range); Narrow is a little shorter, Wide a little longer. A
+// wider window gets two columns (Two Pages), not longer lines.
+const lineWidthChars = { narrow: 58, medium: 68, wide: 80 }
+// Average glyph width as a fraction of font size, for typical book faces
+// (measured: a Times-like face sets about 2.4 characters per em of line,
+// spaces and punctuation included).
+const charWidthEm = 0.42
+// Show two pages when each column can hold a readable line (the spec asks
+// for about 50 characters; a little more, as two cramped columns read
+// worse than one comfortable one).
+const minCharsForTwoColumns = 55
 
 const bookCSS = s => `
     /* platen-styles (reader.js skips this sheet when rescaling font sizes) */
@@ -24,9 +27,15 @@ const bookCSS = s => `
     html {
         color-scheme: ${s.theme.dark ? 'dark' : 'light'};
         font-size: ${s.fontSize}px !important;
+        /* iOS enlarges text it judges too small for a wide block, and a
+           chapter laid out as pages is one very wide block of columns, so
+           the text size could change on switching to scrolling and back.
+           The size chosen is the size shown. */
+        -webkit-text-size-adjust: none !important;
+        text-size-adjust: none !important;
     }
     html, body {
-        background-color: ${s.theme.background} !important;
+        background-color: ${s.transparent ? 'transparent' : s.theme.background} !important;
         color: ${s.theme.foreground} !important;
     }
     a:link, a:visited { color: ${s.theme.link} !important; }
@@ -72,19 +81,32 @@ const bookCSS = s => `
     }
 `
 
+// The smallest margin at each side, as a share of the window: the shell's
+// default, or what iOS asks for (in points, clear of rounded corners).
+const minimumGap = s => s.sideMargin ? s.sideMargin / Math.max(window.innerWidth, 1) : 0.06
+
+// The width of each column of text that foliate lays out, for a window
+// `w` wide, `columns` columns and a side margin `g` (a share of the
+// window): foliate pads the page by g/2 at each side and puts a gap of g·w
+// between and around the columns (paginator.js, #beforeRender), so the
+// text gets w·(1 − (columns + 1)·g) in all.
+const columnWidth = (w, columns, g) => w * (1 - (columns + 1) * g) / columns
+
 const columnCount = s => {
     if (s.flow === 'scrolled') return 1
     if (s.pageLayout === 'one') return 1
-    // Two pages, side by side when each half of the window can hold a
-    // readable line; a narrow window falls back to one page.
-    const half = window.innerWidth / 2
-    return half >= minCharsForTwoColumns * s.fontSize * charWidthEm * 1.15 ? 2 : 1
+    // Two pages, side by side when each can hold a readable line (about
+    // 55 characters); a narrower window falls back to one page.
+    const w = window.innerWidth
+    return columnWidth(w, 2, minimumGap(s)) >= minCharsForTwoColumns * s.fontSize * charWidthEm ? 2 : 1
 }
 
 const applyLayout = () => {
     const r = reader.view?.renderer
     if (!r || !reader.settings) return
-    document.documentElement.style.setProperty('--platen-bg', reader.settings.theme.background)
+    // iOS ambient light: no background, so the glow behind the page shows.
+    document.documentElement.style.setProperty('--platen-bg',
+        reader.settings.transparent ? 'transparent' : reader.settings.theme.background)
     document.documentElement.style.setProperty('--platen-fg', reader.settings.theme.foreground)
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
     r.toggleAttribute('animated', reader.settings.animated && !reduceMotion)
@@ -93,27 +115,37 @@ const applyLayout = () => {
     r.toggleAttribute('native-swipe', !!reader.settings.nativeSwipe)
     if (reader.isFixedLayout) return
 
+    // The measure: no line longer than the line-width setting allows
+    // (about 68 characters at Medium). foliate itself stretches a column
+    // across whatever room there is, so the side margins grow until each
+    // column is that wide; they never shrink below the minimum.
+    const w = Math.max(window.innerWidth, 1)
     const columns = columnCount(reader.settings)
-    const lineWidth = lineWidthChars[reader.settings.lineWidth] * reader.settings.fontSize * charWidthEm
-    // Two pages: each page gets a share of half the window, so the three
-    // widths stay distinct even when the character counts would all be
-    // wider than the half (they still cap it on very large screens).
-    const inline = columns === 2
-        ? Math.min(lineWidth, window.innerWidth / 2 * twoPageShare[reader.settings.lineWidth])
-        : lineWidth
+    const measure = lineWidthChars[reader.settings.lineWidth] * reader.settings.fontSize * charWidthEm
+    const fit = (1 - columns * measure / w) / (columns + 1)
+    const gap = Math.max(minimumGap(reader.settings), fit)
     r.setAttribute('flow', reader.settings.flow)
     r.setAttribute('max-column-count', columns)
-    r.setAttribute('max-inline-size', `${Math.round(inline)}px`)
+    // foliate shows as many columns as fit this size (up to the count
+    // above); scrolling uses it as a cap on the page. Either way the margins
+    // now decide the width, so it only has to allow the columns wanted.
+    r.setAttribute('max-inline-size', `${Math.floor(columns === 1 ? w : w * (1 - gap) / 2 - 1)}px`)
     // In paginated mode the top margin leaves room for the bookmark ribbon
     // below the (hidden) title bar. iOS sends its own margins (in points):
-    // above and below, clear of the Dynamic Island and home indicator, and
-    // at the sides (foliate puts the whole gap on each side of a page).
-    const { verticalMargin, sideMargin } = reader.settings
+    // above and below, clear of the Dynamic Island and home indicator.
+    const { verticalMargin } = reader.settings
     r.setAttribute('margin', verticalMargin ? `${Math.round(verticalMargin)}px`
         : reader.settings.flow === 'scrolled' ? '44px' : '60px')
-    r.setAttribute('gap', sideMargin
-        ? `${(sideMargin / Math.max(window.innerWidth, 1) * 100).toFixed(2)}%` : '6%')
+    r.setAttribute('gap', `${(gap * 100).toFixed(2)}%`)
     r.setStyles?.(bookCSS(reader.settings))
+    // Each chapter's root, adjusted so its body text is the size chosen
+    // (bookfixes.js), follows a change of size.
+    // So do justified paragraphs, with Justify Text.
+    for (const { doc } of r.getContents?.() ?? []) {
+        if (!doc) continue
+        applyBodyTextSize(doc, reader.settings.fontSize)
+        applyJustification(doc, reader.settings.justify !== false)
+    }
 }
 
 // Debounce re-layout during window resizes so dragging stays smooth; the

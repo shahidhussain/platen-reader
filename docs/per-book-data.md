@@ -37,4 +37,27 @@ Platen stores one JSON file per book:
 - Writes are atomic: Platen writes a temporary file and renames it over the old one. Saves after page turns are debounced by 0.75 s; closing the window saves immediately.
 - Settings > Advanced > Clear deletes the whole `books` folder.
 
+## Recents (iOS)
+
+At the reader's request (15 Nov 2026), the iOS home screen keeps short lists for its tabs: Recent Books, the Home tab's folders (only folders the reader chose, not ones browsed into), and, at the reader's request (21 Nov 2026), Favourites (books marked from a cover's long-press menu, in a folder or in Recent Books):
+
+```
+~/Library/Application Support/Platen Reader/recents/books.json
+~/Library/Application Support/Platen Reader/recents/folders.json
+~/Library/Application Support/Platen Reader/recents/favorites.json
+~/Library/Application Support/Platen Reader/recents/covers/<id>.jpg
+```
+
+Each entry has an `id`, a `bookmark` (the system's reference to the file or folder, which keeps permission to read it and is how it is found again), its `name`, the `path` it was at (to recognise it when opened again, and to show which folder it is in; never used to open it), `lastOpened`, and for books the `title` and `author` and whether a copy of the cover is kept (`hasCover`, a small JPEG in `covers/`, so the list shows it even when the book cannot be reached). At most 60 recent books and folders are kept, newest first (favourites are not trimmed). A long press on an item removes it, with its cover copy; nothing else about the book is touched.
+
+## Diagnostics (iOS)
+
+At the reader's request (22 Nov 2026), the iOS app keeps a record of how it has been running, to share from Settings > Share Diagnostics… when reporting a problem:
+
+```
+~/Library/Application Support/Platen Reader/Diagnostics/Diagnostics.txt
+```
+
+It is plain text, one timestamped line per log entry at info level and above: a line at each launch naming the app's version, the iOS version and the device's model code (never the name its owner gave it), how long books took to open, moments the app was too busy to answer a tap, and errors. It is not per-book data: book titles, file names and searches are written as `<name>`, and a book is described only by its kind and size. It is kept to about 512 KB, the oldest lines dropped first. Nothing sends it anywhere; it leaves the device only through the share sheet. Sharing makes a copy named for the day in the app's temporary folder.
+
 Portability between apps is not a goal. The format is documented so people can inspect, back up or delete their own data.

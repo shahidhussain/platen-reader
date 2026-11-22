@@ -741,14 +741,22 @@ export class Paginator extends HTMLElement {
             // FIXME: vertical-rl only, not -lr
             this.setAttribute('dir', vertical ? 'rtl' : 'ltr')
             this.#top.style.padding = '0'
-            const columnWidth = maxInlineSize
+            // Platen: the text keeps the width and side margins it has as
+            // one page, so switching between pages and scrolling does not
+            // move it. Upstream used the whole view with the gap widened
+            // for columns (g / (1 - g)) on each side, a few points narrower
+            // than a page, and the full max-inline-size. One page is a
+            // container of min(size × (1 − g), max-inline-size) less that
+            // widened gap, starting g × size from the edge.
+            const page = Math.min(size * (1 - g), maxInlineSize)
+            const columnWidth = page - (-g / (g - 1)) * page
 
             this.heads = null
             this.feet = null
             this.#header.replaceChildren()
             this.#footer.replaceChildren()
 
-            return { flow, margin, gap, columnWidth }
+            return { flow, margin, gap: g * size, columnWidth }
         }
 
         const divisor = Math.min(maxColumnCount, Math.ceil(size / maxInlineSize))

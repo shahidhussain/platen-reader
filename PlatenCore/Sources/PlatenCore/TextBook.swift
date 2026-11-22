@@ -18,7 +18,13 @@ import Foundation
 /// - **Chapters:** headings such as "CHAPTER I", "Chapter 12", "BOOK II" or
 ///   "PART ONE" start a new section and appear in Contents.
 /// - **Title and author:** from "Title:" and "Author:" lines near the top (as
-///   in Gutenberg files), otherwise from the file name.
+///   in Gutenberg files); otherwise from a file name such as "Jane Austen -
+///   Sense and Sensibility", when the text says which part is the author
+///   ("by Jane Austen"); otherwise the file name is the title.
+/// - **Title page:** a few short lines at the very start ("FULFILMENT", "by",
+///   "A.E. Van Vogt") are set as a centred title page, not as paragraphs.
+/// - **Project Gutenberg's notice:** the licence text older Gutenberg files
+///   put before the first chapter gets its own entry in Contents.
 enum TextBook {
     /// The files of the made-up EPUB, by path.
     struct Output {
@@ -198,14 +204,71 @@ enum TextBook {
                                 "norwegian": "no", "finnish": "fi", "polish": "pl", "russian": "ru",
                                 "latin": "la", "greek": "el", "chinese": "zh", "japanese": "ja"]
 
+    // MARK: Title and author from the file name
+
+    /// The words of a name, for comparing two ways of writing it:
+    /// "Vogt, A E Van" and "A.E. Van Vogt" both give {a, e, van, vogt}.
+    static func nameWords(_ name: String) -> Set<String> {
+        Set(name.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init))
+    }
+
+    /// The names the text says it is by, as written there: "Sense and
+    /// Sensibility, by Jane Austen" gives "Jane Austen", and a line "by"
+    /// on its own gives the next line, as on a title page.
+    static func bylines(in text: String) -> [String] {
+        let lines = text.prefix(6_000).split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        var found: [String] = []
+        for (i, line) in lines.enumerated() {
+            if line.lowercased() == "by", i + 1 < lines.count {
+                found.append(lines[i + 1])
+            } else if let range = line.range(of: "by ", options: [.caseInsensitive]),
+                      range.lowerBound == line.startIndex || line[line.index(before: range.lowerBound)] == " " {
+                found.append(String(line[range.upperBound...]).trimmingCharacters(in: CharacterSet(charactersIn: " .,;")))
+            }
+        }
+        return found.filter { !$0.isEmpty && $0.count <= 60 }
+    }
+
+    /// Title and author from a file name made of two parts, "A - B", when
+    /// the text names one of them as its author; nil otherwise (the order
+    /// differs from one library to the next, so it is not guessed).
+    static func titleAndAuthor(fileName: String, text: String) -> (title: String, author: String)? {
+        let parts = fileName.components(separatedBy: " - ").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+        for byline in bylines(in: text) {
+            let words = nameWords(byline)
+            guard words.count >= 2 else { continue }
+            if words == nameWords(parts[0]) { return (parts[1], byline) }
+            if words == nameWords(parts[1]) { return (parts[0], byline) }
+        }
+        return nil
+    }
+
+    // MARK: Title page
+
+    /// How many blocks at the start form a title page: two to six single
+    /// short lines, followed by a real paragraph. Zero if the text does not
+    /// start like that.
+    static func titlePageLength(_ blocks: [Block]) -> Int {
+        var count = 0
+        while count < blocks.count, count < 6, blocks[count].lines.count <= 2,
+              blocks[count].lines.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).count <= 60 }),
+              heading(blocks[count]) == nil {
+            count += 1
+        }
+        guard count >= 2, count < blocks.count, blocks[count].characterCount >= 120 else { return 0 }
+        return count
+    }
+
     // MARK: Building the book
 
     static func make(data: Data, fileName: String?) -> Output {
         let text = decode(data)
         let fields = headerFields(in: text)
         let fallbackTitle = fileName.map { ($0 as NSString).deletingPathExtension } ?? ""
-        let title = fields["Title"] ?? fallbackTitle
-        let author = fields["Author"]
+        let fromName = fields["Title"] == nil ? titleAndAuthor(fileName: fallbackTitle, text: text) : nil
+        let title = fields["Title"] ?? fromName?.title ?? fallbackTitle
+        let author = fields["Author"] ?? fromName?.author
         let language = fields["Language"].flatMap { languageCodes[$0.lowercased()] }
 
         let allBlocks = blocks(in: text)
@@ -229,7 +292,16 @@ enum TextBook {
         struct Section { var html = ""; var length = 0; var heading: String? }
         var sections: [Section] = [Section()]
         var afterHeading = true
+        let titlePage = headingAt[0] == nil ? titlePageLength(allBlocks) : 0
         for (i, block) in allBlocks.enumerated() {
+            if i < titlePage {
+                // The title page: each line centred, the first (the title)
+                // larger.
+                let lines = block.lines.map { escape($0.trimmingCharacters(in: .whitespaces)) }
+                sections[0].html += "<p class=\"title\(i == 0 ? " name" : "")\">\(lines.joined(separator: "<br/>"))</p>\n"
+                sections[0].length += block.characterCount
+                continue
+            }
             if let label = headingAt[i] {
                 if sections[sections.count - 1].length > 0 { sections.append(Section()) }
                 sections[sections.count - 1].heading = label
@@ -254,6 +326,16 @@ enum TextBook {
             sections[sections.count - 1].length += block.characterCount
         }
         if sections.count > 1, sections[0].length == 0 { sections.removeFirst() }
+        // Older Project Gutenberg files open with pages of their licence
+        // and notes before the first chapter: in Contents, so it is clear
+        // what they are and the book's own start is one tap away. (Newer
+        // ones mark where the book starts, "*** START OF", and keep their
+        // licence at the end: what comes before the first chapter there is
+        // the book's own, such as its contents list.)
+        if sections.count > 1, sections[0].heading == nil, !headingAt.isEmpty,
+           sections[0].html.contains("Project Gutenberg"), !text.contains("*** START OF") {
+            sections[0].heading = String(localized: "Project Gutenberg Notice", bundle: .module)
+        }
 
         // The files.
         var files: [String: Data] = [:]
@@ -320,6 +402,10 @@ enum TextBook {
     /* Blocks whose line breaks matter (poetry, lists, tables) keep them,
        and their indentation. */
     p.lines { text-indent: 0; white-space: pre-wrap; margin: 0.8em 0; }
+    /* A title page: short lines centred, the title larger. */
+    p.title { text-indent: 0; text-align: center; margin: 0.6em 0; }
+    p.title.name { font-size: 1.5em; margin: 3em 0 0.8em; line-height: 1.3; }
+    p.title + p:not(.title) { margin-top: 3em; text-indent: 0; }
     h2 { font-size: 1.3em; font-weight: normal; text-align: center; margin: 2.5em 0 1.5em; line-height: 1.3; }
     """
 

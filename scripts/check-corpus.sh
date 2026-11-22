@@ -46,15 +46,27 @@ check truncated.epub          "-"                                      "rebuilt 
 check fixed-font-sizes.epub   "(d=>'ratio:'+parseFloat(getComputedStyle(d.querySelector('p.px')).fontSize)/parseFloat(getComputedStyle(d.documentElement).fontSize)+' over:'+[...d.body.querySelectorAll('*')].some(e=>[...e.getClientRects()].some(r=>r.width>parseFloat(getComputedStyle(d.documentElement).columnWidth)+1)))(platen.view.renderer.getContents()[0].doc)" "ratio:0.75 over:false"
 # Unreadable publisher colours are replaced, whichever theme is in use.
 check low-contrast.epub       "'recoloured:'+(platen.view.renderer.getContents()[0].doc.querySelectorAll('[data-platen-colour]').length>0)" "recoloured:true"
+# Dark blue links on the Dark theme are lightened, keeping their blue.
+check low-contrast.epub       "@theme:dark;'link:'+getComputedStyle(platen.view.renderer.getContents()[0].doc.querySelector('.toc span')).color" "link:rgb(68, 135, 228)"
 # Plain text: title from the header, three chapters in Contents, the book
 # serif by default, and the poem's line breaks kept.
 check gutenberg.txt           "(d=>'title:'+platen.view.book.metadata.title+' toc:'+platen.view.book.toc.length+' font:'+getComputedStyle(d.body).fontFamily.split(',')[0]+' poem:'+d.querySelectorAll('p.lines').length)(platen.view.renderer.getContents()[0].doc)" "title:A Plain Tale toc:3 font:\"Iowan Old Style\""
 check windows-1252.txt        "$TEXT"                                  "Café notes"
-# An EPUB 2 cover page first in the spine (its picture is the folder view's cover).
-check cover-page.epub         "-"                                      "First page visible"
+check "Writer, R J Van - The Hill.txt" "(b=>'title:'+b.metadata.title+' by:'+JSON.stringify(b.metadata.author)+' page:'+platen.view.renderer.getContents()[0].doc.querySelectorAll('p.title').length)(platen.view.book)" "title:The Hill by:"
+# An EPUB 2 cover page first in the spine (its picture is the folder view's
+# cover), shown as a page that is one picture (as large as the page).
+check cover-page.epub         "'lone:'+platen.view.renderer.getContents()[0].doc.documentElement.classList.contains('platen-lone-picture')" "lone:true"
+# A page partway through a chapter that is one picture and nothing else
+# counts as a picture-only page (the page before it, text, does not).
+check plate-page.epub         "@resize:500x800;platen.view.goTo(0);'before:'+platen.pagePicture();platen.next();'plate:'+platen.pagePicture()" "plate:true" "before:true"
+# Body text set at 75% by the book still comes out at the size chosen.
+check small-body-text.epub    "(d=>'body:'+(Math.abs(parseFloat(getComputedStyle(d.querySelector('p')).fontSize)-platen.fontSize())<0.1))(platen.view.renderer.getContents()[0].doc)" "body:true"
 # PDF (PDFKit): its pages and its outline as Contents.
 check outline.pdf             "-"                                      "PDF: 6 pages, 3 contents entries"
 check pictures.pdf            "-"                                      "PDF: 4 pages, 2 contents entries"
+check fixed-layout-wide.epub  "-"                                      "First page visible"
+check picture-book.epub       "-"                                      "First page visible"
+check square-pages.pdf        "-"                                      "PDF: 4 pages, 2 contents entries"
 # A note reference opens its note in a pop-up (and the page does not move);
 # a superscript link into a notes file counts as one too.
 NOTE='(d=>(d.querySelector(SEL).click(),"clicked"))(platen.view.renderer.getContents()[0].doc)'

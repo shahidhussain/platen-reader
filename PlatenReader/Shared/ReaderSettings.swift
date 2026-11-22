@@ -115,9 +115,13 @@ enum Theme: String, CaseIterable, Identifiable {
 
     var link: String {
         switch self {
-        case .light: return "#0b57d0"
+        // Links are read as text, so on light pages they are a dark honey
+        // in the family of the app's orange (5:1 on white), not the bright
+        // orange itself; sepia keeps its own warm brown; on dark pages the
+        // app's orange reads well (8:1).
+        case .light: return "#9e6213"
         case .sepia: return "#8a4b1f"
-        case .dark, .black: return "#8ab4f8"
+        case .dark, .black: return "#ff9f0a"
         }
     }
 
@@ -190,6 +194,19 @@ final class ReaderSettings: ObservableObject {
     @Published var lineWidth: LineWidth { didSet { save("lineWidth", lineWidth.rawValue) } }
     @Published var fontFamily: String { didSet { save("fontFamily", fontFamily) } }
     @Published var hyphenate: Bool { didSet { save("hyphenate", hyphenate) } }
+    /// Justified text (lines flush at both sides), where the book asks for
+    /// it; off: ragged right. On a phone's narrow column justification
+    /// leaves wide gaps between words even with hyphenation, so phones
+    /// start ragged right (`justifyByDefault`, set by the iOS app).
+    @Published var justify: Bool { didSet { save("justify", justify) } }
+    /// Whether text is justified until the reader chooses: true, except on
+    /// an iPhone (the iOS app sets it at launch, before the settings load).
+    static var justifyByDefault = true
+    /// The soft glow of a PDF's own colours around its pages (iOS). Off:
+    /// the theme's plain colour.
+    @Published var ambientLight: Bool { didSet { save("ambientLight", ambientLight) } }
+    /// PDFs drawn with their colours inverted (white pages dark), iOS.
+    @Published var invertPDF: Bool { didSet { save("invertPDF", invertPDF) } }
     /// Optional "N pages left in chapter" in the location line (paginated).
     @Published var showPagesLeftInChapter: Bool { didSet { save("showPagesLeftInChapter", showPagesLeftInChapter) } }
 
@@ -210,6 +227,9 @@ final class ReaderSettings: ObservableObject {
         lineWidth = string("lineWidth").flatMap(LineWidth.init) ?? .medium
         fontFamily = string("fontFamily") ?? ""
         hyphenate = bool("hyphenate", true)
+        justify = bool("justify", Self.justifyByDefault)
+        ambientLight = bool("ambientLight", true)
+        invertPDF = bool("invertPDF", false)
         showPagesLeftInChapter = bool("showPagesLeftInChapter", false)
     }
 
@@ -271,6 +291,6 @@ final class ReaderSettings: ObservableObject {
     func webSettings(theme: Theme, flow: ReadingFlow) -> WebSettings {
         WebSettings(flow: flow, pageLayout: pageLayout, animated: pageTurnStyle == .slide,
                     fontSize: fontSize, lineHeight: lineHeight, lineWidth: lineWidth,
-                    fontFamily: fontFamily, hyphenate: hyphenate, theme: theme)
+                    fontFamily: fontFamily, hyphenate: hyphenate, justify: justify, theme: theme)
     }
 }
