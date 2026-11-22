@@ -18,7 +18,7 @@ looked at before pushing a change to the reader.
 
 Usage:
   scripts/ios-matrix.py                 # the fixtures
-  scripts/ios-matrix.py --samples       # and every EPUB and PDF in samples/
+  scripts/ios-matrix.py --samples       # and every EPUB, PDF and text file in samples/
   scripts/ios-matrix.py --only picture  # cases whose name contains "picture"
   scripts/ios-matrix.py --no-build      # use the last Debug build
 
@@ -138,13 +138,13 @@ def cases():
 
 
 def sample_cases():
-    """Every EPUB and PDF in samples/ (the reader's own books, never
+    """Every EPUB, PDF and text file in samples/ (the reader's own books, never
     committed): a few pages in Dark and Light, with ambient light."""
     folder = os.path.join(ROOT, "samples")
     found = []
     for name in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
         lower = name.lower()
-        if not (lower.endswith(".epub") or lower.endswith(".pdf")):
+        if not lower.endswith((".epub", ".pdf", ".txt")):
             continue
         pdf = lower.endswith(".pdf")
         text_rules = [] if pdf else ["readable_text"]
@@ -458,7 +458,7 @@ def contact_sheet(all_cases, all_results, path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--samples", action="store_true", help="also every EPUB and PDF in samples/")
+    parser.add_argument("--samples", action="store_true", help="also every EPUB, PDF and text file in samples/")
     parser.add_argument("--only", help="only cases whose name contains this")
     parser.add_argument("--no-build", action="store_true", help="use the last Debug build")
     args = parser.parse_args()

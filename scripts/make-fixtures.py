@@ -427,6 +427,17 @@ def main():
     open(p, "wb").write(("Café notes\n\n" + textwrap.fill(paragraph(rng, 5), 70) + "\n\n\u201cQuoted,\u201d she said.\n").encode("cp1252"))
     made.append(p)
 
+    # A short story as older text files come (device testing, 21 Nov 2026):
+    # Windows line endings and encoding, a title page of short lines
+    # ("THE HILL", "by", the author), one long line per paragraph, and a
+    # surname-first "Author - Title" file name. It opens titled "The Hill",
+    # by "R.J. Van Writer", with a centred title page.
+    p = os.path.join(OUT, "Writer, R J Van - The Hill.txt")
+    story = "THE HILL\r\n\r\n\r\n\r\nby\r\n\r\n\r\n\r\nR.J. Van Writer\r\n\r\n\r\n\r\n\r\n"
+    story += "\r\n\r\n".join(paragraph(rng, 6).replace("\n", " ") for _ in range(6)) + "\r\n\r\n\u2018Help Wanted!' it says. A fa\u00e7ade.\r\n"
+    open(p, "wb").write(story.encode("cp1252"))
+    made.append(p)
+
     # A PDF with an outline (Contents) and a document ID (spec, "PDF").
     p = os.path.join(OUT, "outline.pdf")
     simple_pdf(p, "Sample Report", ["Introduction", "Methods", "Results"])
