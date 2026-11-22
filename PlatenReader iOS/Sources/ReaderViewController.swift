@@ -150,8 +150,25 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        state.allowsTwoPages = UIDevice.current.userInterfaceIdiom != .phone
+        state.allowsTwoPages = traitCollection.userInterfaceIdiom != .phone
         session.start(in: webView)
+    }
+
+    /// Whether the window is big enough for two pages side by side: on an
+    /// iPad always (the Two Pages rule then decides by width, as on the
+    /// Mac); on a phone only when its window is tablet-sized, at least 600
+    /// points on its shorter side, as on an iPhone Duo opened out (an
+    /// ordinary iPhone, at most about 440, keeps one page in either
+    /// orientation, as the spec has it). Asked again as the window changes
+    /// size, so folding or unfolding a Duo while reading changes it.
+    private func updateTwoPagesAllowed() {
+        var allowed = traitCollection.userInterfaceIdiom != .phone
+        if !allowed, let window = view.window {
+            allowed = min(window.bounds.width, window.bounds.height) >= 600
+        }
+        guard allowed != state.allowsTwoPages else { return }
+        state.allowsTwoPages = allowed
+        session.pushSettings()
     }
 
     // MARK: - Taps
@@ -468,9 +485,11 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         web.touch = true
         web.transparent = usesAmbientLight
         // iPhone: one page always, in either orientation (spec, "Layout").
-        // iPad: the Two Pages rule decides by width, as on the Mac, so two
-        // pages appear in landscape and in wide Split View windows.
-        if UIDevice.current.userInterfaceIdiom == .phone { web.pageLayout = .one }
+        // iPad, and a phone with a tablet-sized screen (an iPhone Duo
+        // opened out; `updateTwoPagesAllowed`): the Two Pages rule decides
+        // by width, as on the Mac, so two pages appear in landscape and in
+        // wide Split View windows.
+        if !state.allowsTwoPages { web.pageLayout = .one }
         web.animated = false
         web.nativeSwipe = true
         let insets = view.safeAreaInsets
@@ -511,6 +530,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         updateAmbientMask() // the glow's edges follow the window's size
+        updateTwoPagesAllowed()
     }
 
     override func viewSafeAreaInsetsDidChange() {

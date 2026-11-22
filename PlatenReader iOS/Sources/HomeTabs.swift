@@ -97,20 +97,45 @@ struct HomeTabRow: View {
     private var rowLocked: Bool { navigation.tab == .home && !navigation.folderPath.isEmpty }
 
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 0) {
-                ForEach(HomeNavigation.Tab.allCases, id: \.self) { tab in
-                    page(tab)
-                        .containerRelativeFrame(.horizontal)
-                        .id(tab)
+        // The row spans the whole width, safe areas included, and each page
+        // is inset by the side safe areas within its own full-width slot. Paging moves by
+        // the row's full width, so a page only the safe width wide left the
+        // next tab showing in the strip beside it: where the status bar runs
+        // down one side (an iPhone Duo opened out, 22 Nov 2026), or the
+        // notch's strips on an iPhone turned sideways.
+        GeometryReader { outer in
+            let insets = outer.safeAreaInsets
+            ScrollViewReader { reader in
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(HomeNavigation.Tab.allCases, id: \.self) { tab in
+                        page(tab)
+                            // Padding, not safe-area padding: each tab's own
+                            // navigation bar must move in too.
+                            .padding(.leading, insets.leading)
+                            .padding(.trailing, insets.trailing)
+                            // The strips beside it in the page's own colour.
+                            .background(slotColour(tab), ignoresSafeAreaEdges: .all)
+                            .containerRelativeFrame(.horizontal)
+                            .id(tab)
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .scrollTargetLayout()
+            .ignoresSafeArea(.container, edges: .horizontal)
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $shown)
+            .scrollIndicators(.hidden)
+            .scrollDisabled(rowLocked)
+            // A new width (an iPhone Duo folded or opened, a turn) leaves the
+            // row at its old offset, part-way into another page: back to the
+            // tab chosen.
+            .onChange(of: outer.size) { _, _ in
+                let tab = navigation.tab
+                DispatchQueue.main.async { reader.scrollTo(tab, anchor: .leading) }
+            }
+            }
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $shown)
-        .scrollIndicators(.hidden)
-        .scrollDisabled(rowLocked)
         .safeAreaInset(edge: .bottom) {
             HomeTabBar(selection: Binding(get: { navigation.tab }, set: { tab in
                 // Tapping Home again goes back to the list of folders.
@@ -132,6 +157,13 @@ struct HomeTabRow: View {
         .onAppear {
             DispatchQueue.main.async { if shown != navigation.tab { shown = navigation.tab } }
         }
+    }
+
+    /// The colour behind a page, carried into the side strips: Home's list
+    /// of folders is grouped (grey in light mode); a folder's grid and the
+    /// shelves are plain.
+    private func slotColour(_ tab: HomeNavigation.Tab) -> Color {
+        tab == .home && navigation.folderPath.isEmpty ? Color(.systemGroupedBackground) : Color(.systemBackground)
     }
 
     @ViewBuilder private func page(_ tab: HomeNavigation.Tab) -> some View {
