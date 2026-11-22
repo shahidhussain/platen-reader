@@ -738,9 +738,12 @@ struct LayoutPopover: View {
     #endif
 
     /// A line under the choices, when one is needed: a PDF in Two Pages held
-    /// in portrait (one page shows until the device is turned), or a window
-    /// too narrow for two pages.
+    /// in portrait (one page shows until the device is turned) or whose
+    /// pages are spreads already, or a window too narrow for two pages.
     private var note: LocalizedStringKey? {
+        if state.isPDF, state.pagesAreSpreads {
+            return "These pages are already spreads, so they show one at a time."
+        }
         if state.isPDF, state.flow == .paginated, settings.pageLayout == .two, state.columnsOnScreen < 2 {
             return "Two pages show side by side when you turn to landscape."
         }

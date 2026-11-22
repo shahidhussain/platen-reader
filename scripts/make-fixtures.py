@@ -172,14 +172,15 @@ def simple(name, title, chapter_files, extra_files=(), version="3.0", extra_meta
 
 
 def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7D659A2FEAA0C55AD015",
-               pictures=False):
+               pictures=False, square=False):
     """A small PDF written by hand (no PDF library needed): text pages in
     Helvetica, an outline with one entry per chapter, a title in the
     document information, and a document ID in the trailer, which Platen
     uses to recognise the file again (PDFIdentity). With pictures, every
     page has a picture (an image XObject) in its lower half, and the last
     page is landscape, filled by a picture (for long-press save and share,
-    and the One Page layout)."""
+    and the One Page layout). With square, every page is square (as many
+    picture books' are), so Two Pages pairs them in landscape."""
     objects = []  # bodies, numbered from 1
 
     def add(body):
@@ -206,8 +207,8 @@ def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7
             lines = [f"{name}" if p == 0 else f"{name} (continued)", ""]
             lines += [f"Page {len(page_ids) + 1} of the {title.lower()}. Line {i + 1} of the text."
                       for i in range(20)]
-            text = "BT /F1 12 Tf 72 720 Td 16 TL " + " ".join(f"({esc(l)}) '" for l in lines) + " ET"
-            box, xobjects = "0 0 612 792", ""
+            text = f"BT /F1 12 Tf 72 {560 if square else 720} Td 16 TL " + " ".join(f"({esc(l)}) '" for l in lines) + " ET"
+            box, xobjects = ("0 0 612 612" if square else "0 0 612 792"), ""
             if image:
                 last = c == len(chapters) - 1 and p == pages_per_chapter - 1
                 if last:  # landscape, filled by the picture
@@ -356,8 +357,11 @@ def main():
     colours = xhtml("Colours", """<h1 class="block3">Black heading</h1>
 <p>""" + paragraph(rng) + """</p>
 <h2 class="block3">Another black heading</h2>
-<p class="ghost">White text. """ + paragraph(rng) + """</p>""",
-        extra_head='<style>.block3 { color: black } .ghost { color: #fff }</style>')
+<p class="ghost">White text. """ + paragraph(rng) + """</p>
+<div class="toc"><p class="toc1"><a href="c1.xhtml"><span class="i">Dark blue contents link</span></a></p>
+<p class="toc1"><a href="c1.xhtml">Another dark blue link</a></p></div>""",
+        extra_head='<style>.block3 { color: black } .ghost { color: #fff } '
+                   '.toc a { text-decoration: none } .i { font-style: italic; color: #103870 }</style>')
     made.append(simple("low-contrast.epub", "Low Contrast", [("c1.xhtml", colours)]))
 
     # DRM: Adobe ADEPT markers (content is not actually encrypted).
@@ -440,6 +444,12 @@ def main():
     p = os.path.join(OUT, "pictures.pdf")
     simple_pdf(p, "Picture Book", ["Plates", "Panorama"], pictures=True,
                doc_id="5E884898DA28047151D0E56F8DC62927")
+    made.append(p)
+
+    # A picture book with square pages: Two Pages shows two side by side in
+    # landscape (they were taken for spreads, and shown one at a time).
+    p = os.path.join(OUT, "square-pages.pdf")
+    simple_pdf(p, "Square Book", ["Bears", "Hats"], doc_id="2C26B46B68FFC68FF99B453C1D304134", square=True)
     made.append(p)
 
     # Footnotes: a marked footnote (epub:type="noteref" to an aside in the

@@ -249,7 +249,11 @@ struct ReaderTopBar: View {
         .padding(.leading, insets.edges.leading)
         .padding(.trailing, insets.edges.trailing)
         .padding(.bottom, 20) // the band's fade, below the controls
-        .background { PageBand(colour: state.pageColour, edge: .top, fade: 20) }
+        .background {
+            // With ambient light, in the glow's colour at the top (GlowBand).
+            PageBand(colour: state.topBandColour ?? state.pageColour, edge: .top, fade: 20)
+                .animation(.easeInOut(duration: 0.35), value: state.topBandColour)
+        }
     }
 }
 
@@ -267,7 +271,10 @@ struct ReaderBottomBar: View {
             .padding(.trailing, insets.edges.trailing + 8)
             .padding(.bottom, insets.edges.bottom)
             .frame(maxWidth: .infinity)
-            .background { PageBand(colour: state.pageColour, edge: .bottom, fade: 24) }
+            .background {
+                PageBand(colour: state.bottomBandColour ?? state.pageColour, edge: .bottom, fade: 24)
+                    .animation(.easeInOut(duration: 0.35), value: state.bottomBandColour)
+            }
     }
 }
 

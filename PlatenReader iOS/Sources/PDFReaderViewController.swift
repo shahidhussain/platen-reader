@@ -102,6 +102,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         // The ambient background, stretched across the whole screen behind
         // the PDF view (which is see-through around its pages).
         ambient = AmbientGlowView()
+        ambient.glowChanged = { [weak self] glow in self?.glowChanged(glow) }
         ambient.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(ambient)
         pageArea = UIView()
@@ -320,11 +321,13 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         let current = keepPage ?? pdfView.currentPage.map { document.index(for: $0) } ?? 0
         // pageLayout is read when the setting has already changed (the
         // observer runs after the change), so this is the new choice. Pages
-        // are paired only if they are taller than wide: a PDF whose pages
-        // are already spreads (many picture books) shows one at a time.
+        // are paired only if they are taller than wide, or about square: a
+        // PDF whose pages are already spreads (many picture books) shows one
+        // at a time.
         let spread = landscape && state.flow == .paginated && settings.pageLayout == .two
             && pagesArePortrait(around: current, in: document)
         isSpread = spread
+        state.pagesAreSpreads = landscape && state.flow == .paginated && settings.pageLayout == .two && !spread
 
         if state.flow == .scrolled {
             // One long column of pages, in either orientation.
@@ -712,11 +715,20 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     /// Whether the page being read and the next are taller than wide, so a
     /// pair of them makes a book's spread.
+    /// Whether a page of this shape goes beside another in Two Pages. A
+    /// single page is taller than wide, or about square: picture books are
+    /// often square, and were shown alone, one to a landscape screen
+    /// (device testing, 21 Nov 2026). A page clearly wider than tall (a
+    /// fifth or more) is already a spread of two, and shows alone.
+    nonisolated static func pairs(pageSize size: CGSize) -> Bool {
+        size.width < size.height * 1.2
+    }
+
     private func pagesArePortrait(around index: Int, in document: PDFDocument) -> Bool {
         [index, index + 1].compactMap { document.page(at: $0) }.allSatisfy { page in
             let box = page.bounds(for: pdfView.displayBox).size
             let size = page.rotation % 180 == 0 ? box : CGSize(width: box.height, height: box.width)
-            return size.width < size.height
+            return Self.pairs(pageSize: size)
         }
     }
 

@@ -32,7 +32,7 @@ import { applyJustification, ensureReadableColours, fitLonePicture, fitWideTable
 import { pagesOnScreen, scheduleRibbons, setBookmarkList, toggleBookmark } from './modules/bookmarks.js'
 import { post } from './modules/bridge.js'
 import { sendContents } from './modules/contents.js'
-import { attachPointerHandlers, pictureAt, swipe, tapTarget } from './modules/input.js'
+import { attachPointerHandlers, noteScroll, pictureAt, swipe, tapTarget } from './modules/input.js'
 import { goBack, jump, noteMovement, rememberJumpOrigin } from './modules/jumps.js'
 import { applyLayout } from './modules/layout.js'
 import { nameBook, nameSection, pageChanged, readPage, setVoiceOver } from './modules/accessibility.js'
@@ -265,6 +265,9 @@ window.platen = {
                 if (!reader.isFixedLayout) {
                     rescalePublisherFontSizes(doc)
                     ensureReadableColours(doc)
+                    // And again a moment later, for styles that arrive
+                    // after the page (imported style sheets, say).
+                    setTimeout(() => ensureReadableColours(doc), 600)
                     // Body text at the size chosen, whatever the book's CSS.
                     normaliseBodyTextSize(doc, reader.settings?.fontSize ?? 16)
                     // A page that is one picture, as large as the page.
@@ -279,6 +282,8 @@ window.platen = {
             })
             reader.view.renderer.addEventListener('relocate', e => { lastReason = e.detail.reason })
             reader.view.renderer.addEventListener('scroll', followScroll)
+            // A tap just after scrolling stopped a flick (input.js).
+            reader.view.renderer.addEventListener('scroll', noteScroll, { passive: true })
             reader.view.addEventListener('external-link', e => {
                 // Never navigate the reader; let Swift open it in the browser.
                 e.preventDefault()

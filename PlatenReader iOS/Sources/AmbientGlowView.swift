@@ -18,6 +18,20 @@ final class AmbientGlowView: UIView {
     private(set) var isSliding = false
     private var progress: CGFloat = 0
 
+    /// Told the glow on show each time it changes (nil: none, or hidden),
+    /// so the bands behind the controls can take its colours (GlowBand).
+    var glowChanged: ((UIImage?) -> Void)?
+
+    override var isHidden: Bool {
+        didSet { if isHidden != oldValue { glowChanged?(isHidden ? nil : current.image) } }
+    }
+
+    /// The glow on show is now `image`.
+    private func setCurrent(_ image: UIImage?) {
+        current.image = image
+        if !isHidden { glowChanged?(image) }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
@@ -45,10 +59,10 @@ final class AmbientGlowView: UIView {
             incoming.alpha = progress
             return
         }
-        guard fade > 0, current.image != nil else { current.image = image; return }
+        guard fade > 0, current.image != nil else { setCurrent(image); return }
         UIView.transition(with: current, duration: fade,
                           options: [.transitionCrossDissolve, .allowUserInteraction, curve]) {
-            self.current.image = image
+            self.setCurrent(image)
         }
     }
 
@@ -70,7 +84,7 @@ final class AmbientGlowView: UIView {
     func endSlide(turned: Bool) {
         guard isSliding else { return }
         isSliding = false
-        if turned, let image = incoming.image { current.image = image }
+        if turned, let image = incoming.image { setCurrent(image) }
         incoming.image = nil
         incoming.alpha = 0
         progress = 0

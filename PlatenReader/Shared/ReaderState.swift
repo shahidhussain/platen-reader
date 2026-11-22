@@ -78,6 +78,12 @@ final class ReaderState: ObservableObject {
     /// The page's background colour ("#rrggbb", from the theme), for the
     /// band behind the controls (`PageBand`), so no text shows behind them.
     @Published var pageColour = "#ffffff"
+    /// With ambient light (iOS): the colours of the bands behind the top and
+    /// bottom controls, taken from the glow at those edges (`GlowBand`), so
+    /// the bands blend into it; nil without a glow, when they are the
+    /// page's colour.
+    @Published var topBandColour: String?
+    @Published var bottomBandColour: String?
 
     // Jumps: "Back to p. 87" after a jump, until the reader moves on.
     @Published var backLabel: String?
@@ -105,6 +111,10 @@ final class ReaderState: ObservableObject {
     /// True while a popover from the overlay (Aa) is open, so the overlay
     /// does not hide underneath it.
     @Published var overlayPopoverOpen = false
+
+    /// A PDF in Two Pages, held in landscape, whose pages are already
+    /// spreads (each clearly wider than tall), so they show one at a time.
+    @Published var pagesAreSpreads = false
 
     /// How many pages are side by side on screen right now.
     @Published var columnsOnScreen = 1

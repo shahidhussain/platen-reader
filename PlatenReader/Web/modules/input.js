@@ -83,13 +83,27 @@ const attachPointerHandlers = (doc, index) => {
     })
 }
 
+// When the page last moved by scrolling (scrolled mode). A tap that lands
+// while the page is still gliding from a flick only stops it, as anywhere
+// on iOS: it must not also bring up the controls or turn a page.
+// WebKit sends scroll events until the finger catches the page, and the tap
+// is asked about (tapTarget) when the finger lifts, a moment later, so a
+// scroll this recent means the tap caught a moving page. A page that has
+// been still for longer is tapped as usual.
+const catchWindowMs = 350
+let lastScrollAt = -Infinity
+const noteScroll = () => { lastScrollAt = performance.now() }
+
 // What is under a point in the window, for taps recognised natively on iOS
 // (see the `touch` setting above). Swift turns a page or shows the controls
 // only for 'page'; links, media, pictures and the bookmark ribbons handle
 // their own taps through WebKit's click, and a tap on a selection dismisses
-// it. Returns 'page', 'control', 'link' or 'selection'. Pictures count as
+// it. Returns 'page', 'control', 'link' or 'selection' ('control', too, for
+// a tap that caught the page as it scrolled). Pictures count as
 // the page for now: iOS has no picture view yet (the Mac's is native).
 const tapTarget = (x, y) => {
+    // A tap that stopped a flick of the page is not a tap on the page.
+    if (reader.settings?.flow === 'scrolled' && performance.now() - lastScrollAt < catchWindowMs) return 'control'
     // A tap while a note is open only closes it (unless it is on the note).
     if (isNoteOpen()) {
         if (noteJustOpened() || document.getElementById('platen-note')?.contains(document.elementFromPoint(x, y))) return 'control'
@@ -211,4 +225,4 @@ const swipe = {
     },
 }
 
-export { attachPointerHandlers, pictureAt, swipe, tapTarget }
+export { attachPointerHandlers, noteScroll, pictureAt, swipe, tapTarget }

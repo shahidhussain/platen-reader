@@ -49,6 +49,8 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     private var ambientWork: DispatchWorkItem?
     private var ambientMaskSize: CGSize = .zero
     private var ambientMask: UIImage?
+    /// The theme (its page colour) the glow on show was made in.
+    private var glowTheme: String?
     /// A turn waiting for a picture-only page's picture (settleLonePicture).
     private var lonePictureWaiter: (() -> Void)?
     override var hasShownPage: Bool { session.hasRendered }
@@ -85,6 +87,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         // fades from one page's glow to the next (AmbientGlowView); a curl
         // carries the old page's glow in its picture.
         ambient = AmbientGlowView()
+        ambient.glowChanged = { [weak self] glow in self?.glowChanged(glow) }
         ambient.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(ambient)
         pageArea = UIView()
@@ -177,11 +180,12 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// The page on screen is just one picture: shown natively over the page
     /// (whose own, smaller copy the page hides), or taken away. The room
     /// around it (above and below a cover on a tall phone) is the page's
-    /// own colour, plain, so the picture sits on the page rather than in a
-    /// strip of glow (design review, 21 Nov 2026).
+    /// own colour, plain, so the picture sits on the page (design review,
+    /// 21 Nov 2026); with ambient light it is see-through, so the picture's
+    /// glow shows there, as round any other page.
     func sessionShowLonePicture(_ data: Data?) {
         let image = data.flatMap(UIImage.init(data:))
-        lonePictureView.backgroundColor = currentTheme.uiBackground
+        updateLonePictureBackground()
         lonePictureView.image = image
         lonePictureView.isHidden = image == nil
         if let waiting = lonePictureWaiter {
@@ -326,8 +330,19 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     /// The glow, stretched to the screen and faded towards the middle (the
     /// edge mask drawn in): ready to show, and to draw into page pictures.
+    ///
+    /// Round a page that is one picture there is no text to keep clear, so
+    /// its glow fills the screen, as round a PDF's page, rather than only
+    /// the edges: the room above and below the picture glows too.
     private func maskedGlow(_ glow: UIImage) -> UIImage? {
         guard let mask = ambientMask else { return nil }
+        if !lonePictureView.isHidden, lonePictureView.image != nil {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            return UIGraphicsImageRenderer(size: mask.size, format: format).image { _ in
+                glow.draw(in: CGRect(origin: .zero, size: mask.size))
+            }
+        }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1 // a blur: points are plenty
         return UIGraphicsImageRenderer(size: mask.size, format: format).image { context in
@@ -335,6 +350,15 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
             glow.draw(in: bounds)
             mask.draw(in: bounds, blendMode: .destinationIn, alpha: 1)
         }
+    }
+
+    /// What the glow is made from: a small picture of the page; or, on a
+    /// page that is one picture, that picture alone, so its colours fill
+    /// the glow all round, above and below it too, as a PDF page's do (from
+    /// the whole page, the room round the picture made a plain glow there).
+    private func glowSource(_ configuration: WKSnapshotConfiguration, done: @escaping (UIImage?) -> Void) {
+        if !lonePictureView.isHidden, let picture = lonePictureView.image { return done(picture) }
+        pageSnapshot(configuration, done: done)
     }
 
     /// Makes the glow for the page now on screen and shows it at once, then
@@ -346,7 +370,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         let config = WKSnapshotConfiguration()
         config.snapshotWidth = 48
         let theme = currentTheme.uiBackground
-        pageSnapshot(config) { [weak self] image in
+        glowSource(config) { [weak self] image in
             guard let self, let image else { return done() }
             PDFAmbientBackground.make(from: image, theme: theme) { [weak self] glow in
                 // During a slide this is the page sliding in: it fades in
@@ -361,16 +385,25 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// moment (turns come in runs), and fades it in.
     func updateAmbient() {
         ambient.isHidden = !usesAmbientLight
+        updateLonePictureBackground()
         updateAmbientMask()
         // During a turn the turn itself brings the new glow (makeGlowNow).
         guard usesAmbientLight, session.hasRendered, !pageTurner.isBusy else { return }
         ambientWork?.cancel()
+        // A new theme: the glow made from the page in the old one (dark
+        // shading at the sides after turning Dark to Light, say) goes at
+        // once, and the new one is made once the page has been redrawn in
+        // the new colours, a little later than usual.
+        let theme = currentTheme.background
+        let newTheme = glowTheme != nil && glowTheme != theme
+        glowTheme = theme
+        if newTheme { ambient.show(nil, fade: UIAccessibility.isReduceMotionEnabled ? 0 : 0.2) }
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             let config = WKSnapshotConfiguration()
             config.snapshotWidth = 48
             let theme = self.currentTheme.uiBackground
-            self.pageSnapshot(config) { [weak self] image in
+            self.glowSource(config) { [weak self] image in
                 guard let self, let image else { return }
                 PDFAmbientBackground.make(from: image, theme: theme) { [weak self] glow in
                     guard let self, let glow, self.usesAmbientLight, !self.pageTurner.isBusy,
@@ -383,7 +416,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
             }
         }
         ambientWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (newTheme ? 0.7 : 0.25), execute: work)
     }
 
     override func savePositionNow() { session.savePositionNow() }
@@ -432,7 +465,13 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     override func applyTheme() {
         super.applyTheme()
-        lonePictureView?.backgroundColor = currentTheme.uiBackground
+        updateLonePictureBackground()
+    }
+
+    /// Round a picture-only page: the page's colour, or with ambient light
+    /// nothing, so the glow shows (sessionShowLonePicture).
+    private func updateLonePictureBackground() {
+        lonePictureView?.backgroundColor = usesAmbientLight ? .clear : currentTheme.uiBackground
     }
 
     override func viewDidLayoutSubviews() {

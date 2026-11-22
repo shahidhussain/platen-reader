@@ -242,4 +242,51 @@ class ReaderBaseViewController: UIViewController {
         overrideUserInterfaceStyle = theme.interfaceStyle
         setNeedsStatusBarAppearanceUpdate()
     }
+
+    // MARK: - Bands over the ambient glow
+
+    /// The ambient glow on show changed (nil: none): the bands behind the
+    /// controls take its colours at the top and bottom of the screen
+    /// (GlowBand), or go back to the page's colour.
+    func glowChanged(_ glow: UIImage?) {
+        guard let glow else {
+            state.topBandColour = nil
+            state.bottomBandColour = nil
+            return
+        }
+        let theme = currentTheme
+        let page = GlowBand.RGB(hex: theme.background)
+        func band(_ edge: VerticalEdge) -> String? {
+            guard let colour = Self.edgeColour(of: glow, edge, over: theme.uiBackground) else { return nil }
+            return GlowBand.colour(edge: colour, page: page, darkTheme: theme.isDark).hex
+        }
+        state.topBandColour = band(.top)
+        state.bottomBandColour = band(.bottom)
+    }
+
+    /// The average colour of a thin strip along the top or bottom of a glow
+    /// (where it is strongest), as it shows over the page's colour.
+    private static func edgeColour(of glow: UIImage, _ edge: VerticalEdge, over backdrop: UIColor) -> GlowBand.RGB? {
+        guard let cg = glow.cgImage, cg.height > 0 else { return nil }
+        let strip = max(1, cg.height / 25)
+        let rect = CGRect(x: 0, y: edge == .top ? 0 : cg.height - strip, width: cg.width, height: strip)
+        guard let part = cg.cropping(to: rect) else { return nil }
+        // Drawn small (16 × 2) and averaged: a fair mean of the strip.
+        let (width, height) = (16, 2)
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8,
+                                      bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let all = CGRect(x: 0, y: 0, width: width, height: height)
+        context.setFillColor(backdrop.cgColor)
+        context.fill(all)
+        context.interpolationQuality = .medium
+        context.draw(part, in: all)
+        var sum = (0.0, 0.0, 0.0)
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            sum.0 += Double(pixels[i]); sum.1 += Double(pixels[i + 1]); sum.2 += Double(pixels[i + 2])
+        }
+        let count = Double(width * height) * 255
+        return GlowBand.RGB(r: sum.0 / count, g: sum.1 / count, b: sum.2 / count)
+    }
 }
