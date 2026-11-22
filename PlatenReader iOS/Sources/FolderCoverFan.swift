@@ -109,6 +109,10 @@ enum FolderFans {
     /// What each row showed last, for drawing it at once when it returns.
     static var shown: [RecentItem.ID: [CGImage]] = [:]
 
+    /// The listing each folder's covers were last searched in, so a fan
+    /// still short of three is searched again only when that has changed.
+    private static var lastSearched: [RecentItem.ID: [FolderEntry]] = [:]
+
     private struct Record: Codable {
         var day: String
         /// The cover keys chosen (CoverCache keys), to avoid them next day.
@@ -157,18 +161,28 @@ enum FolderFans {
         // up, keeping those already shown.
         let newDay = record?.day != today || saved.isEmpty
         let wanted = newDay ? count : count - saved.count
-        if wanted > 0 {
-            let books = candidates(of: item)
+        let listing = FolderListingCache.listing(of: RecentItem.pathURL(item.path)) ?? []
+        // Topping up looks again only once the folder's listing has changed
+        // (more covers read since): before, a folder with too few covers was
+        // searched again on every return to Home, for nothing.
+        let unchanged = !newDay && lastSearched[id] == listing
+        if wanted > 0, !unchanged {
             let keep = newDay ? [] : (record?.keys ?? [])
             let keepTitles = newDay ? [] : (record?.titles ?? [])
             let avoid = newDay ? Set(record?.keys ?? []) : []
-            let picked: [Pick] = await withCheckedContinuation { continuation in
+            // The books and their cover keys are worked out in the
+            // background too: it touched the disk for each book, and on the
+            // main thread that held Home up on every return to it (device
+            // diagnostics, 22 Nov 2026).
+            let (found, picked): (Int, [Pick]) = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .utility).async {
-                    continuation.resume(returning: pick(wanted, from: books, excluding: Set(keep),
-                                                        titles: Set(keepTitles), avoiding: avoid))
+                    let books = candidates(in: listing)
+                    continuation.resume(returning: (books.count, pick(wanted, from: books, excluding: Set(keep),
+                                                                      titles: Set(keepTitles), avoiding: avoid)))
                 }
             }
-            log.info("folder fan: \(books.count, privacy: .public) books to look at, \(picked.count, privacy: .public) picked, \(saved.count, privacy: .public) kept, \(newDay ? "new day" : "topping up", privacy: .public)")
+            lastSearched[id] = listing
+            log.info("folder fan: \(found, privacy: .public) books to look at, \(picked.count, privacy: .public) picked, \(saved.count, privacy: .public) kept, \(newDay ? "new day" : "topping up", privacy: .public)")
             if !picked.isEmpty {
                 try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 if newDay {
@@ -195,27 +209,27 @@ enum FolderFans {
     }
 
     /// The books whose covers may have been saved: those directly in the
-    /// folder's saved listing, not in its subfolders (a fan of covers from
+    /// folder's saved listing (`listing`), not in its subfolders (a fan of covers from
     /// folders further down mixed in books the folder does not show; the
     /// reader asked for its own books only, 21 Nov 2026). A book only in
     /// iCloud counts as well: its cover is iCloud's thumbnail of it, saved
     /// under a key of its own (FolderModel). Text files have no cover.
-    private static func candidates(of item: RecentItem) -> [Candidate] {
+    private nonisolated static func candidates(in listing: [FolderEntry]) -> [Candidate] {
         var found: [Candidate] = []
-        if let listing = FolderListingCache.listing(of: RecentItem.pathURL(item.path)) {
-            for entry in listing.prefix(4000) {
-                if entry.kind == .folder { continue }
-                guard let type = BookFileType(entry.url), type != .text else { continue }
-                let key: String
-                if entry.isDownloaded {
-                    guard let size = entry.size, let modified = entry.modified else { continue }
-                    key = CoverCache.key(path: entry.url.standardizedFileURL.path, size: size, modified: modified)
-                } else {
-                    key = CoverCache.key(path: "icloud-thumbnail:" + FolderScanner.canonicalPath(entry.url), size: 0,
-                                         modified: entry.modified ?? .distantPast)
-                }
-                found.append(Candidate(name: entry.name, key: key, isPDF: type == .pdf))
+        for entry in listing.prefix(4000) {
+            if entry.kind == .folder { continue }
+            guard let type = BookFileType(entry.url), type != .text else { continue }
+            let key: String
+            if entry.isDownloaded {
+                guard let size = entry.size, let modified = entry.modified else { continue }
+                // The path as the cover cache keys it (`standardizedFileURL`),
+                // worked out without the disk.
+                key = CoverCache.key(path: FolderScanner.standardPath(entry.url), size: size, modified: modified)
+            } else {
+                key = CoverCache.key(path: "icloud-thumbnail:" + FolderScanner.canonicalPath(entry.url), size: 0,
+                                     modified: entry.modified ?? .distantPast)
             }
+            found.append(Candidate(name: entry.name, key: key, isPDF: type == .pdf))
         }
         return found
     }

@@ -78,12 +78,19 @@ final class DiagnosticLogTests: XCTestCase {
         XCTAssertTrue(text.hasPrefix("20"))
     }
 
+    func testTheSharedCopyIsNamedForTheMomentItWasMade() throws {
+        var parts = DateComponents()
+        (parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second) = (2026, 11, 22, 10, 41, 14)
+        let date = try XCTUnwrap(Calendar.current.date(from: parts))
+        XCTAssertEqual(DiagnosticLog.fileName(at: date), "Platen Reader Diagnostics 2026-11-22 at 10.41.14.txt")
+    }
+
     func testTheSharedCopySaysWhatItIs() throws {
         let diagnostics = DiagnosticLog(directory: directory)
         diagnostics.enableForTesting()
         diagnostics.add("home: books tab", level: "")
         let copy = try diagnostics.export(now: Date(timeIntervalSince1970: 1_795_000_000))
-        XCTAssertTrue(copy.lastPathComponent.hasPrefix("Platen Reader Diagnostics 2026-"))
+        XCTAssertEqual(copy.lastPathComponent, DiagnosticLog.fileName(at: Date(timeIntervalSince1970: 1_795_000_000)))
         let text = try String(contentsOf: copy, encoding: .utf8)
         XCTAssertTrue(text.hasPrefix("Platen Reader diagnostics, made 2026-"))
         XCTAssertTrue(text.contains("left out"))

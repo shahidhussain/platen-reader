@@ -89,7 +89,8 @@ final class DiagnosticLog: @unchecked Sendable {
         queue.sync { writePending() }
     }
 
-    /// A copy of the file to share: a temporary file named for today, which
+    /// A copy of the file to share: a temporary file named for the moment
+    /// it was made (`fileName`), which
     /// begins by saying what it is and which device it is from.
     func export(now: Date = Date()) throws -> URL {
         try queue.sync {
@@ -101,13 +102,24 @@ final class DiagnosticLog: @unchecked Sendable {
             Book titles, file names and searches are left out (shown as <name>).
 
             """
-            let day = String(timestamps.string(from: now).prefix(10))
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Diagnostics", isDirectory: true)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let copy = folder.appendingPathComponent("Platen Reader Diagnostics \(day).txt")
+            let copy = folder.appendingPathComponent(Self.fileName(at: now))
             try (header + saved).write(to: copy, atomically: true, encoding: .utf8)
             return copy
         }
+    }
+
+    /// The shared copy's name, with the date and time it was made, in the
+    /// style of the Mac's screenshots ("Platen Reader Diagnostics 2026-11-22
+    /// at 10.41.14.txt"; a file name may not hold a colon), so two shared on
+    /// the same day do not collide (the second was renamed on the Mac, to a
+    /// name that read like a year: device testing, 22 Nov 2026).
+    static func fileName(at date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return "Platen Reader Diagnostics \(formatter.string(from: date)).txt"
     }
 
     /// For the tests: turned on without the launch line.

@@ -272,12 +272,36 @@ enum FolderScanner {
     /// on iOS for the same place) compare equal. Worked out from the text
     /// alone: resolving links would touch the disk, which can hang on a
     /// network share that has gone away, and this runs on the main thread.
-    static func canonicalPath(_ url: URL) -> String {
-        let path = url.standardizedFileURL.path
+    nonisolated static func canonicalPath(_ url: URL) -> String {
+        let path = standardPath(url)
         for folder in ["/private/var/", "/private/tmp/"] where path.hasPrefix(folder) {
             return String(path.dropFirst("/private".count))
         }
         return path
+    }
+
+    /// The URL's path with "." and ".." worked out, as `standardizedFileURL`
+    /// gives it, but from the text alone. `standardizedFileURL` asks the
+    /// disk whether a file URL is a folder when the URL does not say, and on
+    /// a phone, called for every book in a folder of a hundred or more on
+    /// the main thread, that held Home up for 0.8 to 1.8 seconds on every
+    /// return to it (device diagnostics, 22 Nov 2026).
+    nonisolated static func standardPath(_ url: URL) -> String {
+        let path = url.path
+        // Nearly every path has nothing to work out.
+        guard path.contains("/./") || path.contains("/../") || path.hasSuffix("/.") || path.hasSuffix("/..") else {
+            return path
+        }
+        var parts: [Substring] = []
+        for part in path.split(separator: "/") {
+            if part == "." { continue }
+            if part == ".." {
+                if !parts.isEmpty { parts.removeLast() }
+                continue
+            }
+            parts.append(part)
+        }
+        return "/" + parts.joined(separator: "/")
     }
 }
 

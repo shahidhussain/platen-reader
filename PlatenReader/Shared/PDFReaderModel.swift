@@ -78,6 +78,14 @@ final class PDFReaderModel: NSObject, PDFDocumentDelegate {
                 }
                 guard let document else { throw PDFOpenError.unreadable }
                 if document.isLocked { throw PDFOpenError.locked }
+                // Every page looked at once here, in the background, so
+                // PDFKit reads the document's tree of pages now rather than
+                // on the main thread as the view takes the document: in one
+                // PDF of 178 pages that walk held the app up for 2.3 seconds
+                // (device diagnostics, 22 Nov 2026). Quick for most PDFs.
+                for index in 0..<document.pageCount {
+                    _ = document.page(at: index)?.bounds(for: .mediaBox)
+                }
                 let identity = try PDFIdentity.identify(source: source)
                 return Loaded(document: document, fingerprint: identity.fingerprint,
                               key: identity.key, documentID: identity.documentID)
