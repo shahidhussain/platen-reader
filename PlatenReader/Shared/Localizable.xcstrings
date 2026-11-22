@@ -185,6 +185,9 @@
     "Downloading" : {
 
     },
+    "Downloading “%@” from iCloud…" : {
+
+    },
     "Downloading from iCloud…" : {
 
     },
@@ -326,9 +329,6 @@
     "last page in chapter" : {
 
     },
-    "Laying out the first page…" : {
-
-    },
     "Layout" : {
 
     },
@@ -446,6 +446,9 @@
     "Open…" : {
 
     },
+    "Opening “%@”…" : {
+
+    },
     "Opening the book…" : {
 
     },
@@ -502,9 +505,6 @@
 
     },
     "Platen Reader" : {
-
-    },
-    "Preparing the pages…" : {
 
     },
     "Previous Chapter" : {

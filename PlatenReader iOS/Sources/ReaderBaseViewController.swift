@@ -33,6 +33,9 @@ class ReaderBaseViewController: UIViewController {
     init(url: URL, state: ReaderState) {
         self.url = url
         self.state = state
+        // "Opening “Sense and Sensibility”…" from the start, with the title
+        // Recent Books knows, until the book's own is read.
+        state.openingTitle = RecentList.books.item(at: url)?.displayName ?? FolderScanner.displayName(url)
         super.init(nibName: nil, bundle: nil)
         accessingSecurityScope = url.startAccessingSecurityScopedResource()
     }
@@ -260,7 +263,7 @@ class ReaderBaseViewController: UIViewController {
                 "theme": currentTheme.background, "dark": currentTheme.isDark,
                 "ambient": settings.ambientLight, "flow": state.flow.rawValue,
                 "pageLayout": settings.pageLayout.rawValue, "columns": state.columnsOnScreen,
-                "isPDF": state.isPDF, "spreads": state.pagesAreSpreads,
+                "isPDF": state.isPDF, "spreads": state.pagesAreSpreads, "fixedLayout": state.isFixedLayout,
                 "landscape": view.bounds.width > view.bounds.height,
                 "controls": chrome.isVisible,
                 "topBand": state.topBandColour ?? "", "bottomBand": state.bottomBandColour ?? "",

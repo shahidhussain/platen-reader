@@ -378,6 +378,14 @@ window.platen = {
     tapTarget,
     // Testing: text still too faint to read against the page (bookfixes.js).
     auditColours,
+    // iOS: where a fixed-layout book's pages are on screen, [x, y, width,
+    // height] each in window coordinates (blank halves of a spread left
+    // out), so the ambient glow is made from the pages alone.
+    pageRects: () => (reader.view?.renderer?.getContents?.() ?? [])
+        .map(({ doc }) => doc?.defaultView?.frameElement?.getBoundingClientRect())
+        .filter(r => r && r.width > 1 && r.height > 1 && r.right > 0 && r.left < innerWidth
+            && r.bottom > 0 && r.top < innerHeight)
+        .map(r => [r.left, r.top, r.width, r.height]),
     // iOS: the picture under a held finger, sent as an 'image' message.
     pictureAt,
     // iOS, during a page turn: is the new page a picture-only page?

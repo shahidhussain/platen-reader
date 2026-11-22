@@ -335,6 +335,22 @@ def main():
     made.append(simple("fixed-layout.epub", "Fixed Layout", pages,
                        extra_meta='<meta property="rendition:layout">pre-paginated</meta><meta property="rendition:spread">landscape</meta>'))
 
+    # A fixed-layout picture book like Lory Dory (device testing, 21 Nov
+    # 2026): landscape pages in strong colours, set in the middle of a
+    # phone's screen with room above and below. With ambient light that room
+    # glows in the page's colours, as round a PDF's page (the iOS matrix
+    # checks it); it used to stay dark, with smudges at the corners.
+    pages = []
+    for i, colour in enumerate(["#f5d63d", "#4aa3e0", "#e0604a"], 1):
+        pages.append((f"page{i}.xhtml", f"""<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Page {i}</title>
+<meta name="viewport" content="width=1000, height=600"/>
+<style>body{{margin:0;width:1000px;height:600px;background:{colour};font:bold 40px sans-serif;display:flex;align-items:center;justify-content:center}}</style></head>
+<body><div>One night Grandpa was tucking me in. ({i})</div></body></html>"""))
+    made.append(simple("fixed-layout-wide.epub", "Wide Fixed Layout", pages,
+                       extra_meta='<meta property="rendition:layout">pre-paginated</meta>'
+                                  '<meta property="rendition:spread">none</meta>'))
+
     # Publisher sizes in px, pt and keywords, which ignore the root font
     # size: the text size setting must still change them (reader.js rewrites
     # them to rem). Also content wider than a page (a fixed-width table and a

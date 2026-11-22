@@ -62,7 +62,7 @@ final class OpeningStageTests: XCTestCase {
         let targets = stages.map(\.progress)
         XCTAssertEqual(targets, targets.sorted(), "each stage moves the bar on")
         XCTAssertLessThan(targets.last ?? 1, 1, "the bar fills only when the page is shown")
-        XCTAssertTrue(stages.allSatisfy { !$0.label.isEmpty })
+        XCTAssertTrue(stages.allSatisfy { !$0.label(title: "").isEmpty })
     }
 
     @MainActor

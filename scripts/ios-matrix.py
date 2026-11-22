@@ -110,6 +110,15 @@ def cases():
             ],
         },
         {
+            "name": "fixed-layout-wide",
+            "book": os.path.join(FIXTURES, "fixed-layout-wide.epub"),
+            "states": [
+                state("dark", ["@theme:dark", "@ambient:on", "@controls:hide"], ["glow_fills"], settle=True),
+                state("dark-controls", ["@controls:show"], ["bands_legible", "bands_match_glow:dark"], settle=True),
+                state("light-next", ["@controls:hide", "@theme:light", "@turn:next"], ["glow_fills"], settle=True),
+            ],
+        },
+        {
             "name": "square-pages",
             "book": os.path.join(FIXTURES, "square-pages.pdf"),
             "states": [
@@ -282,6 +291,19 @@ def rule_edges_plain(shot, report, results, arg):
         seen = mean(shot, box)
         if distance(seen, theme) > 30:
             return f"the side of the screen is {tuple(round(v) for v in seen)}, far from the page's {report['theme']}"
+
+
+def rule_glow_fills(shot, report, results, arg):
+    """With ambient light, a page set apart in the middle of the screen (a
+    fixed-layout book's, wider than the phone) glows all round: the room
+    above it is lit in the page's colours, not left the page's plain colour
+    with smudges at the corners (Lory Dory, 0.8.25)."""
+    if not report.get("ambient"):
+        return None
+    box = (shot.width * 0.2, shot.height * 0.1, shot.width * 0.8, shot.height * 0.16)
+    seen = mean(shot, box)
+    if distance(seen, rgb(report["theme"])) < 30:
+        return f"the room above the page is plain {tuple(round(v) for v in seen)}, the page's colour"
 
 
 def rule_two_pages(shot, report, results, arg):

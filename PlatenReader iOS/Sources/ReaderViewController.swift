@@ -331,12 +331,13 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// The glow, stretched to the screen and faded towards the middle (the
     /// edge mask drawn in): ready to show, and to draw into page pictures.
     ///
-    /// Round a page that is one picture there is no text to keep clear, so
-    /// its glow fills the screen, as round a PDF's page, rather than only
-    /// the edges: the room above and below the picture glows too.
+    /// Round a page that is one picture, or a fixed-layout book's page,
+    /// there is no text to keep clear, so its glow fills the screen, as
+    /// round a PDF's page, rather than only the edges: the room above and
+    /// below it glows too (`glowFillsScreen`).
     private func maskedGlow(_ glow: UIImage) -> UIImage? {
         guard let mask = ambientMask else { return nil }
-        if !lonePictureView.isHidden, lonePictureView.image != nil {
+        if glowFillsScreen {
             let format = UIGraphicsImageRendererFormat()
             format.scale = 1
             return UIGraphicsImageRenderer(size: mask.size, format: format).image { _ in
@@ -356,9 +357,29 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// page that is one picture, that picture alone, so its colours fill
     /// the glow all round, above and below it too, as a PDF page's do (from
     /// the whole page, the room round the picture made a plain glow there).
+    ///
+    /// A fixed-layout book (a picture book set page by page) is the same:
+    /// its page is drawn alone in the middle of the screen, so a picture of
+    /// the whole screen was mostly the dark room round it, and the glow
+    /// came out as faint smudges at the corners (Lory Dory, device testing,
+    /// 21 Nov 2026). The glow is made from the page (or spread) alone, as a
+    /// PDF's is.
     private func glowSource(_ configuration: WKSnapshotConfiguration, done: @escaping (UIImage?) -> Void) {
         if !lonePictureView.isHidden, let picture = lonePictureView.image { return done(picture) }
-        pageSnapshot(configuration, done: done)
+        guard state.isFixedLayout else { return pageSnapshot(configuration, done: done) }
+        session.fixedLayoutPageRects { [weak self] rects in
+            guard let self else { return done(nil) }
+            let area = rects.reduce(CGRect.null) { $0.union($1) }.intersection(self.webView.bounds)
+            if !area.isNull, area.width > 4, area.height > 4 { configuration.rect = area }
+            self.webView.takeSnapshot(with: configuration) { image, _ in done(image) }
+        }
+    }
+
+    /// Whether the glow fills the screen rather than only its edges: round a
+    /// page with no text to keep clear (a picture-only page, or a
+    /// fixed-layout book's page, which is set apart in the middle).
+    private var glowFillsScreen: Bool {
+        (!lonePictureView.isHidden && lonePictureView.image != nil) || state.isFixedLayout
     }
 
     /// Makes the glow for the page now on screen and shows it at once, then

@@ -456,6 +456,19 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
         }
     }
 
+    /// Where a fixed-layout book's pages are on screen (one, or two in a
+    /// spread), in the web view's coordinates: the area the ambient glow is
+    /// made from (iOS). Empty for other books.
+    func fixedLayoutPageRects(completion: @escaping ([CGRect]) -> Void) {
+        guard isOpenInPage, state.isFixedLayout, let webView else { return completion([]) }
+        webView.callAsyncJavaScript("return platen.pageRects()", arguments: [:], in: nil, in: .page) { result in
+            let rects = ((try? result.get()) as? [[Double]] ?? []).compactMap { r -> CGRect? in
+                r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil
+            }
+            completion(rects)
+        }
+    }
+
     // MARK: - Helpers
 
     private func saveBookmarks(_ record: BookRecord) {

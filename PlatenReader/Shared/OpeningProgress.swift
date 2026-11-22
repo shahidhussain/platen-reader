@@ -23,12 +23,15 @@ enum OpeningStage: Int, Comparable {
 
     static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
 
-    var label: String {
-        switch self {
-        case .downloading: return String(localized: "Downloading from iCloud…")
-        case .reading: return String(localized: "Opening the book…")
-        case .preparing: return String(localized: "Preparing the pages…")
-        case .layingOut: return String(localized: "Laying out the first page…")
+    /// The line under the bar: which book is opening, by name ("Opening
+    /// “Sense and Sensibility”…"), rather than which step it is on; the bar
+    /// shows how far it has got. `title` is empty if no name is known.
+    func label(title: String) -> String {
+        switch (self, title.isEmpty) {
+        case (.downloading, false): return String(localized: "Downloading “\(title)” from iCloud…")
+        case (.downloading, true): return String(localized: "Downloading from iCloud…")
+        case (_, false): return String(localized: "Opening “\(title)”…")
+        case (_, true): return String(localized: "Opening the book…")
         }
     }
 
@@ -52,9 +55,12 @@ struct OpeningProgressView: View {
         VStack(spacing: 10) {
             ThinProgressBar(progress: progress)
                 .frame(width: 180, height: 3)
-            Text(shown.label)
+            Text(shown.label(title: state.title.isEmpty ? state.openingTitle : state.title))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(maxWidth: 280)
                 .contentTransition(.opacity)
         }
         .accessibilityElement(children: .combine)

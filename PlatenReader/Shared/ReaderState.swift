@@ -49,6 +49,10 @@ final class ReaderState: ObservableObject {
     /// While the book opens, how far it has got (the loading bar); nil once
     /// the first page is on screen, or the book could not be opened.
     @Published var opening: OpeningStage? = .reading
+    /// What to call the book while it opens, before its own title is read:
+    /// its title from Recent Books if it has been opened before, else its
+    /// file name (set by the reader as it starts).
+    @Published var openingTitle = ""
     @Published var title = ""
     @Published var author = ""
     @Published var isFixedLayout = false
