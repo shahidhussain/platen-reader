@@ -141,7 +141,10 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         installChrome(in: root)
         // While the controls are up, the page number steps aside for their
         // location line, which sits in the same place.
-        chrome.onVisibilityChanged = { [weak self] visible in self?.session.setControlsVisible(visible) }
+        chrome.onVisibilityChanged = { [weak self] visible in
+            self?.session.setControlsVisible(visible)
+            if visible { self?.scheduleBandCheck(after: 0) }
+        }
         view = root
     }
 
@@ -353,6 +356,14 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         }
     }
 
+    /// Behind the controls: the page with its picture and the glow.
+    override func backdropSnapshot(width: CGFloat, done: @escaping (UIImage?) -> Void) {
+        guard session.hasRendered else { return done(nil) }
+        let config = WKSnapshotConfiguration()
+        config.snapshotWidth = NSNumber(value: Double(width))
+        pageSnapshot(config, withGlow: true, done: done)
+    }
+
     /// What the glow is made from: a small picture of the page; or, on a
     /// page that is one picture, that picture alone, so its colours fill
     /// the glow all round, above and below it too, as a PDF page's do (from
@@ -405,6 +416,8 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// Makes the glow from a small picture of the page as it is now, after a
     /// moment (turns come in runs), and fades it in.
     func updateAmbient() {
+        // The page has moved or changed: do the controls need bands?
+        scheduleBandCheck()
         ambient.isHidden = !usesAmbientLight
         updateLonePictureBackground()
         updateAmbientMask()
@@ -524,6 +537,11 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     func sessionDidRenderFirstPage() {
         updateAmbient()
+        // And again once the first page has surely been drawn: a picture of
+        // the page taken just after it is ready can come back blank, which
+        // made a grey glow (and a grey band behind the controls) that stayed
+        // until the first turn (seen reopening a Sepia book, 22 Nov 2026).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.updateAmbient() }
         spinner.stopAnimating()
         #if DEBUG
         runDebugStepsIfAny()

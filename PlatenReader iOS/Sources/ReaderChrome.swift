@@ -251,8 +251,15 @@ struct ReaderTopBar: View {
         .padding(.bottom, 20) // the band's fade, below the controls
         .background {
             // With ambient light, in the glow's colour at the top (GlowBand).
-            PageBand(colour: state.topBandColour ?? state.pageColour, edge: .top, fade: 20)
+            // With ambient light, in the glow's colour at the top (GlowBand);
+            // none at all where what is behind already lets the title read.
+            // The fade (an S-curve) reaches 28 points past the bar, below
+            // its touch area.
+            PageBand(colour: state.topBandColour ?? state.pageColour, edge: .top, fade: 48)
+                .padding(.bottom, -28)
+                .opacity(state.topBandNeeded ? 1 : 0)
                 .animation(.easeInOut(duration: 0.35), value: state.topBandColour)
+                .animation(.easeInOut(duration: 0.3), value: state.topBandNeeded)
         }
     }
 }
@@ -272,8 +279,11 @@ struct ReaderBottomBar: View {
             .padding(.bottom, insets.edges.bottom)
             .frame(maxWidth: .infinity)
             .background {
-                PageBand(colour: state.bottomBandColour ?? state.pageColour, edge: .bottom, fade: 24)
+                PageBand(colour: state.bottomBandColour ?? state.pageColour, edge: .bottom, fade: 52)
+                    .padding(.top, -28)
+                    .opacity(state.bottomBandNeeded ? 1 : 0)
                     .animation(.easeInOut(duration: 0.35), value: state.bottomBandColour)
+                    .animation(.easeInOut(duration: 0.3), value: state.bottomBandNeeded)
             }
     }
 }

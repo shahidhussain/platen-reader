@@ -88,6 +88,11 @@ final class ReaderState: ObservableObject {
     /// page's colour.
     @Published var topBandColour: String?
     @Published var bottomBandColour: String?
+    /// Whether the controls need a band behind them at all (iOS): false when
+    /// what is behind them already lets them read clearly
+    /// (`GlowBand.needsBand`), so no band, edge or fade is drawn.
+    @Published var topBandNeeded = true
+    @Published var bottomBandNeeded = true
 
     // Jumps: "Back to p. 87" after a jump, until the reader moves on.
     @Published var backLabel: String?

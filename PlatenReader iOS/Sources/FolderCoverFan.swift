@@ -99,9 +99,8 @@ struct FolderRowPicture: View {
 /// at, so few covers had been read), more are added as they become known.
 /// On a new day three others are drawn at random from the books whose
 /// covers are real pictures (avoiding yesterday's where the folder has
-/// enough): books in the folder's saved listing, in its subfolders' if
-/// those were opened, and books only in iCloud (by iCloud's thumbnail of
-/// them). If none can be found (the folder has not been opened lately),
+/// enough): books in the folder's saved listing (not its subfolders'),
+/// and books only in iCloud (by iCloud's thumbnail of them). If none can be found (the folder has not been opened lately),
 /// yesterday's stay. Each choice is logged with its counts ("folder fan:").
 @MainActor
 enum FolderFans {
@@ -195,22 +194,17 @@ enum FolderFans {
         return images
     }
 
-    /// The books whose covers may have been saved: those in the folder's
-    /// saved listing and, if they were opened too, its folders' (two levels
-    /// down: a folder of comics kept in one folder per series has none of
-    /// its own). A book only in iCloud counts as well: its cover is iCloud's
-    /// thumbnail of it, saved under a key of its own (FolderModel). Text
-    /// files have no cover.
+    /// The books whose covers may have been saved: those directly in the
+    /// folder's saved listing, not in its subfolders (a fan of covers from
+    /// folders further down mixed in books the folder does not show; the
+    /// reader asked for its own books only, 21 Nov 2026). A book only in
+    /// iCloud counts as well: its cover is iCloud's thumbnail of it, saved
+    /// under a key of its own (FolderModel). Text files have no cover.
     private static func candidates(of item: RecentItem) -> [Candidate] {
         var found: [Candidate] = []
-        var folders: [(URL, Int)] = [(RecentItem.pathURL(item.path), 0)]
-        while let (folder, depth) = folders.popLast(), found.count < 2000 {
-            guard let listing = FolderListingCache.listing(of: folder) else { continue }
-            for entry in listing {
-                if entry.kind == .folder {
-                    if depth < 2 { folders.append((entry.url, depth + 1)) }
-                    continue
-                }
+        if let listing = FolderListingCache.listing(of: RecentItem.pathURL(item.path)) {
+            for entry in listing.prefix(4000) {
+                if entry.kind == .folder { continue }
                 guard let type = BookFileType(entry.url), type != .text else { continue }
                 let key: String
                 if entry.isDownloaded {

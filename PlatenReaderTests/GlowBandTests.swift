@@ -38,4 +38,42 @@ final class GlowBandTests: XCTestCase {
         let band = GlowBand.colour(edge: navy, page: .white, darkTheme: false)
         XCTAssertGreaterThanOrEqual(GlowBand.contrast(band, .black), GlowBand.neededContrast)
     }
+
+    /// A dark glow and page behind white controls: no band at all.
+    func testNoBandOverADarkBackdrop() {
+        let backdrop = Array(repeating: RGB(hex: "#2a1d14"), count: 90) + Array(repeating: RGB(hex: "#1e1e20"), count: 10)
+        XCTAssertFalse(GlowBand.needsBand(behind: backdrop, width: 10, darkTheme: true))
+    }
+
+    /// A bright picture behind white controls (Scroll, a picture passing
+    /// under the title): a band.
+    func testABandOverABrightPicture() {
+        let backdrop = Array(repeating: RGB(hex: "#e8e070"), count: 60) + Array(repeating: RGB(hex: "#1e1e20"), count: 40)
+        XCTAssertTrue(GlowBand.needsBand(behind: backdrop, width: 10, darkTheme: true))
+    }
+
+    /// A few poor pixels (a stroke of a picture) are tolerated.
+    func testAFewPoorPixelsAreTolerated() {
+        let backdrop = Array(repeating: RGB(hex: "#1e1e20"), count: 95) + Array(repeating: RGB.white, count: 5)
+        XCTAssertFalse(GlowBand.needsBand(behind: backdrop, width: 10, darkTheme: true))
+    }
+
+    /// In a light theme the controls are black: a light glow needs no band,
+    /// a dark one does.
+    func testLightThemeBackdrops() {
+        XCTAssertFalse(GlowBand.needsBand(behind: Array(repeating: RGB(hex: "#f3e3b0"), count: 50), width: 10, darkTheme: false))
+        XCTAssertTrue(GlowBand.needsBand(behind: Array(repeating: RGB(hex: "#30304a"), count: 50), width: 10, darkTheme: false))
+    }
+
+    /// Lines of the page's own text behind the controls: a band, though
+    /// the paper alone would let the controls read (Sepia, black controls).
+    func testTextBehindTheControlsNeedsABand() {
+        let paper = RGB(hex: "#f4ecd8"), ink = RGB(hex: "#8a7f70")
+        // Rows of 20: every other row has strokes of "text" in it.
+        let rows = (0..<10).flatMap { row in
+            (0..<20).map { x in row % 2 == 0 && x % 3 == 0 ? ink : paper }
+        }
+        XCTAssertTrue(GlowBand.needsBand(behind: rows, width: 20, darkTheme: false))
+        XCTAssertFalse(GlowBand.needsBand(behind: Array(repeating: paper, count: 200), width: 20, darkTheme: false))
+    }
 }

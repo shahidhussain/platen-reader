@@ -62,7 +62,8 @@ def cases():
             "states": [
                 # A square plate on a tall phone: room above and below it.
                 state("dark-plate", ["@theme:dark", "@ambient:on", "@controls:hide"], ["picture_glows"], settle=True),
-                state("dark-plate-controls", ["@controls:show"], ["bands_legible", "bands_match_glow:dark-plate"]),
+                state("dark-plate-controls", ["@controls:show"],
+                      ["bands_legible", "bands_match_glow:dark-plate", "bands:top=off,bottom=off"], settle=True),
                 state("light-plate", ["@controls:hide", "@theme:light"], ["picture_glows"], settle=True),
                 state("light-plate-controls", ["@controls:show"], ["bands_legible", "bands_match_glow:light-plate"]),
                 state("plain-plate", ["@controls:hide", "@ambient:off"], ["picture_plain"], settle=True),
@@ -84,7 +85,8 @@ def cases():
                 # A glow made from the dark page lingered as grey shading at
                 # the sides after switching to Light (0.8.22).
                 state("dark-to-light", ["@theme:light"], ["edges_plain"], settle=True),
-                state("sepia-controls", ["@theme:sepia", "@controls:show"], ["bands_legible"], settle=True),
+                state("sepia-controls", ["@theme:sepia", "@controls:show"], ["bands_legible", "bands:bottom=on"],
+                      settle=True),
                 state("scroll-dark-controls", ["@layout:scroll", "@theme:dark"], ["bands_legible", "page_drawn"],
                       settle=True),
                 state("landscape-one", ["@layout:one", "@controls:hide", "@rotate:landscape"], ["page_drawn"],
@@ -306,6 +308,19 @@ def rule_glow_fills(shot, report, results, arg):
         return f"the room above the page is plain {tuple(round(v) for v in seen)}, the page's colour"
 
 
+def rule_bands(shot, report, results, arg):
+    """Which bands the controls have (`arg`: "top=off,bottom=on", say): none
+    over a plain glow, where they would only add an edge; one over the
+    book's own text or a busy picture (0.8.27)."""
+    for part in arg.split(","):
+        edge, _, want = part.partition("=")
+        has = report.get(f"{edge}BandNeeded")
+        if has is None:
+            return f"no {edge}BandNeeded in the report"
+        if has != (want == "on"):
+            return f"the {edge} band is {'shown' if has else 'left out'}, expected {'shown' if want == 'on' else 'left out'}"
+
+
 def rule_two_pages(shot, report, results, arg):
     """Two Pages in landscape shows two pages, unless they are spreads
     (`arg` "always": these pages are not, whatever the app thinks)."""
@@ -392,7 +407,14 @@ def run_case(case):
     # matched by order, as a result can be logged a moment after the
     # picture that follows it.
     reports, audits, names = [], [], []
+    # Moments the app was too busy to answer a tap (HangWatch), each with
+    # the step that was running or had just run.
+    busy, last_step = [], "opening"
     for line in log.splitlines():
+        if "] step: " in line:
+            last_step = line.split("] step: ", 1)[1].strip()
+        elif "main thread busy for" in line:
+            busy.append(f"{line.split('main thread busy for', 1)[1].strip()} after {last_step}")
         if "] report: " in line:
             reports.append(json.loads(line.split("] report: ", 1)[1]))
         elif "] step result: " in line:
@@ -408,6 +430,7 @@ def run_case(case):
         if index < len(audits):
             report["audit"] = audits[index]
         results[name] = {"report": report, "shot": None}
+    results["_busy"] = busy
 
     folder = os.path.join(OUT, case["name"])
     os.makedirs(folder, exist_ok=True)
@@ -423,7 +446,7 @@ def run_case(case):
 def check(case, results):
     failures = []
     for s in case["states"]:
-        entry = results.get(s["name"], {})
+        entry = results.setdefault(s["name"], {})
         entry["failures"] = []
         if entry.get("shot") is None or not entry.get("report"):
             entry["failures"].append("no picture or report (the steps did not finish)")
@@ -507,6 +530,9 @@ def main():
             mark = "FAIL" if entry.get("failures") else "PASS"
             lines.append(f"{mark}  {case['name']} / {s['name']}")
             lines += [f"      {f}" for f in entry.get("failures", [])]
+        if results.get("_busy"):
+            lines.append(f"      busy main thread: " + "; ".join(results["_busy"]))
+            print("  busy main thread: " + "; ".join(results["_busy"]), flush=True)
         print("\n".join("  " + f for f in found) or "  all passed", flush=True)
 
     with open(os.path.join(OUT, "report.txt"), "w") as f:

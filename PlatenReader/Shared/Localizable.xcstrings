@@ -194,6 +194,9 @@
     "Edit" : {
 
     },
+    "Edit Home" : {
+
+    },
     "End of book" : {
 
     },
@@ -543,6 +546,9 @@
     "Remove from Favourites" : {
 
     },
+    "Remove from List" : {
+
+    },
     "Remove from Recents" : {
 
     },
@@ -634,9 +640,6 @@
 
     },
     "Sort By" : {
-
-    },
-    "Sort by Date" : {
 
     },
     "Start of book" : {

@@ -28,17 +28,30 @@ struct PageBand: View {
         let page = Color(hex: colour)
         VStack(spacing: 0) {
             if edge == .bottom {
-                LinearGradient(colors: [page.opacity(0), page], startPoint: .top, endPoint: .bottom)
+                LinearGradient(stops: Self.easedStops(page).reversed().map { .init(color: $0.color, location: 1 - $0.location) },
+                               startPoint: .top, endPoint: .bottom)
                     .frame(height: fade)
                 page
             } else {
                 page
-                LinearGradient(colors: [page, page.opacity(0)], startPoint: .top, endPoint: .bottom)
+                LinearGradient(stops: Self.easedStops(page), startPoint: .top, endPoint: .bottom)
                     .frame(height: fade)
             }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    /// The fade from the band into the page: an S-curve (smoothstep), not a
+    /// straight line, so it eases out of the band and into the page with no
+    /// visible edge at either end. A straight fade over a bright picture
+    /// read as a hard line where it began (device testing, 21 Nov 2026).
+    static func easedStops(_ colour: Color) -> [Gradient.Stop] {
+        (0...12).map { step in
+            let t = Double(step) / 12
+            let eased = t * t * (3 - 2 * t)
+            return .init(color: colour.opacity(1 - eased), location: t)
+        }
     }
 }
 

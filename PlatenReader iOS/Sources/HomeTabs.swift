@@ -382,13 +382,16 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
 /// when. Tapping one shows it inside this tab. Folders browsed into from
 /// there are not added: the list holds only what the reader chose, so it
 /// stays tidy. Each is checked in the background; one that does not answer
-/// is greyed. A long press removes it (a sideways swipe moves between the
-/// home screen's tabs); + adds a folder. Edit (top left, as in iOS's own
-/// lists) shows handles to drag the folders into an order of the reader's
-/// own, which the list then keeps (`RecentList.isOrderedByHand`), and
-/// delete buttons; while editing, Sort by Date goes back to newest first.
-/// The gear in the navigation bar opens Settings. Each row starts with a
-/// small fan of the folder's covers (`FolderRowPicture`).
+/// is greyed. A long press removes it from the list (a sideways swipe moves
+/// between the home screen's tabs); + adds a folder. The gear's menu holds
+/// Settings and Edit Home, which shows handles to drag the folders (and the
+/// sections) into an order of the reader's own, kept by the list
+/// (`RecentList.isOrderedByHand`), and delete buttons; Done (top right)
+/// ends it. Edit is not at the top left, as in many iOS lists: that is
+/// where a Back button stands on the screens this one is reached from, and
+/// a tap meant for Back that landed late kept starting it (device testing,
+/// 21 Nov 2026). Each row starts with a small fan of the folder's covers
+/// (`FolderRowPicture`).
 struct RecentFoldersView: View {
     @ObservedObject private var recents = RecentList.folders
     @ObservedObject var navigation: HomeNavigation
@@ -436,22 +439,24 @@ struct RecentFoldersView: View {
             // says Home). Its version is in Settings, under About.
             .navigationTitle(Text(verbatim: "Platen Reader"))
             .toolbar {
-                if !recents.items.isEmpty || showsFavourites {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button(editMode.isEditing ? "Done" : "Edit") {
-                            withAnimation { editMode = editMode.isEditing ? .inactive : .active }
-                        }
-                        .fontWeight(editMode.isEditing ? .semibold : .regular)
-                    }
-                }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if editMode.isEditing {
-                        Button("Sort by Date") { withAnimation { recents.sortByDate() } }
-                            .disabled(!recents.isOrderedByHand)
+                        Button("Done") { withAnimation { editMode = .inactive } }
+                            .fontWeight(.semibold)
                     } else {
                         // Settings: about the app, not a book, so here
-                        // rather than among the reader's buttons.
-                        Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                        // rather than among the reader's buttons; with it,
+                        // Edit Home.
+                        Menu {
+                            Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                            if !recents.items.isEmpty || showsFavourites {
+                                Button { withAnimation { editMode = .active } } label: {
+                                    Label("Edit Home", systemImage: "pencil")
+                                }
+                            }
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
+                        }
                         Button(action: actions.chooseFolder) { Label("Choose Folder…", systemImage: "plus") }
                     }
                 }
@@ -469,7 +474,7 @@ struct RecentFoldersView: View {
             .alert(Text("This folder can’t be opened"), isPresented: Binding(
                 get: { cannotOpen != nil }, set: { if !$0 { cannotOpen = nil } }
             ), presenting: cannotOpen) { item in
-                Button("Remove from Recents", role: .destructive) { recents.remove(item) }
+                Button("Remove from List", role: .destructive) { recents.remove(item) }
                 Button("OK", role: .cancel) {}
             } message: { _ in
                 Text("It may have been moved or deleted, or it is on a drive or network share that is not connected.")
@@ -487,7 +492,7 @@ struct RecentFoldersView: View {
                     .allowsHitTesting(!editMode.isEditing)
                     .contextMenu {
                         Button(role: .destructive) { recents.remove(item) } label: {
-                            Label("Remove from Recents", systemImage: "minus.circle")
+                            Label("Remove from List", systemImage: "minus.circle")
                         }
                     }
             }

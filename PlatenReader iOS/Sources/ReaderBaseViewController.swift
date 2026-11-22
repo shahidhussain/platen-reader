@@ -267,6 +267,7 @@ class ReaderBaseViewController: UIViewController {
                 "landscape": view.bounds.width > view.bounds.height,
                 "controls": chrome.isVisible,
                 "topBand": state.topBandColour ?? "", "bottomBand": state.bottomBandColour ?? "",
+                "topBandNeeded": state.topBandNeeded, "bottomBandNeeded": state.bottomBandNeeded,
                 "width": view.bounds.width, "height": view.bounds.height,
             ].merging(debugReport()) { _, new in new }
             if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]),
@@ -304,12 +305,84 @@ class ReaderBaseViewController: UIViewController {
         setNeedsStatusBarAppearanceUpdate()
     }
 
+    // MARK: - Whether the controls need bands
+
+    private var bandCheck: DispatchWorkItem?
+    private static let bandQueue = DispatchQueue(label: "org.platenreader.band-check", qos: .utility)
+
+    /// A small picture of what lies behind the controls: the page, its
+    /// picture and the glow, without the controls themselves. Each reader
+    /// makes its own; nil if it cannot.
+    func backdropSnapshot(width: CGFloat, done: @escaping (UIImage?) -> Void) { done(nil) }
+
+    /// Works out, a moment after the page settles (a turn, a scroll, a new
+    /// glow, a new theme), whether the title and the bottom controls need a
+    /// band behind them (`GlowBand.needsBand`), so the answer is ready
+    /// before they are next shown.
+    func scheduleBandCheck(after delay: TimeInterval = 0.4) {
+        bandCheck?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.checkBands() }
+        bandCheck = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func checkBands() {
+        guard let chrome, view.bounds.width > 0 else { return }
+        let bounds = view.bounds
+        // Where the controls' text and buttons are: the top bar from the top
+        // of the screen (the status bar too) to its last line, and the
+        // bottom bar from its first line to the bottom (each without the
+        // room left for the band's fade).
+        let topArea = CGRect(x: 0, y: 0, width: bounds.width, height: max(0, chrome.top.view.frame.maxY - 20))
+        let bottomFrame = chrome.bottom.view.frame
+        let bottomArea = CGRect(x: 0, y: bottomFrame.minY + 24, width: bounds.width,
+                                height: max(0, bounds.maxY - bottomFrame.minY - 24))
+        let dark = currentTheme.isDark
+        // Sharp enough to see lines of text (each about two pixels tall).
+        backdropSnapshot(width: 180) { [weak self] image in
+            guard let cg = image?.cgImage else { return }
+            // Measured off the main thread: a few hundred thousand pixels
+            // would hold up taps for a noticeable moment (profiled: about
+            // 170 ms on the main thread in the Simulator).
+            Self.bandQueue.async {
+                let scale = CGFloat(cg.width) / bounds.width
+                let pixels = Self.pixels(of: cg)
+                func sample(_ area: CGRect) -> [GlowBand.RGB] {
+                    let rows = max(0, Int(area.minY * scale))..<min(cg.height, Int(area.maxY * scale))
+                    return rows.flatMap { y in pixels[(y * cg.width)..<((y + 1) * cg.width)] }
+                }
+                let top = GlowBand.needsBand(behind: sample(topArea), width: cg.width, darkTheme: dark)
+                let bottom = GlowBand.needsBand(behind: sample(bottomArea), width: cg.width, darkTheme: dark)
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if self.state.topBandNeeded != top { self.state.topBandNeeded = top }
+                    if self.state.bottomBandNeeded != bottom { self.state.bottomBandNeeded = bottom }
+                }
+            }
+        }
+    }
+
+    /// Every pixel of a (small) picture, as colours.
+    private static func pixels(of image: CGImage) -> [GlowBand.RGB] {
+        let (width, height) = (image.width, image.height)
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8,
+                                      bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return [] }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return stride(from: 0, to: bytes.count, by: 4).map {
+            GlowBand.RGB(r: Double(bytes[$0]) / 255, g: Double(bytes[$0 + 1]) / 255, b: Double(bytes[$0 + 2]) / 255)
+        }
+    }
+
     // MARK: - Bands over the ambient glow
 
     /// The ambient glow on show changed (nil: none): the bands behind the
     /// controls take its colours at the top and bottom of the screen
     /// (GlowBand), or go back to the page's colour.
     func glowChanged(_ glow: UIImage?) {
+        // The glow fades in over about a third of a second: look after.
+        scheduleBandCheck(after: 0.5)
         guard let glow else {
             state.topBandColour = nil
             state.bottomBandColour = nil

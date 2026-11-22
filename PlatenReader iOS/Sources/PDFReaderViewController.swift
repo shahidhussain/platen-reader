@@ -159,7 +159,10 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         // iPhone too (books there always show one page).
         state.allowsTwoPages = true
         installChrome(in: root)
-        chrome.onVisibilityChanged = { [weak self] _ in self?.updateRibbon() }
+        chrome.onVisibilityChanged = { [weak self] visible in
+            self?.updateRibbon()
+            if visible { self?.scheduleBandCheck(after: 0) }
+        }
         configurePageTurner()
 
         var constraints: [NSLayoutConstraint] = []
@@ -909,9 +912,25 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     // MARK: - Theme
 
+    /// Behind the controls: the glow and the pages, drawn small.
+    override func backdropSnapshot(width: CGFloat, done: @escaping (UIImage?) -> Void) {
+        let bounds = view.bounds
+        guard bounds.width > 0 else { return done(nil) }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = width / bounds.width
+        done(UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
+            (view.backgroundColor ?? .black).setFill()
+            UIRectFill(bounds)
+            if !ambient.isHidden { ambient.drawHierarchy(in: ambient.frame, afterScreenUpdates: false) }
+            pageArea.drawHierarchy(in: pageArea.frame, afterScreenUpdates: false)
+        })
+    }
+
     /// The ambient background for the pages on screen, faded in over the
     /// last one. Remade only when the pages or the theme change.
     private func updateAmbient() {
+        // New pages or a new glow: do the controls need bands?
+        scheduleBandCheck()
         // Off (Aa > Ambient Light): the theme's plain colour shows through.
         // Also off with Invert Colours: the glow is of the page's own colours,
         // which would not match the inverted page.

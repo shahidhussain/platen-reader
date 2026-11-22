@@ -6,6 +6,8 @@ import UIKit
 final class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // Logs any moment the app is too busy to answer a tap (HangWatch).
+        HangWatch.shared.start()
         // The default text size follows Dynamic Type (spec, "Layout"): about
         // 20 points at the standard size, like Apple Books, scaled with the
         // system's text size until the reader picks a size of their own.
