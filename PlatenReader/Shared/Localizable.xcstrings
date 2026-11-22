@@ -29,6 +29,9 @@
     "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
 
     },
+    "1 result" : {
+
+    },
     "A book’s title and author are known once Platen has read it; until then, and for books only in iCloud, its file name is shown." : {
 
     },
@@ -453,6 +456,9 @@
 
     },
     "Opening “%@”…" : {
+
+    },
+    "Open in New Window" : {
 
     },
     "Opening the book…" : {

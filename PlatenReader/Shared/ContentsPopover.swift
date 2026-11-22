@@ -148,7 +148,8 @@ private struct SearchPanel: View {
             if let done = state.searchDoneQuery, !state.searchRunning {
                 let count = state.allHits.count
                 Text(count == 0 ? String(localized: "No results for “\(done)”")
-                                : String(localized: "\(count) results"))
+                     : count == 1 ? String(localized: "1 result")
+                                  : String(localized: "\(count) results"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 6)
@@ -175,7 +176,16 @@ private struct SearchPanel: View {
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
         }
-        .onAppear { fieldFocused = true }
+        // Ready to type into. On iOS only when there is nothing to show yet:
+        // a search already made (Search Book for "…" from a selection) keeps
+        // the keyboard down, so it does not cover the results.
+        .onAppear {
+            #if os(iOS)
+            fieldFocused = state.searchQuery.isEmpty
+            #else
+            fieldFocused = true
+            #endif
+        }
         .onChange(of: state.searchFocusRequest) { fieldFocused = true }
     }
 }

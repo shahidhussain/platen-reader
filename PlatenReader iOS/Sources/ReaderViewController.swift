@@ -148,6 +148,15 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         view = root
     }
 
+    /// The menu over a text selection: the system's commands, then ours
+    /// (`selectionMenu`, ReaderViewController+Selection.swift). WebKit asks
+    /// the responder chain to build its edit menu, which reaches here.
+    override func buildMenu(with builder: UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        guard builder.system == .context, let menu = selectionMenu() else { return }
+        builder.insertSibling(menu, afterMenu: .standardEdit)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         state.allowsTwoPages = traitCollection.userInterfaceIdiom != .phone

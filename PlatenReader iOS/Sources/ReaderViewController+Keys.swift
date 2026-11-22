@@ -86,7 +86,7 @@ extension ReaderViewController {
 
     /// The contents popover hangs from the overlay's button, so the overlay
     /// is shown first.
-    private func showSidebar(tab: ReaderState.SidebarTab) {
+    func showSidebar(tab: ReaderState.SidebarTab) {
         state.sidebarTab = tab
         let wasHidden = !chrome.isVisible
         chrome.setVisible(true)
