@@ -3,8 +3,9 @@
 - Upstream: https://github.com/johnfactotum/foliate-js (MIT, see LICENSE in this folder)
 - Pinned commit: 78914aef4466eb960965702401634c2cb348e9b1 (2026-05-01)
 
-Only the files Platen uses are copied. PDF, CBZ, FB2, OPDS, TTS and the zip.js
-vendor bundle are left out: Swift reads the zip and serves entries over
+Only the files Platen uses are copied. PDF, CBZ, FB2, OPDS and the zip.js
+vendor bundle are left out (`tts.js` was added on 22 Nov 2026, from the same
+pinned commit, for read aloud: `view.initTTS` imports it): Swift reads the zip and serves entries over
 `platen://`, so foliate never needs its own zip reader.
 
 ## Local patches

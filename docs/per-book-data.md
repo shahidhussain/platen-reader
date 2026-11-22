@@ -60,4 +60,8 @@ At the reader's request (22 Nov 2026), the iOS app keeps a record of how it has 
 
 It is plain text, one timestamped line per log entry at info level and above: a line at each launch naming the app's version, the iOS version and the device's model code (never the name its owner gave it), how long books took to open, moments the app was too busy to answer a tap, and errors. It is not per-book data: book titles, file names and searches are written as `<name>`, and a book is described only by its kind and size. It is kept to about 512 KB, the oldest lines dropped first. Nothing sends it anywhere; it leaves the device only through the share sheet. Sharing makes a copy in the app's temporary folder, named for the date and time it was made (`Platen Reader Diagnostics 2026-11-22 at 10.41.14.txt`).
 
+## Read aloud
+
+Read aloud keeps no per-book data. Its settings are global, like every other setting: an Apple voice chosen in Settings (`readAloudAppleVoice`; none means the best installed for each book's language), the speed (`readAloudSpeed`), and a flag per language once the note about better Apple voices has been shown (`readAloudVoiceNoteShown.<language>`). (`readAloudChoice` and `readAloudKokoroVoice` belong to the parked natural voice and are not set while it is parked.) See `docs/read-aloud.md`.
+
 Portability between apps is not a goal. The format is documented so people can inspect, back up or delete their own data.

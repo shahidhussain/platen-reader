@@ -77,6 +77,9 @@ class ReaderBaseViewController: UIViewController {
         let chrome = ReaderChrome(owner: self, state: state, actions: actions,
                                   sidebarActions: ContentsActions(commands: commands),
                                   close: { [weak self] in self?.close() },
+                                  readAloud: offersReadAloud ? ReadAloudButtonActions(
+                                      tap: { [weak self] in self?.readAloudTapped() },
+                                      stop: { [weak self] in self?.stopReadingAloud() }) : nil,
                                   // Search highlights are temporary: they go
                                   // when the panel closes.
                                   sidebarClosed: { [weak self] in self?.commands.searchPanelClosed() })
@@ -292,9 +295,17 @@ class ReaderBaseViewController: UIViewController {
     #endif
 
     func close() {
+        stopReadingAloud()
         savePositionNow()
         onClose?()
     }
+
+    // MARK: - Read aloud (books; ReaderViewController+ReadAloud.swift)
+
+    /// Whether this reader has the speaker button.
+    var offersReadAloud: Bool { false }
+    func readAloudTapped() {}
+    func stopReadingAloud() {}
 
     /// VoiceOver's two-finger scrub (the "back" gesture): closes the book,
     /// as Close does.

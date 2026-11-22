@@ -313,7 +313,14 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
             fail(BookOpenError.unreadable(text))
 
         case .pageText(let text, let speak):
+            lastPageText = text
             host?.sessionPageText(text, speak: speak)
+
+        case .readAloudBlock(let block):
+            readAloud?.receive(block)
+
+        case .readAloudEnd:
+            readAloud?.endReached()
 
         case .log(let text):
             log.notice("js: \(text, privacy: .public)")
@@ -420,6 +427,50 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
     func setControlsVisible(_ visible: Bool) { call("setControlsVisible", visible) }
     /// Tells the page whether VoiceOver is on (it then follows page turns).
     func setVoiceOver(_ on: Bool) { call("setVoiceOver", on) }
+
+    // MARK: - Read aloud (docs/read-aloud.md)
+
+    /// The text on screen, as last sent for VoiceOver: read aloud's language
+    /// comes from it when the book does not give one.
+    private(set) var lastPageText = ""
+    /// Reading aloud, while it is.
+    private(set) var readAloud: ReadAloudController?
+
+    /// The language read aloud uses for this book.
+    var readAloudLanguage: String {
+        SpeechEngineChooser.language(book: state.language, text: lastPageText)
+    }
+
+    /// Starts reading aloud from the first sentence on the current page,
+    /// with `engine`.
+    func startReadAloud(engine: SpeechEngine) {
+        stopReadAloud()
+        let controller = ReadAloudController(engine: engine, language: readAloudLanguage)
+        controller.onPhase = { [weak self] phase in
+            self?.state.readAloud = phase
+            if phase == .off { self?.readAloudEnded() }
+        }
+        controller.requestNext = { [weak self] in self?.call("readAloudMore") }
+        controller.mark = { [weak self] name in self?.call("readAloudMark", name) }
+        readAloud = controller
+        controller.start()
+        state.readAloud = .starting
+        call("readAloudStart")
+    }
+
+    func pauseReadAloud() { readAloud?.pause() }
+    func resumeReadAloud() { readAloud?.resume() }
+
+    func stopReadAloud() {
+        guard let readAloud else { return }
+        readAloud.stop()
+    }
+
+    private func readAloudEnded() {
+        readAloud = nil
+        state.readAloud = .off
+        call("readAloudStop")
+    }
     /// Mac trackpad swipes: the page follows the fingers, then settles
     /// (`direction` 1 or -1 for a flick, 0 to settle on the nearest page).
     func swipeMove(by dx: Double) { call("swipeMove", dx) }

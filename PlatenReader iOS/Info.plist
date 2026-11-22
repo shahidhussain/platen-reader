@@ -48,6 +48,12 @@
 	<array>
 		<string>org.platenreader.book</string>
 	</array>
+	<!-- Read aloud carries on in the background and at the lock screen
+	     (ReadAloudAudio). -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<!-- Several windows on iPad, each with a book of its own (BookWindows);

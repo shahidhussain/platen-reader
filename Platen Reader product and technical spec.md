@@ -37,6 +37,7 @@ These are settled and should not be revisited without a reason.
 | Rendering engine | foliate-js (MIT) inside WKWebView | Proven pagination, fixed layout and format support; licence-compatible. |
 | Price | Free |  |
 | Telemetry | None of any kind |  |
+| Read aloud | A speaker button reads the book aloud from the current page with Apple's voices (AVSpeechSynthesizer), preferring Premium, then Enhanced, then default voices for the book's language (its `dc:language`, else the language of its text), highlighting the sentence being read and turning pages. iOS first; the Mac follows with the same shared code | Natural reading on the device with nothing to download, no account and nothing sent. Decided 22 Nov 2026. A natural English voice (Kokoro-82M) was built and then parked the same day: see Parked below and docs/read-aloud.md. |
 | Language | English at launch, all strings localisable |  |
 
 ## The happy path
@@ -445,7 +446,8 @@ These are deliberately excluded to keep Platen a viewer rather than a reading pl
 | Text selection mode | Rejected | Click-drag selects text natively |
 | DRM removal or DRM-protected playback | Out of scope | Legal and licensing reasons |
 | KFX format | Out of scope | Proprietary and poorly documented |
-| Text-to-speech, read-aloud sync | Parked | Possible later via system speech, highlighting the sentence being read |
+| Read-aloud sync with a book's own recorded narration (EPUB media overlays) | Parked | Read aloud with synthetic voices is decided (see Decisions made); playing a book's own audio in step with its text is not |
+| Natural read-aloud voice (Kokoro-82M, downloaded on request) | Parked, 22 Nov 2026 | Built and working in the iOS Simulator (branch `kokoro-natural-voice`), but costly for now: ONNX Runtime adds about 40 MB to every install and sends Microsoft telemetry unless switched off; Core ML's Kokoro crashes on current iOS; the download needs App Store Connect work and iOS 26.4. Its download would be a second network exception. Everything learned is in docs/read-aloud.md |
 | Custom themes | Parked to M2 |  |
 | Visual typography control | Parked to M2 |  |
 | In-app book list, OPDS catalogues, downloading books | Out of scope | Platen shows files the user already has; a catalogue is a library and needs the network |

@@ -55,6 +55,11 @@ final class ReaderState: ObservableObject {
     @Published var openingTitle = ""
     @Published var title = ""
     @Published var author = ""
+    /// The book's own language (`dc:language`), if it gives one; read
+    /// aloud chooses its voice from it.
+    @Published var language: String?
+    /// Read aloud: what it is doing (the speaker button follows it).
+    @Published var readAloud: ReadAloudPhase = .off
     @Published var isFixedLayout = false
     /// A PDF (shown by PDFKit) rather than a book: the text controls (font,
     /// size, spacing, line width) do not apply.

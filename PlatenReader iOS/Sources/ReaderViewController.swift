@@ -46,6 +46,21 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     private(set) var lonePictureView: UIImageView!
     /// Follows VoiceOver being turned on and off.
     private var voiceOverWatch: NSObjectProtocol?
+    /// Follows read aloud for Now Playing (ReaderViewController+ReadAloud).
+    var readAloudWatch: AnyCancellable?
+
+    // Read aloud (ReaderViewController+ReadAloud.swift). Overrides live in
+    // the class itself.
+    override var offersReadAloud: Bool { true }
+    override func readAloudTapped() { toggleReadAloud() }
+    override func stopReadingAloud() { session.stopReadAloud() }
+
+    /// Closed by another book replacing this one, or the window going:
+    /// reading stops with it.
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if isBeingDismissed || isMovingFromParent { session.stopReadAloud() }
+    }
     /// What VoiceOver reads in place of the web view: the text on screen.
     private(set) var pageAccessibility: BookPageAccessibilityView!
     /// The glow behind the page (ambient light), and its next renewal.
@@ -651,7 +666,8 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         let spoken = String((pageAccessibility.accessibilityLabel ?? "").prefix(60))
             .replacingOccurrences(of: "\n", with: " ")
         guard !lonePictureView.isHidden, let picture = lonePictureView.image else {
-            return ["lonePicture": false, "voiceOverPage": spoken, "webViewHidden": webView.accessibilityElementsHidden]
+            return ["lonePicture": false, "voiceOverPage": spoken, "webViewHidden": webView.accessibilityElementsHidden,
+                    "readAloud": String(describing: state.readAloud)]
         }
         let frame = AVMakeRect(aspectRatio: picture.size, insideRect: lonePictureView.frame)
         return ["lonePicture": true, "voiceOverPage": spoken,
@@ -662,6 +678,15 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     override func runDebugStep(_ step: String) {
         if step.hasPrefix("@tap:"), let zone = ClickZone(rawValue: String(step.dropFirst(5))) {
             handleTap(zone: zone)
+        } else if step == "@readaloud" {
+            // "@readaloud": the speaker button's tap. "@readaloud:stop": stop.
+            // (The once-only note about better voices is taken as read, so
+            // a scripted tap reads at once.)
+            let base = AppleVoices.baseLanguage(session.readAloudLanguage)
+            AppDefaults.store.set(true, forKey: "readAloudVoiceNoteShown.\(base)")
+            toggleReadAloud()
+        } else if step == "@readaloud:stop" {
+            session.stopReadAloud()
         } else if step.hasPrefix("@axscroll:") {
             // "@axscroll:next" / "@axscroll:previous": what VoiceOver asks of
             // the page at the end of Read All, or on a three-finger swipe.

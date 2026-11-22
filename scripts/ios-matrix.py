@@ -95,6 +95,19 @@ def cases():
             ],
         },
         {
+            # Read aloud: the speaker button, then reading, paused, stopped.
+            "name": "read-aloud",
+            "book": os.path.join(FIXTURES, "novel.epub"),
+            "states": [
+                state("button", ["@theme:light", "@controls:show"], ["speaker_button", "read_aloud:off"], settle=True),
+                state("playing", ["@controls:hide", "@readaloud", "@wait", "@wait", "@controls:show"],
+                      ["read_aloud:playing", "speaker_button", "page_drawn"]),
+                state("paused", ["@readaloud"], ["read_aloud:paused"]),
+                state("dark-playing", ["@readaloud", "@theme:dark"], ["read_aloud:playing", "bands_legible"], settle=True),
+                state("stopped", ["@readaloud:stop"], ["read_aloud:off"]),
+            ],
+        },
+        {
             "name": "low-contrast",
             "book": os.path.join(FIXTURES, "low-contrast.epub"),
             "states": [
@@ -339,6 +352,25 @@ def rule_readable_text(shot, report, results, arg):
         return "no colour audit came back"
     if audit.get("lowContrast"):
         return f"{audit['lowContrast']} faint: " + "; ".join(audit.get("examples", []))
+
+
+def rule_read_aloud(shot, report, results, arg):
+    """What read aloud is doing (`arg`: off, starting, playing, paused)."""
+    if report.get("readAloud") != arg:
+        return f"read aloud is {report.get('readAloud')!r}, expected {arg!r}"
+
+
+def rule_speaker_button(shot, report, results, arg):
+    """The speaker button stands at the right of the top bar, clear of the
+    screen's edge: something drawn there, against the band or the page."""
+    if not report.get("controls"):
+        return "the controls are not showing"
+    scale = shot.width / report["width"]
+    top = int(54 * scale)
+    box = (shot.width - int(60 * scale), top, shot.width - int(12 * scale), top + int(44 * scale))
+    spread = max(ImageStat.Stat(shot.convert("RGB").crop(box)).stddev[:3])
+    if spread < 8:
+        return f"nothing drawn where the speaker button belongs (spread {spread:.1f})"
 
 
 RULES = {name[5:]: fn for name, fn in globals().items() if name.startswith("rule_")}

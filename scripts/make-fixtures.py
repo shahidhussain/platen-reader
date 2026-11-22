@@ -539,6 +539,25 @@ def main():
                        manifest_extra=['<item id="pic" href="images/plate.png" media-type="image/png"/>'],
                        extra_files=[("OEBPS/images/plate.png", png(600, 800, (40, 96, 160)))]))
 
+    # Read aloud: a book in French (dc:language fr) is read with Apple's
+    # French voice, never offered the English natural voice.
+    french = ("<h1>Le premier chapitre</h1>"
+              "<p>Il était une fois une petite ville au bord de la mer. Les maisons étaient blanches et les "
+              "volets étaient bleus. Chaque matin, les pêcheurs partaient avant le lever du soleil.</p>"
+              "<p>Le soir, ils revenaient avec des paniers pleins de poissons. Les enfants couraient sur la "
+              "plage pour les accueillir.</p>")
+    made.append(simple("french.epub", "La Petite Ville", [("ch1.xhtml", xhtml("Chapitre 1", french, lang="fr"))],
+                       lang="fr"))
+
+    # Read aloud: an English book with a passage marked as French. The book's
+    # language (English) chooses the voice; the passage's own language is
+    # reported with its block.
+    mixed = ("<h1>A Letter from Paris</h1>"
+             "<p xml:lang=\"fr\" lang=\"fr\">Ma chère amie, je t'écris de Paris où il pleut depuis trois jours.</p>"
+             "<p>She folded the letter and put it back in its envelope. Then she went down to the harbour.</p>")
+    made.append(simple("mixed-language.epub", "A Letter from Paris",
+                       [("ch1.xhtml", xhtml("Chapter 1", mixed))]))
+
     for m in made:
         print(f"{os.path.getsize(m):>10,}  {os.path.relpath(m, ROOT)}")
 
