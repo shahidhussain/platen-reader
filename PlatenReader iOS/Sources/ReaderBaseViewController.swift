@@ -206,12 +206,70 @@ class ReaderBaseViewController: UIViewController {
     #if DEBUG
     /// One scripted step (see DebugHooks.swift): the steps both readers
     /// take. Subclasses handle their own and pass the rest here.
+    /// More for "@report", from each reader (the native picture-only page).
+    func debugReport() -> [String: Any] { [:] }
+
     func runDebugStep(_ step: String) {
         if step == "@close" {
             close()
         } else if step.hasPrefix("@theme:"), let choice = AppearanceChoice(rawValue: String(step.dropFirst(7))) {
             // "@theme:sepia": the page theme, as the Aa popover would set it.
             settings.appearance = choice
+        } else if step.hasPrefix("@ambient:") {
+            // "@ambient:on" / "@ambient:off": Aa > Ambient Light.
+            settings.ambientLight = step.hasSuffix(":on")
+        } else if step.hasPrefix("@layout:") {
+            // "@layout:one|two|scroll", as the Layout popover sets it.
+            switch step.dropFirst(8) {
+            case "scroll": settings.defaultFlow = .scrolled
+            case "two": settings.defaultFlow = .paginated; settings.pageLayout = .two
+            default: settings.defaultFlow = .paginated; settings.pageLayout = .one
+            }
+        } else if step.hasPrefix("@rotate:") {
+            // "@rotate:landscape" / "@rotate:portrait": turns the app's
+            // interface as turning the phone would (the Simulator's own
+            // device stays put; the app follows this request).
+            let landscape = step.hasSuffix(":landscape")
+            view.window?.windowScene?.requestGeometryUpdate(
+                .iOS(interfaceOrientations: landscape ? .landscapeRight : .portrait)) { error in
+                    log.notice("rotate failed: \(error.localizedDescription, privacy: .public)")
+                }
+        } else if step.hasPrefix("@controls:") {
+            // "@controls:show" / "@controls:hide".
+            chrome.setVisible(step.hasSuffix(":show"))
+        } else if step.hasPrefix("@shot:") {
+            // "@shot:<name>": a picture of the window as it is now, saved as
+            // tmp/shots/<name>.png in the app's container, for
+            // scripts/ios-matrix.py (taken by the app itself, so it shows
+            // exactly the state after the steps before it).
+            let name = String(step.dropFirst(6))
+            guard let window = view.window else { return }
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+            }
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("shots", isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try? image.pngData()?.write(to: folder.appendingPathComponent("\(name).png"))
+            log.notice("shot: \(name, privacy: .public)")
+        } else if step == "@wait" {
+            // Nothing: a pause of one step, for something to settle.
+        } else if step == "@report" {
+            // The reader's state for scripts/ios-matrix.py to check against
+            // its screenshot: one line, "report: {json}".
+            let report: [String: Any] = [
+                "theme": currentTheme.background, "dark": currentTheme.isDark,
+                "ambient": settings.ambientLight, "flow": state.flow.rawValue,
+                "pageLayout": settings.pageLayout.rawValue, "columns": state.columnsOnScreen,
+                "isPDF": state.isPDF, "spreads": state.pagesAreSpreads,
+                "landscape": view.bounds.width > view.bounds.height,
+                "controls": chrome.isVisible,
+                "topBand": state.topBandColour ?? "", "bottomBand": state.bottomBandColour ?? "",
+                "width": view.bounds.width, "height": view.bounds.height,
+            ].merging(debugReport()) { _, new in new }
+            if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]),
+               let line = String(data: data, encoding: .utf8) {
+                log.notice("report: \(line, privacy: .public)")
+            }
         } else if step == "@orientation" {
             // The device's orientation against the app's: different (with
             // the device in a supported orientation) means rotation is held.

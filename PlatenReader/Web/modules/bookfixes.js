@@ -133,6 +133,43 @@ function ensureReadableColours(doc) {
     }
 }
 
+// For testing (scripts/ios-matrix.py and the corpus): text in the sections
+// on screen that is still hard to read against the page after the fixes
+// above, as a JSON string: how many elements, and a few of them.
+function auditColours() {
+    const pageBackground = hexColour(reader.settings.theme.background)
+    const found = []
+    for (const { doc } of reader.view?.renderer?.getContents?.() ?? []) {
+        if (!doc?.body) continue
+        const win = doc.defaultView
+        const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+            acceptNode: n => n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+        })
+        const seen = new Set()
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const el = node.parentElement
+            if (!el || seen.has(el)) continue
+            seen.add(el)
+            const style = win.getComputedStyle(el)
+            // Text on a box of the publisher's own colour is left alone.
+            let boxed = false
+            for (let e = el; e && e !== doc.body; e = e.parentElement) {
+                const bg = parseColour(win.getComputedStyle(e).backgroundColor)
+                if (bg && bg.a > 0.5) { boxed = true; break }
+            }
+            if (boxed || style.visibility === 'hidden' || style.display === 'none') continue
+            for (const value of [style.color, style.webkitTextFillColor]) {
+                const colour = parseColour(value)
+                if (colour && colour.a > 0 && contrast(colour, pageBackground) < minContrast) {
+                    found.push(`${el.localName}${el.className ? '.' + el.className : ''} ${value}`)
+                    break
+                }
+            }
+        }
+    }
+    return JSON.stringify({ lowContrast: found.length, examples: found.slice(0, 3) })
+}
+
 // ---------------------------------------------------------------------------
 // Publisher font sizes
 //
@@ -319,4 +356,4 @@ function applyJustification(doc, justify) {
     }
 }
 
-export { applyBodyTextSize, applyJustification, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes }
+export { applyBodyTextSize, applyJustification, auditColours, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes }

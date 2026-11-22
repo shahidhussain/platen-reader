@@ -28,7 +28,7 @@
 import './foliate/view.js'
 import { EPUB } from './foliate/epub.js'
 import { reader } from './modules/state.js'
-import { applyJustification, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes } from './modules/bookfixes.js'
+import { applyJustification, auditColours, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes } from './modules/bookfixes.js'
 import { pagesOnScreen, scheduleRibbons, setBookmarkList, toggleBookmark } from './modules/bookmarks.js'
 import { post } from './modules/bridge.js'
 import { sendContents } from './modules/contents.js'
@@ -376,6 +376,8 @@ window.platen = {
     swipeEnd: direction => swipe.end(direction),
     // iOS: what is under a tap (see tapTarget in input.js).
     tapTarget,
+    // Testing: text still too faint to read against the page (bookfixes.js).
+    auditColours,
     // iOS: the picture under a held finger, sent as an 'image' message.
     pictureAt,
     // iOS, during a page turn: is the new page a picture-only page?

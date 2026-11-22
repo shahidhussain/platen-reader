@@ -40,6 +40,9 @@ xcodebuild -project PlatenReader.xcodeproj -scheme "PlatenReader iOS" -configura
   CODE_SIGNING_ALLOWED=NO build                            # iOS app
 scripts/run-ios-debug.sh Fixtures/generated/novel.epub "@tap:right;@tap:centre"
 # → opens the book in the Simulator; log lines; screenshots in build/snaps-ios/
+scripts/ios-matrix.py [--samples] [--only <name>] [--no-build]
+# → the iOS reader across themes, ambient light, controls, orientation and layouts,
+#   with rules checked on each picture; build/ios-matrix/sheet.png and report.txt
 ```
 
 `run-debug.sh` relies on Debug-only hooks (`DebugHooks.swift`). `PLATEN_SNAPSHOT_DIR` writes snapshots after the first render: `<book>-N.png` of the web view and `<book>-N-native.png` of the native views (the native one is taken 0.5 s later). `PLATEN_STEPS` runs semicolon-separated steps, one per second:
@@ -63,6 +66,7 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 - No telemetry, no network and no permission prompts. The one agreed exception: Save to Photos (long press on a PDF picture, iOS) asks once for add-only photo access, only when the reader chooses it. Settings are global, and the only per-book data is position and bookmarks (`docs/per-book-data.md`), plus the agreed exception of the iOS Recent Books and Recent Folders lists (bookmarks, names and cover copies; see that file).
 - Comment liberally: explain what and why for a non-specialist. User-facing strings go in String Catalogs (development language en-GB).
 - Add a line to `scripts/check-corpus.sh` for every new fixture.
+- Before pushing a change to the iOS reader (its look, the glow, the controls, layouts), run `scripts/ios-matrix.py` and look at `build/ios-matrix/sheet.png`; with `--samples` it also takes the books in `samples/` (never committed) through it. A bug found on a device that a rule could have caught becomes a rule there, or a state in one of its cases.
 - If you patch vendored foliate-js, record it in `PlatenReader/Web/foliate/VENDORED.md`.
 
 ## Status

@@ -535,11 +535,22 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     // Save and Share (`sessionShowPicture`, above).
 
     #if DEBUG
+    /// For "@report": where a picture-only page's picture sits on screen
+    /// (in points), so a check can look at the room round it.
+    override func debugReport() -> [String: Any] {
+        guard !lonePictureView.isHidden, let picture = lonePictureView.image else { return ["lonePicture": false] }
+        let frame = AVMakeRect(aspectRatio: picture.size, insideRect: lonePictureView.frame)
+        return ["lonePicture": true,
+                "pictureFrame": [frame.minX, frame.minY, frame.width, frame.height].map { Double($0) }]
+    }
+
     /// One scripted step (see DebugHooks.swift).
     override func runDebugStep(_ step: String) {
         if step.hasPrefix("@tap:"), let zone = ClickZone(rawValue: String(step.dropFirst(5))) {
             handleTap(zone: zone)
-        } else if step == "@close" || step == "@orientation" || step.hasPrefix("@theme:") {
+        } else if step.hasPrefix("@") && !step.hasPrefix("@snapshot") && !step.hasPrefix("@turn:")
+                    && !step.hasPrefix("@doubleturn:") {
+            // The steps both readers take (ReaderBaseViewController).
             super.runDebugStep(step)
         } else if step == "@snapshot" {
             webView.takeSnapshot(with: nil) { image, _ in log.notice("snapshot \(image == nil ? "failed" : "taken")") }

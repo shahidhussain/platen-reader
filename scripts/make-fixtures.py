@@ -474,6 +474,26 @@ def main():
                        manifest_extra=['<item id="pic" href="images/cover.png" media-type="image/png"/>'],
                        extra_files=[("OEBPS/images/cover.png", png(400, 600, (176, 64, 48)))]))
 
+    # A picture book shaped like a real one (device testing, 21 Nov 2026):
+    # square, brightly coloured pages, each a picture alone, so on a tall
+    # phone there is room above and below each; and a contents page styled
+    # as Calibre often leaves it, the colour on a span inside each link, dark
+    # blue (unreadable on the Dark theme until made lighter). The iOS
+    # matrix (scripts/ios-matrix.py) checks that the room round a picture
+    # glows with ambient light, and that the bands blend with the glow.
+    plate = lambda pic: xhtml("Plate", f'<div class="plate"><img src="images/{pic}.png" alt="A plate"/></div>')
+    contents = xhtml("Contents", """<h1 class="calibre3">Contents</h1>
+<p class="calibre5"><a href="p1.xhtml"><span class="calibre6">The orange plate</span></a></p>
+<p class="calibre5"><a href="p2.xhtml"><span class="calibre6">The blue plate</span></a></p>""",
+        extra_head='<style>.calibre6 { color: #103870; font-style: italic } .calibre5 { margin: 0.5em 0 }</style>')
+    made.append(simple("picture-book.epub", "The Square Picture Book",
+                       [("p1.xhtml", plate("orange")), ("contents.xhtml", contents), ("p2.xhtml", plate("blue")),
+                        ("end.xhtml", xhtml("The End", "<h1>The End</h1><p>Goodnight.</p>"))],
+                       manifest_extra=['<item id="orange" href="images/orange.png" media-type="image/png"/>',
+                                       '<item id="blue" href="images/blue.png" media-type="image/png"/>'],
+                       extra_files=[("OEBPS/images/orange.png", png(600, 600, (238, 120, 40))),
+                                    ("OEBPS/images/blue.png", png(600, 600, (40, 110, 220)))]))
+
     # A full-page plate partway through a chapter: text, then a page that
     # is one picture and nothing else, then more text. On iOS that page
     # shows the picture natively, as large as the screen allows, just like

@@ -63,6 +63,7 @@ check small-body-text.epub    "(d=>'body:'+(Math.abs(parseFloat(getComputedStyle
 # PDF (PDFKit): its pages and its outline as Contents.
 check outline.pdf             "-"                                      "PDF: 6 pages, 3 contents entries"
 check pictures.pdf            "-"                                      "PDF: 4 pages, 2 contents entries"
+check picture-book.epub       "-"                                      "First page visible"
 check square-pages.pdf        "-"                                      "PDF: 4 pages, 2 contents entries"
 # A note reference opens its note in a pop-up (and the page does not move);
 # a superscript link into a notes file counts as one too.
