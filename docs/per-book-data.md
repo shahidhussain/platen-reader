@@ -62,6 +62,6 @@ It is plain text, one timestamped line per log entry at info level and above: a 
 
 ## Read aloud
 
-Read aloud keeps no per-book data. Its settings are global, like every other setting: the voice for English books (`readAloudChoice`: Apple's voices or the natural voice, or not yet chosen), an Apple voice chosen in Settings (`readAloudAppleVoice`), the natural voice's speaker (`readAloudKokoroVoice`) and the speed (`readAloudSpeed`), plus a flag per language once the note about better Apple voices has been shown (`readAloudVoiceNoteShown.<language>`). The natural voice, once downloaded, lives in the app's own storage (iOS: managed by Background Assets; Mac: Application Support) and can be removed in Settings › Read Aloud. See `docs/read-aloud.md`.
+Read aloud keeps no per-book data. Its settings are global, like every other setting: an Apple voice chosen in Settings (`readAloudAppleVoice`; none means the best installed for each book's language), the speed (`readAloudSpeed`), and a flag per language once the note about better Apple voices has been shown (`readAloudVoiceNoteShown.<language>`). (`readAloudChoice` and `readAloudKokoroVoice` belong to the parked natural voice and are not set while it is parked.) See `docs/read-aloud.md`.
 
 Portability between apps is not a goal. The format is documented so people can inspect, back up or delete their own data.

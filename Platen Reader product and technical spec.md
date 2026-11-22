@@ -30,15 +30,14 @@ These are settled and should not be revisited without a reason.
 | Updates (direct download) | Sparkle, in the direct-download Mac build only. It checks for updates automatically by default (the user can turn this off), using an appcast on a permanent GitHub Pages site. App Store builds update through the store and contain no Sparkle code | Keeps direct-download users current without a Homebrew dependency. The check is the only network request Platen makes, and it sends no system profile. Decided 12 Nov 2026. |
 | App Store identity | One bundle ID shared by Mac and iOS (universal purchase) | One listing, one purchase (free), one set of reviews. The direct-download Mac build keeps the same bundle ID. |
 | Age rating | 4+ (the lowest rating) | Platen ships no content and has no web browsing; it only shows files the user already has, and book remote loads are blocked. |
-| App Store privacy label | Data Not Collected | No telemetry, no network, no accounts. (App Store builds have no update check.) The optional voice download sends nothing about the reader: on iOS it comes from Apple's own servers (Background Assets), and the download is the app fetching a file, not data collected. Reaffirmed 22 Nov 2026. |
+| App Store privacy label | Data Not Collected | No telemetry, no network, no accounts. (App Store builds have no update check.) |
 | Minimum OS | macOS 14 Sonoma, iOS 17 | Keeps SwiftUI and WebKit APIs modern and the code simple. |
 | Overlay material | Liquid Glass on macOS 26 and iOS 26 and later, on both platforms; the current translucent materials on older systems | Matches the system's own controls on current OSes without raising the minimum OS. |
 | Formats | EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI, AZW3, DRM-free only, plain text (.txt) and PDF, on Mac and iOS alike | PDF is in the launch scope (brought forward from M4 on 12 Nov 2026) and uses PDFKit; KFX and DRM-protected files unsupported. |
 | Rendering engine | foliate-js (MIT) inside WKWebView | Proven pagination, fixed layout and format support; licence-compatible. |
 | Price | Free |  |
 | Telemetry | None of any kind |  |
-| Read aloud | A speaker button reads the book aloud from the current page, highlighting the sentence being read and turning pages. English books use the Kokoro-82M neural voice (fp16, about 165 MB, American and British voices) once the reader has downloaded it; every other language, and readers who do not download it, use Apple's voices (AVSpeechSynthesizer), preferring Premium, then Enhanced, then default voices for the book's language (its `dc:language`, else the language of its text). iOS first; the Mac follows with the same shared code | Natural-sounding reading on the device, with no account and nothing sent. Kokoro's code and weights are Apache-2.0, and nothing GPL is used (no eSpeak NG; see docs/read-aloud.md). Decided 22 Nov 2026. |
-| Voice download | The second agreed network exception, after Sparkle. It happens only when the reader asks for it (the first-tap dialog or Settings), the dialog states its size, and nothing about the reader is sent. iOS: Apple-hosted Background Assets. Mac (direct download): a GitHub release asset, checked against a SHA-256 pinned in the app. The download can be removed in Settings | Kokoro's weights are too large to bundle in the app for readers who never use read aloud. Decided 22 Nov 2026. |
+| Read aloud | A speaker button reads the book aloud from the current page with Apple's voices (AVSpeechSynthesizer), preferring Premium, then Enhanced, then default voices for the book's language (its `dc:language`, else the language of its text), highlighting the sentence being read and turning pages. iOS first; the Mac follows with the same shared code | Natural reading on the device with nothing to download, no account and nothing sent. Decided 22 Nov 2026. A natural English voice (Kokoro-82M) was built and then parked the same day: see Parked below and docs/read-aloud.md. |
 | Language | English at launch, all strings localisable |  |
 
 ## The happy path
@@ -412,7 +411,7 @@ Warm the WebKit content process at launch so the first open does not pay for it.
 **Privacy**
 
 - No analytics, telemetry or crash reporting that phones home. Crash logs stay with the system's own reporter.
-- No network access at all, with two exceptions: the direct-download Mac build checks for updates through Sparkle, and the optional read-aloud voice is downloaded when the reader asks for it (see Decisions made). Remote resources in books are blocked.
+- No network access at all, with one exception: the direct-download Mac build checks for updates through Sparkle (see Decisions made). Remote resources in books are blocked.
 - No location, contacts or other permission prompts.
 
 **Localisation**
@@ -448,6 +447,7 @@ These are deliberately excluded to keep Platen a viewer rather than a reading pl
 | DRM removal or DRM-protected playback | Out of scope | Legal and licensing reasons |
 | KFX format | Out of scope | Proprietary and poorly documented |
 | Read-aloud sync with a book's own recorded narration (EPUB media overlays) | Parked | Read aloud with synthetic voices is decided (see Decisions made); playing a book's own audio in step with its text is not |
+| Natural read-aloud voice (Kokoro-82M, downloaded on request) | Parked, 22 Nov 2026 | Built and working in the iOS Simulator (branch `kokoro-natural-voice`), but costly for now: ONNX Runtime adds about 40 MB to every install and sends Microsoft telemetry unless switched off; Core ML's Kokoro crashes on current iOS; the download needs App Store Connect work and iOS 26.4. Its download would be a second network exception. Everything learned is in docs/read-aloud.md |
 | Custom themes | Parked to M2 |  |
 | Visual typography control | Parked to M2 |  |
 | In-app book list, OPDS catalogues, downloading books | Out of scope | Platen shows files the user already has; a catalogue is a library and needs the network |
