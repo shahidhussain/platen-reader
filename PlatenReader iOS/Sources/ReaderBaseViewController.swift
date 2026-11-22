@@ -254,6 +254,11 @@ class ReaderBaseViewController: UIViewController {
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try? image.pngData()?.write(to: folder.appendingPathComponent("\(name).png"))
             log.notice("shot: \(name, privacy: .public)")
+        } else if step == "@newwindow" {
+            // "@newwindow": opens this book in a new window, as "Open in New
+            // Window" does (iPad; BookWindows).
+            BookWindows.open(url: url, title: state.title)
+            log.notice("new window asked for")
         } else if step == "@wait" {
             // Nothing: a pause of one step, for something to settle.
         } else if step == "@report" {
@@ -289,6 +294,13 @@ class ReaderBaseViewController: UIViewController {
     func close() {
         savePositionNow()
         onClose?()
+    }
+
+    /// VoiceOver's two-finger scrub (the "back" gesture): closes the book,
+    /// as Close does.
+    override func accessibilityPerformEscape() -> Bool {
+        close()
+        return true
     }
 
     // MARK: - Theme

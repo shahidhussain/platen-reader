@@ -1,7 +1,8 @@
 import UIKit
 
-/// One window, whose root is Platen's own home screen
-/// (`HomeViewController`). Books open from there ("Open Book…"), from Files
+/// A window, whose root is Platen's own home screen
+/// (`HomeViewController`); on iPad there can be several, each with a book
+/// of its own (`BookWindows`). Books open from there ("Open Book…"), from Files
 /// ("Open in Platen Reader") or from other apps' share sheets, always in
 /// place.
 ///
@@ -37,11 +38,18 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         self.home = home
 
+        // The book this window is for: the one it had open when iOS ended
+        // the app (state restoration), or one handed to a new window ("Open
+        // in New Window"). See BookWindows.
+        let windowBook = BookWindows.bookmark(in: windowScene.session.stateRestorationActivity)
+            ?? connectionOptions.userActivities.lazy.compactMap { BookWindows.bookmark(in: $0) }.first
         // Launched by opening a book from another app: straight to it.
         let launchedWithBook = !connectionOptions.urlContexts.isEmpty
         #if DEBUG
         let env = ProcessInfo.processInfo.environment
-        let debugBook = env["PLATEN_OPEN_PATH"] != nil
+        // The debug book opens in the first window only, not in one opened
+        // later (BookWindows), which has a book of its own.
+        let debugBook = env["PLATEN_OPEN_PATH"] != nil && isOnlyWindow(windowScene)
         #else
         let debugBook = false
         #endif
@@ -57,7 +65,19 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if launchedWithBook || debugBook {
             followBook()
-        } else if LastOpenBook.isSaved {
+        } else if let windowBook {
+            log.info("window: reopening its own book")
+            LastOpenBook.resolve(windowBook, timeout: 3) { [weak splash, weak home] url in
+                guard let home else { return }
+                if let url {
+                    followBook()
+                    home.openBook(at: url)
+                } else {
+                    splash?.finishSoon()
+                }
+            }
+        } else if LastOpenBook.isSaved, isOnlyWindow(windowScene) {
+            log.info("window: reopening the last book")
             // Back to the book that was open. Where it is now is found in
             // the background (it can hang; see LastOpenBook.find), with the
             // start-up animation still up; if it cannot be found in time,
@@ -88,7 +108,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         // Testing: PLATEN_OPEN_PATH opens a book straight away (see
         // DebugHooks.swift).
-        if let path = env["PLATEN_OPEN_PATH"] {
+        if let path = env["PLATEN_OPEN_PATH"], debugBook {
             let delay = Double(env["PLATEN_OPEN_DELAY"] ?? "") ?? 0
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 home.openBook(at: URL(fileURLWithPath: path))
@@ -119,6 +139,19 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let context = contexts.first else { return }
         openedSinceLaunch = true
         if let home { home.openBook(at: context.url) } else { pendingURL = context.url }
+    }
+
+    /// Launching goes back to the last book only in the first window; a
+    /// window added later (iPad) starts at the home screen.
+    private func isOnlyWindow(_ scene: UIWindowScene) -> Bool {
+        !UIApplication.shared.connectedScenes.contains { $0 !== scene && $0.activationState != .unattached }
+    }
+
+    /// What iOS keeps to bring this window back if it ends the app in the
+    /// background: the book open in it, if any (BookWindows).
+    func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {
+        guard let bookmark = home?.openBookmark else { return nil }
+        return BookWindows.activity(bookmark: bookmark, title: (scene as? UIWindowScene)?.title ?? "")
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

@@ -20,7 +20,7 @@ A free, open source (MPL-2.0), file-first ebook viewer for macOS, with iOS to fo
 - `PlatenReader iOS/`: the iOS and iPadOS app (target "PlatenReader iOS", same bundle ID): `HomeViewController` as the home screen (reopens the last book; else the tabs in `HomeTabs.swift`: Home (the welcome), Recent Books and Recent Folders over `Shared/Recents.swift`, with folders shown by `FolderView.swift` over `Shared/BookFolder.swift`; "Open Book…" is the system document picker), and UIKit readers shaped like the Mac's (`ReaderBaseViewController` with its own touch `ReaderChrome`; `ReaderViewController` for books and `PDFReaderViewController` for PDFs). M3 is planned phase by phase in `docs/m3-ios-plan.md`.
 - `PlatenReader/Web/`: `reader.html/js/css`, the shell that drives foliate-js. `foliate/` is vendored at a pinned commit (see `foliate/VENDORED.md`).
 - `design/icon/`: the app icon. `make-icons.py` draws it (SVG, in several background colours; Honey is the one in use), Quick Look renders it, and `mask-icon.swift` makes the corners transparent. The sizes live in `PlatenReader/Sources/Assets.xcassets/AppIcon.appiconset`.
-- `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `check-corpus.sh` (opens each fixture and checks the result), `run-debug.sh` (headless open + snapshots), `update-foliate.sh`. The Xcode project is maintained in Xcode; `PlatenReader/Sources` is a synchronised folder, so new files need no project edits.
+- `scripts/`: `make-fixtures.py` (synthetic robustness corpus → `Fixtures/generated/`), `check-corpus.sh` and `check-corpus-ios.sh` (open each fixture, on the Mac and in the iOS Simulator, and check the result; the checks are shared in `corpus-cases.sh`), `run-debug.sh` (headless open + snapshots), `update-foliate.sh`. The Xcode project is maintained in Xcode; `PlatenReader/Sources` is a synchronised folder, so new files need no project edits.
 - Reader features live in `reader.js` (opening, the `platen` commands) and `PlatenReader/Web/modules/` (one module per feature: layout, book fixes, input, page numbers, bookmarks, jumps, search, contents; shared state in `state.js`). The native side is `ContentsPopover.swift` and `OverlayViews.swift` (Shared), and `PageTurnView.swift` and `ImageZoomView.swift` (Mac). The Mac `ReaderViewController` is split by job into `ReaderViewController+*.swift` (input, page turn, citation and context menu, menu, pictures).
 
 ## Build and test
@@ -33,6 +33,7 @@ xcodebuild -project PlatenReader.xcodeproj -scheme PlatenReader \
   -configuration Debug -derivedDataPath build/DerivedData build
 python3 scripts/make-fixtures.py                           # regenerate corpus
 scripts/check-corpus.sh                                    # corpus must stay green
+scripts/check-corpus-ios.sh                                # the same corpus on iOS (a few minutes)
 scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next();@toggleContents:"
 # → log lines with open timings; PNG snapshots in build/snaps/
 xcodebuild -project PlatenReader.xcodeproj -scheme "PlatenReader iOS" -configuration Debug \
@@ -65,7 +66,7 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 - Font obfuscation is undone in Swift (`FontDeobfuscator`), and `encryption.xml` is then hidden from foliate-js so it is not undone twice.
 - No telemetry, no network and no permission prompts. The one agreed exception: Save to Photos (long press on a PDF picture, iOS) asks once for add-only photo access, only when the reader chooses it. Settings are global, and the only per-book data is position and bookmarks (`docs/per-book-data.md`), plus the agreed exception of the iOS Recent Books and Recent Folders lists (bookmarks, names and cover copies; see that file).
 - Comment liberally: explain what and why for a non-specialist. User-facing strings go in String Catalogs (development language en-GB).
-- Add a line to `scripts/check-corpus.sh` for every new fixture.
+- Add a line to `scripts/corpus-cases.sh` for every new fixture (both corpus scripts read it).
 - Before pushing a change to the iOS reader (its look, the glow, the controls, layouts), run `scripts/ios-matrix.py` and look at `build/ios-matrix/sheet.png`; with `--samples` it also takes the books in `samples/` (never committed) through it. A bug found on a device that a rule could have caught becomes a rule there, or a state in one of its cases.
 - If you patch vendored foliate-js, record it in `PlatenReader/Web/foliate/VENDORED.md`.
 

@@ -29,6 +29,9 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
 
     /// The book or PDF on screen, if any.
     private(set) var reader: ReaderBaseViewController?
+    /// The open book's bookmark, which the window hands iOS to reopen it
+    /// after the app has been ended (SceneDelegate, BookWindows).
+    private(set) var openBookmark: Data?
     /// Told when a reader is made (the start-up animation follows the
     /// first book's progress).
     var onReaderCreated: ((ReaderBaseViewController) -> Void)?
@@ -173,10 +176,17 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
                 LastOpenBook.forget() // closed on purpose: next launch, the home screen
                 reader?.dismiss(animated: true)
                 self?.reader = nil
+                self?.openBookmark = nil
+                self?.view.window?.windowScene?.title = nil
                 NotificationCenter.default.post(name: .platenFolderShouldRefresh, object: nil)
             }
             LastOpenBook.remember(url)
             RecentList.books.addBook(url)
+            // The window is named for its book (iPad's window switcher), and
+            // keeps the book's bookmark for state restoration (BookWindows).
+            self.openBookmark = BookWindows.bookmark(for: url)
+            self.view.window?.windowScene?.title = RecentList.books.item(at: url)?.displayName
+                ?? url.deletingPathExtension().lastPathComponent
             reader.modalPresentationStyle = .fullScreen
             self.reader = reader
             self.onReaderCreated?(reader)
@@ -223,14 +233,24 @@ enum LastOpenBook {
     /// timeout, so a share that comes back reopens it next time.
     @MainActor static func find(timeout: TimeInterval, completion: @escaping @MainActor (URL?) -> Void) {
         guard let data = AppDefaults.store.data(forKey: key) else { return completion(nil) }
+        resolve(data, timeout: timeout, keepsFresh: true, completion: completion)
+    }
+
+    /// Where the book a bookmark refers to is now, in the background with a
+    /// time limit, as `find` does: for the last book, and for the book a
+    /// window had open (BookWindows). `keepsFresh`: the bookmark is the
+    /// last book's, so it is renewed if the book has moved, and forgotten if
+    /// it is gone.
+    @MainActor static func resolve(_ data: Data, timeout: TimeInterval, keepsFresh: Bool = false,
+                                   completion: @escaping @MainActor (URL?) -> Void) {
         let answer = AnswerOnce(completion)
         DispatchQueue(label: "org.platenreader.last-book", qos: .userInitiated).async {
             var stale = false
             guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
-                DispatchQueue.main.async { forget() } // deleted, or no longer reachable
+                if keepsFresh { DispatchQueue.main.async { forget() } } // deleted, or no longer reachable
                 return answer.send(nil)
             }
-            if stale {
+            if stale, keepsFresh {
                 // Moved: keep a fresh bookmark (made here too, off the main thread).
                 let scoped = url.startAccessingSecurityScopedResource()
                 let fresh = try? url.bookmarkData()

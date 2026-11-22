@@ -44,6 +44,10 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// A page that is just one picture, shown as large as the screen
     /// allows, touching its sides or its top and bottom, with no bars.
     private(set) var lonePictureView: UIImageView!
+    /// Follows VoiceOver being turned on and off.
+    private var voiceOverWatch: NSObjectProtocol?
+    /// What VoiceOver reads in place of the web view: the text on screen.
+    private(set) var pageAccessibility: BookPageAccessibilityView!
     /// The glow behind the page (ambient light), and its next renewal.
     private(set) var ambient: AmbientGlowView!
     private var ambientWork: DispatchWorkItem?
@@ -101,6 +105,18 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         lonePictureView.isAccessibilityElement = false
         lonePictureView.isHidden = true
         pageArea.addSubview(lonePictureView)
+        // VoiceOver reads the page through this, never the web view (which
+        // holds the whole chapter, most of it off screen).
+        webView.accessibilityElementsHidden = true
+        pageAccessibility = BookPageAccessibilityView()
+        pageAccessibility.translatesAutoresizingMaskIntoConstraints = false
+        pageAccessibility.turn = { [weak self] forwards in
+            guard let self, self.session.hasRendered else { return false }
+            self.session.turn(forwards ? .next : .prev)
+            return true
+        }
+        pageAccessibility.toggleControls = { [weak self] in self?.chrome.toggle() }
+        pageArea.addSubview(pageAccessibility)
 
         // Taps on the page are recognised here, natively, rather than from
         // the page's click events: WebKit does not turn every tap into a
@@ -137,6 +153,10 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
             lonePictureView.trailingAnchor.constraint(equalTo: pageArea.trailingAnchor),
             lonePictureView.topAnchor.constraint(equalTo: pageArea.topAnchor),
             lonePictureView.bottomAnchor.constraint(equalTo: pageArea.bottomAnchor),
+            pageAccessibility.leadingAnchor.constraint(equalTo: pageArea.leadingAnchor),
+            pageAccessibility.trailingAnchor.constraint(equalTo: pageArea.trailingAnchor),
+            pageAccessibility.topAnchor.constraint(equalTo: pageArea.topAnchor),
+            pageAccessibility.bottomAnchor.constraint(equalTo: pageArea.bottomAnchor),
         ])
         installChrome(in: root)
         // While the controls are up, the page number steps aside for their
@@ -577,7 +597,26 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         #endif
     }
 
-    func sessionDidOpen() {}
+    func sessionDidOpen() {
+        // The shell reads pages out only while VoiceOver is on.
+        session.setVoiceOver(UIAccessibility.isVoiceOverRunning)
+        voiceOverWatch = NotificationCenter.default.addObserver(
+            forName: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.session.setVoiceOver(UIAccessibility.isVoiceOverRunning) }
+            }
+    }
+
+    /// The text on screen, for VoiceOver (sent by the shell after every
+    /// move). A turn VoiceOver asked for is finished once it is in; a turn
+    /// made some other way while VoiceOver is on is read out (`speak`).
+    func sessionPageText(_ text: String, speak: Bool) {
+        pageAccessibility.text = text
+        if pageAccessibility.isAwaitingTurn {
+            pageAccessibility.pageTurned()
+        } else if speak, UIAccessibility.isVoiceOverRunning {
+            pageAccessibility.readNow()
+        }
+    }
 
     func sessionDidRelocate() {
         updateAmbient()
@@ -597,18 +636,25 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         UIApplication.shared.open(url)
     }
 
-    // Picture zoom, the click-zone explainer and VoiceOver's page text are
-    // still to come on iOS (docs/m3-ios-plan.md); the session already
-    // delivers what they need (`sessionPageText`). A held picture offers
-    // Save and Share (`sessionShowPicture`, above).
+    // Picture zoom and the click-zone explainer are still to come on iOS
+    // (docs/m3-ios-plan.md). A held picture offers Save and Share
+    // (`sessionShowPicture`, above); VoiceOver reads the page through
+    // `pageAccessibility` (`sessionPageText`).
 
     #if DEBUG
     /// For "@report": where a picture-only page's picture sits on screen
     /// (in points), so a check can look at the room round it.
     override func debugReport() -> [String: Any] {
-        guard !lonePictureView.isHidden, let picture = lonePictureView.image else { return ["lonePicture": false] }
+        // What VoiceOver would read: the start of the page's text.
+        // (On one line: the log escapes a line break so the report's JSON
+        // no longer reads.)
+        let spoken = String((pageAccessibility.accessibilityLabel ?? "").prefix(60))
+            .replacingOccurrences(of: "\n", with: " ")
+        guard !lonePictureView.isHidden, let picture = lonePictureView.image else {
+            return ["lonePicture": false, "voiceOverPage": spoken, "webViewHidden": webView.accessibilityElementsHidden]
+        }
         let frame = AVMakeRect(aspectRatio: picture.size, insideRect: lonePictureView.frame)
-        return ["lonePicture": true,
+        return ["lonePicture": true, "voiceOverPage": spoken,
                 "pictureFrame": [frame.minX, frame.minY, frame.width, frame.height].map { Double($0) }]
     }
 
@@ -616,6 +662,11 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     override func runDebugStep(_ step: String) {
         if step.hasPrefix("@tap:"), let zone = ClickZone(rawValue: String(step.dropFirst(5))) {
             handleTap(zone: zone)
+        } else if step.hasPrefix("@axscroll:") {
+            // "@axscroll:next" / "@axscroll:previous": what VoiceOver asks of
+            // the page at the end of Read All, or on a three-finger swipe.
+            let turned = pageAccessibility.accessibilityScroll(step.hasSuffix(":next") ? .next : .previous)
+            log.notice("axscroll: \(turned ? "turning" : "refused", privacy: .public)")
         } else if step.hasPrefix("@") && !step.hasPrefix("@snapshot") && !step.hasPrefix("@turn:")
                     && !step.hasPrefix("@doubleturn:") {
             // The steps both readers take (ReaderBaseViewController).

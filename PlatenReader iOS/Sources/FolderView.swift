@@ -83,6 +83,7 @@ struct FolderGridView: View {
                     // A long press on a book: Favourite, and Get Info.
                     .contextMenu {
                         if entry.kind == .book {
+                            BookWindows.MenuItem { BookWindows.open(url: entry.url, title: entry.name) }
                             Button {
                                 if Favourites.toggle(entry.url) { heartbeats[entry.url, default: 0] += 1 }
                             } label: {

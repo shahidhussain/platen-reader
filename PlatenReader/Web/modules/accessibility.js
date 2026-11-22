@@ -47,10 +47,55 @@ function nameSection(doc, chapter) {
     frame.setAttribute('aria-label', name)
 }
 
+// Elements that begin a block of their own (a heading, a paragraph), so
+// their text is never run on to the text before them.
+const BLOCKS = new Set(['ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'BR', 'CAPTION', 'DD', 'DIV', 'DL', 'DT',
+    'FIGCAPTION', 'FIGURE', 'FOOTER', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HEADER', 'HR', 'LI', 'MAIN', 'NAV',
+    'OL', 'P', 'PRE', 'SECTION', 'TABLE', 'TD', 'TH', 'TR', 'UL'])
+
+const blockOf = node => {
+    for (let el = node.parentElement; el; el = el.parentElement) {
+        if (BLOCKS.has(el.tagName.toUpperCase())) return el
+    }
+    return null
+}
+
+// The text in a range, with a line break between blocks. A range's own
+// toString() joins a heading straight on to the paragraph after it
+// ("A Synthetic NovelGenerated for…"), which VoiceOver reads as one word.
+function rangeText(range) {
+    const root = range.commonAncestorContainer
+    const doc = root.ownerDocument ?? root
+    const slice = n => {
+        let t = n.data
+        const end = n === range.endContainer ? range.endOffset : t.length
+        const start = n === range.startContainer ? range.startOffset : 0
+        return t.slice(start, end)
+    }
+    if (root.nodeType === Node.TEXT_NODE) return slice(root)
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let out = ''
+    let lastBlock
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!range.intersectsNode(n)) continue
+        const block = blockOf(n)
+        if (lastBlock !== undefined && block !== lastBlock) out += '\n'
+        out += slice(n)
+        lastBlock = block
+    }
+    return out
+}
+
 // The text on screen: the visible range foliate reports (both pages in a
-// two-page spread), with runs of white space collapsed.
-const visibleText = () =>
-    (reader.view?.lastLocation?.range?.toString() ?? '').replace(/\s+/g, ' ').trim()
+// two-page spread), a line for each block, runs of spaces collapsed.
+const visibleText = () => {
+    const range = reader.view?.lastLocation?.range
+    if (!range) return ''
+    return rangeText(range)
+        .replace(/[^\S\n]+/g, ' ')
+        .replace(/ *\n[\s]*/g, '\n')
+        .trim()
+}
 
 // Called after every move. Updates the page VoiceOver sees, and reads it
 // out unless this was only a re-layout ("anchor": the same text, laid out

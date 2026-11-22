@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import UIKit
 
 /// Debug-only hooks for checking the iOS reader from the command line, the
 /// counterpart of the Mac's PLATEN_STEPS (see scripts/run-debug.sh).
@@ -38,6 +39,9 @@ import Foundation
 extension ReaderBaseViewController {
     func runDebugStepsIfAny() {
         guard let list = ProcessInfo.processInfo.environment["PLATEN_STEPS"] else { return }
+        // In the first window only: a window opened by a step ("@newwindow")
+        // would otherwise run the steps again, and open another.
+        guard UIApplication.shared.connectedScenes.count <= 1 else { return }
         runDebugSteps(list.split(separator: ";").map(String.init)[...])
     }
 

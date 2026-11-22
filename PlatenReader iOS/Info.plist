@@ -42,13 +42,20 @@
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<!-- The first frame of the start-up animation (LaunchScreen.storyboard). -->
+	<!-- A book in a window: "Open in New Window", and each window's book
+	     restored when iOS has ended the app (BookWindows). -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>org.platenreader.book</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
-	<!-- One scene for now; several windows on iPad come in a later phase. -->
+	<!-- Several windows on iPad, each with a book of its own (BookWindows);
+	     one window on iPhone. -->
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
+		<true/>
 		<key>UISceneConfigurations</key>
 		<dict>
 			<key>UIWindowSceneSessionRoleApplication</key>

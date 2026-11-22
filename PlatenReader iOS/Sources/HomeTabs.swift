@@ -282,6 +282,7 @@ struct BookShelfView: View {
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
+                            BookWindows.MenuItem { BookWindows.open(bookmark: item.bookmark, title: item.displayName) }
                             if shelf == .recent {
                                 Button {
                                     if Favourites.toggle(item, from: recents) { heartbeats[item.id, default: 0] += 1 }

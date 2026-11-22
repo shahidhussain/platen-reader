@@ -48,7 +48,7 @@ To run the core tests: `swift test --package-path PlatenCore`. To check the robu
 - Contents, bookmarks and search open in a popover from the Contents button. A bookmark button sits in the controls.
 - A welcome window with an Open Book… button at launch; one running copy of the app; ⌘W closes the front window whatever has focus.
 - The click-zone explainer shows for the first five books opened. A note explains when Two Pages shows one page because the window is narrow.
-- `scripts/check-corpus.sh` opens every fixture and checks the result (21 of 21 pass). CI runs it on every pull request, along with the core unit and timing tests, unit tests of the code the two apps share (`PlatenReaderTests`), both app builds, and UI tests (`PlatenReaderUITests`: opening a book, turning pages, one versus two pages, and a bookmark and position surviving reopening). UI tests use a throwaway settings and positions folder (`PLATEN_TEST_HOME`), never your own.
+- `scripts/check-corpus.sh` opens every fixture and checks the result (30 of 30 pass); `scripts/check-corpus-ios.sh` does the same in the iOS Simulator. CI runs it on every pull request, along with the core unit and timing tests, unit tests of the code the two apps share (`PlatenReaderTests`), both app builds, and UI tests (`PlatenReaderUITests`: opening a book, turning pages, one versus two pages, and a bookmark and position surviving reopening). UI tests use a throwaway settings and positions folder (`PLATEN_TEST_HOME`), never your own.
 
 Measured here with a Release build and a 2 MB novel (`scripts/measure-performance.py`), against the spec's targets: cold launch plus open, median 780 ms (under 1 s); warm open, 158 ms (under 400 ms); memory with the book open, 111 MB including WebKit (under 250 MB); re-layout after a window resize, 33–90 ms (under 150 ms; Debug build's `@resize:` step). Page-turn smoothness (needs Instruments) and opening from an SMB share are not yet measured.
 
@@ -56,7 +56,7 @@ Measured here with a Release build and a 2 MB novel (`scripts/measure-performanc
 
 ## Not yet done
 
-- **VoiceOver:** each page is read aloud as it turns (R repeats it), controls are named, and VoiceOver's own scrolling settles on whole pages. Needs another pass by hand; VoiceOver's Read All still runs on past the page without turning it.
+- **VoiceOver:** each page is read aloud as it turns (R repeats it), controls are named, and VoiceOver's own scrolling settles on whole pages. On iOS the page is one element holding the text on screen, and Read All turns the page and reads on (the page's "causes page turn" trait). Needs a pass by hand on a device; Read All on the Mac still runs on past the page without turning it.
 - **Formats and sources:** MOBI and AZW3 with real DRM-free samples; SMB and iCloud-offloaded opens; the real-world corpus (Standard Ebooks, Gutenberg, the W3C EPUB 3 tests).
 - **Reading:** check that scroll mode runs on across chapter boundaries; a regression pass on Standard Ebooks files (justification, `text-wrap: pretty`).
 - **Failures:** a link from the DRM message to a guide on the site; a "Report this book" error screen (pre-filled email with a diagnostics file, the book attached only if chosen); Help > Send Feedback….
