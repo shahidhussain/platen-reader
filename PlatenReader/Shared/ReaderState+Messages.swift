@@ -15,6 +15,7 @@ extension ReaderState {
             isFixedLayout = book.isFixedLayout
             isRightToLeft = book.isRightToLeft
             sectionFractions = book.sectionFractions
+            language = book.language
 
         case .contents(let contents):
             // Arrives after the first page is on screen (built in the background).
@@ -60,7 +61,7 @@ extension ReaderState {
             columnsOnScreen = place.columns
 
         case .ready, .firstRender, .addBookmark, .removeBookmark, .click, .image, .lonePicture, .externalLink,
-             .failed, .pageText, .log:
+             .failed, .pageText, .log, .readAloudBlock, .readAloudEnd:
             break // nothing the overlay shows
         }
     }

@@ -39,6 +39,7 @@ import { nameBook, nameSection, pageChanged, readPage, setVoiceOver } from './mo
 import { followScroll, updatePageNumbers } from './modules/pagenumbers.js'
 import { clearSearch, search } from './modules/search.js'
 import { closeNote, handleNoteLink } from './modules/footnotes.js'
+import { readAloud } from './modules/readaloud.js'
 
 // ---------------------------------------------------------------------------
 // Loading book files from Swift
@@ -403,6 +404,12 @@ window.platen = {
     closeNote,
     // iOS: the controls are up (or not). Their location line covers the
     // page number, so the page number steps aside meanwhile.
+    // Read aloud (modules/readaloud.js): Swift speaks, this supplies text.
+    readAloudStart: () => readAloud.start(),
+    readAloudMore: () => readAloud.more(),
+    readAloudMark: name => readAloud.mark(name),
+    readAloudStop: () => readAloud.stop(),
+    readAloudPreview: () => readAloud.preview(),
     setControlsVisible: on => document.getElementById('page-numbers')?.classList.toggle('under-controls', !!on),
     // For debugging and automated checks (scripts/run-debug.sh steps).
     get view() { return reader.view },

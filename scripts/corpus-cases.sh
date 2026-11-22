@@ -57,3 +57,7 @@ POPUP="'note: '+(document.getElementById('platen-note')||{}).innerText"
 check footnotes.epub          "$(echo "$NOTE" | sed 's/SEL/"#r1"/');$POPUP" "note: The footnote text."
 check footnotes.epub          "$(echo "$NOTE" | sed 's/SEL/"#r2"/');$POPUP" "note: The endnote text."
 check drm-adept.epub          "-"                                      "drm(PlatenCore.DRMScheme.adobeADEPT)"
+# Read aloud: the text it would begin with, and the languages that choose
+# its voice (the book's own, and a passage's).
+check french.epub             "platen.readAloudPreview()"             "book:fr blocks:fr,fr,fr first:Le premier chapitre"
+check mixed-language.epub     "platen.readAloudPreview()"             "book:en blocks:en,fr,en first:A Letter from Paris"

@@ -159,12 +159,18 @@ enum ReaderMessage: Equatable {
     case pageText(text: String, speak: Bool)
     /// A line for the log (script errors are forwarded this way).
     case log(String)
+    /// Read aloud: the next block of text to speak (readaloud.js).
+    case readAloudBlock(ReadAloudBlock)
+    /// Read aloud: nothing more to read (the end of the book).
+    case readAloudEnd
 
     struct Opened: Equatable {
         var title = ""
         var author = ""
         var isFixedLayout = false
         var isRightToLeft = false
+        /// The book's language (`dc:language`), if it gives one ("en-GB").
+        var language: String? = nil
         /// Where each section starts, as a fraction of the book.
         var sectionFractions: [Double] = []
     }
@@ -243,6 +249,7 @@ enum ReaderMessage: Equatable {
                 author: string("author") ?? "",
                 isFixedLayout: bool("fixedLayout"),
                 isRightToLeft: string("dir") == "rtl",
+                language: string("language").flatMap { $0.isEmpty ? nil : $0 },
                 sectionFractions: (body["sectionFractions"] as? [NSNumber])?.map(\.doubleValue) ?? []))
         case "contents":
             let items = body["toc"] as? [[String: Any]] ?? []
@@ -309,6 +316,15 @@ enum ReaderMessage: Equatable {
             self = .pageText(text: string("text") ?? "", speak: bool("speak"))
         case "log":
             self = .log(string("message") ?? "")
+        case "readAloudBlock":
+            let sentences = (body["sentences"] as? [[String: Any]] ?? []).compactMap { item -> ReadAloudSentence? in
+                guard let text = item["text"] as? String, !text.isEmpty else { return nil }
+                return ReadAloudSentence(mark: item["mark"] as? String, text: text)
+            }
+            self = .readAloudBlock(ReadAloudBlock(language: string("lang").flatMap { $0.isEmpty ? nil : $0 },
+                                                  sentences: sentences))
+        case "readAloudEnd":
+            self = .readAloudEnd
         default:
             return nil
         }

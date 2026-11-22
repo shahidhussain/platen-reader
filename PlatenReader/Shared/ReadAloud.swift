@@ -1,0 +1,303 @@
+import Foundation
+import NaturalLanguage
+
+// Read aloud: the parts both apps share (docs/read-aloud.md). The shell
+// supplies the text a block at a time (readaloud.js); a `SpeechEngine`
+// speaks it; `ReadAloudController` keeps the two in step.
+
+/// One sentence to read, with the name of its mark in the page (to
+/// highlight it). A PDF's sentences have no mark.
+struct ReadAloudSentence: Equatable, Sendable {
+    var mark: String?
+    var text: String
+}
+
+/// A block of the book (a paragraph, a heading) as the shell sends it.
+struct ReadAloudBlock: Equatable, Sendable {
+    /// The block's own language, if the book marks it (`xml:lang`).
+    var language: String?
+    var sentences: [ReadAloudSentence]
+}
+
+/// What read aloud is doing, for the speaker button.
+enum ReadAloudPhase: Equatable, Sendable {
+    case off
+    /// Started, waiting for the first words (text from the page, or the
+    /// voice getting ready).
+    case starting
+    case playing
+    case paused
+}
+
+/// The reader's choice of voice for English books, made in the dialog on
+/// the first tap of the speaker button, or in Settings.
+enum ReadAloudVoiceChoice: String, CaseIterable, Sendable {
+    /// Not chosen yet: the first tap asks.
+    case undecided
+    /// Apple's voices.
+    case apple
+    /// The downloaded natural voice (Kokoro).
+    case kokoro
+}
+
+/// Which engine reads a book.
+enum SpeechEngineKind: Equatable, Sendable {
+    /// Apple's voices, for this language.
+    case apple(language: String)
+    /// The downloaded natural voice (English only).
+    case kokoro
+    /// Ask the reader first (an English book, no choice made yet, and the
+    /// natural voice can be offered).
+    case askFirst(language: String)
+}
+
+// MARK: - Choosing the engine
+
+enum SpeechEngineChooser {
+    /// The language to read a book in: the book's own (`dc:language`), else
+    /// the language of its text, else English. A book in several languages
+    /// is read in the book's own (the spec: "Mixed-language books: use the
+    /// book's language").
+    static func language(book: String?, text: String?) -> String {
+        if let book = normalised(book) { return book }
+        if let text, !text.isEmpty {
+            let recogniser = NLLanguageRecognizer()
+            recogniser.processString(String(text.prefix(2000)))
+            if let found = recogniser.dominantLanguage, found != .undetermined { return found.rawValue }
+        }
+        return "en"
+    }
+
+    /// "en_GB", "EN-gb" and the like as BCP 47 ("en-GB"); nil if empty.
+    static func normalised(_ code: String?) -> String? {
+        guard let code = code?.trimmingCharacters(in: .whitespaces), !code.isEmpty else { return nil }
+        let parts = code.replacingOccurrences(of: "_", with: "-").split(separator: "-")
+        guard let first = parts.first else { return nil }
+        let rest = parts.dropFirst().map { $0.count == 2 ? $0.uppercased() : String($0) }
+        return ([first.lowercased()] + rest).joined(separator: "-")
+    }
+
+    static func isEnglish(_ language: String) -> Bool {
+        language.lowercased() == "en" || language.lowercased().hasPrefix("en-")
+    }
+
+    /// The engine for a book in `language`, given the reader's `choice`,
+    /// whether the natural voice can be offered on this device
+    /// (`kokoroOffered`: a new enough system and device) and whether it is
+    /// downloaded (`kokoroInstalled`).
+    static func choose(language: String, choice: ReadAloudVoiceChoice,
+                       kokoroOffered: Bool, kokoroInstalled: Bool) -> SpeechEngineKind {
+        guard isEnglish(language), kokoroOffered else { return .apple(language: language) }
+        switch choice {
+        case .apple: return .apple(language: language)
+        case .kokoro: return kokoroInstalled ? .kokoro : .askFirst(language: language)
+        case .undecided: return .askFirst(language: language)
+        }
+    }
+}
+
+// MARK: - Apple's voices
+
+/// An installed Apple voice, as `AVSpeechSynthesisVoice` describes it
+/// (kept apart from AVFoundation so the choice can be tested).
+struct AppleVoiceInfo: Equatable, Sendable {
+    enum Quality: Int, Comparable, Sendable {
+        case standard = 1, enhanced = 2, premium = 3
+        static func < (a: Quality, b: Quality) -> Bool { a.rawValue < b.rawValue }
+    }
+    var identifier: String
+    var name: String
+    /// BCP 47, "en-GB".
+    var language: String
+    var quality: Quality
+}
+
+enum AppleVoices {
+    /// The best installed voice for `language`: Premium, then Enhanced,
+    /// then a default voice; among voices of the same quality, one for the
+    /// book's own region ("en-GB"), then the reader's region, then any.
+    /// `preferred`: a voice the reader chose in Settings, used if it speaks
+    /// the language.
+    static func best(for language: String, among voices: [AppleVoiceInfo], preferred: String? = nil,
+                     readerRegion: String? = Locale.current.region?.identifier) -> AppleVoiceInfo? {
+        let base = baseLanguage(language)
+        let matching = voices.filter { baseLanguage($0.language) == base }
+        if let preferred, let voice = matching.first(where: { $0.identifier == preferred }) { return voice }
+        let bookRegion = region(of: language)
+        func score(_ voice: AppleVoiceInfo) -> (Int, Int) {
+            let region = region(of: voice.language)
+            let regionScore = region != nil && region == bookRegion ? 2 : (region != nil && region == readerRegion ? 1 : 0)
+            return (voice.quality.rawValue, regionScore)
+        }
+        return matching.max { a, b in
+            let (qa, ra) = score(a), (qb, rb) = score(b)
+            return qa != qb ? qa < qb : (ra != rb ? ra < rb : a.name > b.name)
+        }
+    }
+
+    /// Whether only a default-quality voice is installed for `language`
+    /// (then the reader is told better ones can be added in Settings).
+    static func onlyStandard(for language: String, among voices: [AppleVoiceInfo]) -> Bool {
+        let base = baseLanguage(language)
+        return !voices.contains { baseLanguage($0.language) == base && $0.quality > .standard }
+    }
+
+    static func baseLanguage(_ code: String) -> String {
+        String(code.lowercased().replacingOccurrences(of: "_", with: "-").split(separator: "-").first ?? "")
+    }
+
+    static func region(of code: String) -> String? {
+        let parts = code.replacingOccurrences(of: "_", with: "-").split(separator: "-")
+        return parts.dropFirst().first { $0.count == 2 }.map { $0.uppercased() }
+    }
+}
+
+// MARK: - The engine
+
+/// Something that speaks sentences in order: Apple's voices
+/// (`AppleSpeechEngine`) or the natural voice. It reports each sentence as
+/// it starts and finishes, on the main thread, by the id it was given.
+@MainActor
+protocol SpeechEngine: AnyObject {
+    var onStart: ((Int) -> Void)? { get set }
+    var onFinish: ((Int) -> Void)? { get set }
+    /// Speaking speed: 1 is normal, 0.5 half, 2 twice.
+    var speed: Double { get set }
+    /// Adds sentences after those already queued.
+    func enqueue(_ sentences: [(id: Int, text: String)], language: String)
+    func pause()
+    func resume()
+    /// Stops at once and forgets the queue.
+    func stop()
+}
+
+// MARK: - Keeping text and speech in step
+
+/// Feeds the engine from the page: asks for the next block while a few
+/// sentences are still to be spoken (so there is no pause between blocks),
+/// highlights each sentence as it starts, and stops at the end of the book.
+@MainActor
+final class ReadAloudController {
+    /// More text is asked for while this many sentences are still to be
+    /// spoken. Many: iOS suspends the page in the background, so the queue
+    /// in hand is what is read at the lock screen until the app is opened
+    /// again (readaloud.js sends about 20 at a time).
+    nonisolated static let lookahead = 40
+
+    let engine: SpeechEngine
+    /// The language to read in (the book's).
+    let language: String
+    private(set) var phase: ReadAloudPhase = .off {
+        didSet { if phase != oldValue { onPhase?(phase) } }
+    }
+    var onPhase: ((ReadAloudPhase) -> Void)?
+    /// Asks the page for the next block (it answers with `receive`).
+    var requestNext: (() -> Void)?
+    /// Highlights a sentence in the page.
+    var mark: ((String) -> Void)?
+
+    private var queued: [Int: ReadAloudSentence] = [:]
+    private var order: [Int] = []
+    private var nextID = 0
+    private var awaitingBlock = false
+    private var reachedEnd = false
+
+    /// This controller's lookahead (`lookahead`, smaller in the tests).
+    let lookaheadCount: Int
+
+    init(engine: SpeechEngine, language: String, lookahead: Int = ReadAloudController.lookahead) {
+        self.engine = engine
+        self.language = language
+        lookaheadCount = lookahead
+        engine.onStart = { [weak self] id in self?.started(id) }
+        engine.onFinish = { [weak self] id in self?.finished(id) }
+    }
+
+    /// Reading begins; the caller has asked the page for the first block.
+    func start() {
+        phase = .starting
+        awaitingBlock = true
+        reachedEnd = false
+    }
+
+    /// A block from the page.
+    func receive(_ block: ReadAloudBlock) {
+        guard phase != .off else { return }
+        awaitingBlock = false
+        let items = block.sentences.map { sentence -> (id: Int, text: String) in
+            let id = nextID
+            nextID += 1
+            queued[id] = sentence
+            order.append(id)
+            return (id, sentence.text)
+        }
+        guard !items.isEmpty else { return askForMore() }
+        engine.enqueue(items, language: language)
+        if order.count <= lookaheadCount { askForMore() }
+    }
+
+    /// The page has nothing more (the end of the book).
+    func endReached() {
+        awaitingBlock = false
+        reachedEnd = true
+        if order.isEmpty { stop() }
+    }
+
+    func pause() {
+        guard phase == .playing || phase == .starting else { return }
+        engine.pause()
+        phase = .paused
+    }
+
+    func resume() {
+        guard phase == .paused else { return }
+        engine.resume()
+        phase = order.isEmpty ? .starting : .playing
+    }
+
+    func stop() {
+        engine.stop()
+        queued.removeAll()
+        order.removeAll()
+        awaitingBlock = false
+        phase = .off
+    }
+
+    /// The sentences queued and not yet finished, in order (for tests).
+    var pendingTexts: [String] { order.compactMap { queued[$0]?.text } }
+
+    private func askForMore() {
+        guard !awaitingBlock, !reachedEnd, phase != .off else { return }
+        awaitingBlock = true
+        requestNext?()
+    }
+
+    private func started(_ id: Int) {
+        guard let sentence = queued[id] else { return }
+        if phase != .paused { phase = .playing }
+        if let mark = sentence.mark { self.mark?(mark) }
+        // Sentences after this one still to come; ask for more in time.
+        if let index = order.firstIndex(of: id), order.count - index - 1 <= lookaheadCount { askForMore() }
+    }
+
+    private func finished(_ id: Int) {
+        queued[id] = nil
+        order.removeAll { $0 == id }
+        if order.isEmpty {
+            if reachedEnd { stop() } else if phase == .playing { phase = .starting; askForMore() }
+        }
+    }
+}
+
+// MARK: - The natural voice's availability
+
+/// Whether the natural voice (Kokoro) can be offered on this device, and
+/// whether it is downloaded. It needs iOS 26 or later (Apple-hosted
+/// Background Assets) and a recent enough device (docs/read-aloud.md,
+/// Measurements). Not offered until its engine is in the app.
+enum KokoroVoice {
+    static var isOffered: Bool { false }
+    static var isInstalled: Bool { false }
+    /// The download's size, for the dialog and Settings.
+    static let downloadSize = Measurement(value: 165, unit: UnitInformationStorage.megabytes)
+}

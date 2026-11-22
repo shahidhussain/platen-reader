@@ -2,6 +2,8 @@
 
 A free, open source ebook viewer for macOS that behaves like Preview: double-click a book and you are reading it within a second. There is no library, no import step and no account. It reads EPUB 2 and 3 (reflowable and fixed layout), KEPUB, MOBI and AZW3, all DRM-free, and plain text.
 
+Platen sends nothing about you anywhere and makes no network requests, with two exceptions you control: the direct-download Mac build checks for updates (Sparkle), and the natural English read-aloud voice is downloaded only if you ask for it (about 165 MB; see [docs/read-aloud.md](docs/read-aloud.md)).
+
 Platen is native Swift. Rendering uses [foliate-js](https://github.com/johnfactotum/foliate-js) inside WKWebView, and Swift handles everything about files, parsing and state.
 
 ## Building

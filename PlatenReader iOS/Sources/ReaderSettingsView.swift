@@ -38,6 +38,7 @@ struct ReaderSettingsView: View {
                         Text("Breaks long words at the ends of lines, so lines are more even and justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher.")
                     }
                 }
+                ReadAloudSettingsSection()
                 Section {
                     Button("Clear Reading Positions and Bookmarks…", role: .destructive) { confirmClear = true }
                 } footer: {
@@ -92,5 +93,72 @@ private struct DiagnosticsFile: Transferable {
         FileRepresentation(exportedContentType: .plainText) { _ in
             SentTransferredFile(try DiagnosticLog.shared.export())
         }
+    }
+}
+
+/// Settings › Read Aloud (docs/read-aloud.md): the voice for English books
+/// (where the natural voice can be offered), Apple's voice with a sample,
+/// the speed, and where better Apple voices come from.
+private struct ReadAloudSettingsSection: View {
+    @ObservedObject var settings = ReadAloudSettings.shared
+    @State private var sampler = VoiceSampler()
+
+    /// Apple's English voices, best first (the choice here is for English
+    /// books; other languages use the best installed voice for each).
+    private var englishVoices: [AppleVoiceInfo] {
+        AppleSpeechEngine.installedVoices()
+            .filter { AppleVoices.baseLanguage($0.language) == "en" }
+            .sorted { $0.quality != $1.quality ? $0.quality > $1.quality : $0.name < $1.name }
+    }
+
+    var body: some View {
+        Section {
+            if KokoroVoice.isOffered {
+                Picker("English Books", selection: $settings.choice) {
+                    Text("Apple Voice").tag(ReadAloudVoiceChoice.apple)
+                    Text("Natural Voice").tag(ReadAloudVoiceChoice.kokoro)
+                    if settings.choice == .undecided { Text("Ask First").tag(ReadAloudVoiceChoice.undecided) }
+                }
+            }
+            Picker("Apple Voice", selection: $settings.appleVoice) {
+                Text("Best Installed").tag(String?.none)
+                ForEach(englishVoices, id: \.identifier) { voice in
+                    Text(Self.describe(voice)).tag(Optional(voice.identifier))
+                }
+            }
+            Button("Play Sample") { sampler.play(voice: settings.appleVoice, speed: settings.speed) }
+            Picker("Speed", selection: $settings.speed) {
+                ForEach(ReadAloudSettings.speeds, id: \.self) { speed in
+                    Text(speed.formatted(.number.precision(.fractionLength(0...2))) + "×").tag(speed)
+                }
+            }
+        } header: {
+            Text("Read Aloud")
+        } footer: {
+            Text("Better Apple voices can be added in Settings › Accessibility › Read & Speak › Voices.")
+        }
+    }
+
+    /// "Serena (British English, Enhanced)".
+    private static func describe(_ voice: AppleVoiceInfo) -> String {
+        let place = Locale.current.localizedString(forIdentifier: voice.language) ?? voice.language
+        switch voice.quality {
+        case .premium: return String(localized: "\(voice.name) (\(place), Premium)")
+        case .enhanced: return String(localized: "\(voice.name) (\(place), Enhanced)")
+        case .standard: return "\(voice.name) (\(place))"
+        }
+    }
+}
+
+/// Speaks a line in the chosen voice, for Settings' Play Sample.
+@MainActor
+private final class VoiceSampler {
+    private let engine = AppleSpeechEngine()
+
+    func play(voice: String?, speed: Double) {
+        engine.stop()
+        engine.preferredVoice = voice
+        engine.speed = speed
+        engine.enqueue([(0, String(localized: "This is how books will sound when they are read aloud."))], language: "en")
     }
 }

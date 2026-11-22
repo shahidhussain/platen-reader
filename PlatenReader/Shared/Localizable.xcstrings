@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en-GB",
   "strings" : {
+    "%@ (%@, Enhanced)" : {
+
+    },
+    "%@ (%@, Premium)" : {
+
+    },
     "%@ (⌘%@)" : {
       "localizations" : {
         "en-GB" : {
@@ -53,6 +59,12 @@
     "Appearance" : {
 
     },
+    "Apple Voice" : {
+
+    },
+    "Ask First" : {
+
+    },
     "Asking the file system…" : {
 
     },
@@ -78,6 +90,12 @@
 
     },
     "Back to %@ (⌘[)" : {
+
+    },
+    "Best Installed" : {
+
+    },
+    "Better Apple voices can be added in Settings › Accessibility › Read & Speak › Voices." : {
 
     },
     "Black" : {
@@ -123,6 +141,9 @@
 
     },
     "Choose Folder…" : {
+
+    },
+    "Choose a voice for English books. You can change it later in Settings › Read Aloud." : {
 
     },
     "Clear" : {
@@ -188,6 +209,9 @@
     "Done" : {
 
     },
+    "Download Better Voice (about %@)" : {
+
+    },
     "Downloading" : {
 
     },
@@ -207,6 +231,9 @@
 
     },
     "End of document" : {
+
+    },
+    "English Books" : {
 
     },
     "Enter Full Screen" : {
@@ -386,6 +413,9 @@
     "Narrow" : {
 
     },
+    "Natural Voice" : {
+
+    },
     "Network share" : {
 
     },
@@ -501,6 +531,9 @@
     "Path" : {
 
     },
+    "Pause Reading" : {
+
+    },
     "Picture" : {
 
     },
@@ -522,6 +555,9 @@
     "Platen Reader" : {
 
     },
+    "Play Sample" : {
+
+    },
     "Previous Chapter" : {
 
     },
@@ -535,6 +571,12 @@
 
     },
     "Quit %@" : {
+
+    },
+    "Read Aloud" : {
+
+    },
+    "Read with Apple Voice" : {
 
     },
     "Reading" : {
@@ -562,6 +604,9 @@
 
     },
     "Remove from Recents" : {
+
+    },
+    "Resume Reading" : {
 
     },
     "Save Image…" : {
@@ -657,10 +702,16 @@
     "Sort By" : {
 
     },
+    "Speed" : {
+
+    },
     "Start of book" : {
 
     },
     "Start of document" : {
+
+    },
+    "Stop Reading" : {
 
     },
     "Stored" : {
@@ -676,6 +727,9 @@
 
     },
     "Text Size" : {
+
+    },
+    "The better voice is a one-time download of about %@. Nothing about you is sent. It is used for English books only; other languages use Apple’s voices." : {
 
     },
     "The book window is too narrow for two pages. Make it wider to see them side by side." : {
@@ -699,6 +753,9 @@
     "This book has no table of contents." : {
 
     },
+    "This book is read with the standard %@ voice. Better Apple voices can be added in Settings › Accessibility › Read & Speak › Voices." : {
+
+    },
     "This cannot be undone." : {
 
     },
@@ -709,6 +766,9 @@
 
     },
     "This PDF is protected by a password." : {
+
+    },
+    "This is how books will sound when they are read aloud." : {
 
     },
     "Title" : {

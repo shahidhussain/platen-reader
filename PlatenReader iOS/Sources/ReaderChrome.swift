@@ -37,13 +37,13 @@ final class ReaderChrome {
     /// - Parameter sidebarClosed: called when the contents popover closes
     ///   (the reader clears search highlights).
     init(owner: UIViewController, state: ReaderState, actions: OverlayActions, sidebarActions: ContentsActions,
-         close: @escaping () -> Void, sidebarClosed: @escaping () -> Void) {
+         close: @escaping () -> Void, readAloud: ReadAloudButtonActions? = nil, sidebarClosed: @escaping () -> Void) {
         self.owner = owner
         self.state = state
         bottom = UIHostingController(rootView: ReaderBottomBar(
             state: state, insets: insets,
             bar: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions, part: .bottomBar)))
-        top = UIHostingController(rootView: ReaderTopBar(state: state, insets: insets, close: close))
+        top = UIHostingController(rootView: ReaderTopBar(state: state, insets: insets, close: close, readAloud: readAloud))
 
         // When the contents popover closes, the hide countdown starts again.
         state.$sidebarVisible
@@ -208,13 +208,15 @@ final class ChromeInsets: ObservableObject {
     @Published var edges = EdgeInsets(top: 54, leading: 12, bottom: 34, trailing: 12)
 }
 
-/// The top bar on iOS: Close at the left, and the book's title with the
-/// chapter under it in the middle, on a band of the page's colour that
+/// The top bar on iOS: Close at the left, read aloud at the right, and the
+/// book's title with the chapter under it in the middle, on a band of the page's colour that
 /// reaches up behind the status bar.
 struct ReaderTopBar: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var insets: ChromeInsets
     let close: () -> Void
+    /// The speaker button's actions; nil where the reader cannot read aloud.
+    var readAloud: ReadAloudButtonActions?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -243,7 +245,11 @@ struct ReaderTopBar: View {
             .accessibilityElement(children: .combine)
 
             // As wide as Close, so the title is centred on the screen.
-            Color.clear.frame(width: 44, height: 44)
+            if let readAloud {
+                ReadAloudButton(phase: state.readAloud, actions: readAloud)
+            } else {
+                Color.clear.frame(width: 44, height: 44)
+            }
         }
         .padding(.top, insets.edges.top)
         .padding(.leading, insets.edges.leading)
@@ -305,5 +311,58 @@ extension NSLayoutConstraint {
     func withPriority(_ priority: UILayoutPriority) -> NSLayoutConstraint {
         self.priority = priority
         return self
+    }
+}
+
+/// What the speaker button does.
+struct ReadAloudButtonActions {
+    /// Starts reading, pauses or resumes, by what is happening now.
+    var tap: () -> Void
+    /// Stops reading (from the button's long-press menu).
+    var stop: () -> Void
+}
+
+/// The speaker button at the right of the top bar: starts reading aloud from
+/// the current page; while reading, pauses and resumes. A long press offers
+/// Stop Reading. The usual iOS player pattern (play and pause in one
+/// button), with the speaker as the way in.
+struct ReadAloudButton: View {
+    let phase: ReadAloudPhase
+    let actions: ReadAloudButtonActions
+
+    var body: some View {
+        Button(action: actions.tap) {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
+        .contextMenu {
+            if phase != .off {
+                Button(role: .destructive, action: actions.stop) {
+                    Label("Stop Reading", systemImage: "stop.fill")
+                }
+            }
+        }
+    }
+
+    private var symbol: String {
+        switch phase {
+        case .off: return "speaker.wave.2"
+        case .starting, .playing: return "pause.fill"
+        case .paused: return "play.fill"
+        }
+    }
+
+    private var label: LocalizedStringKey {
+        switch phase {
+        case .off: return "Read Aloud"
+        case .starting, .playing: return "Pause Reading"
+        case .paused: return "Resume Reading"
+        }
     }
 }
