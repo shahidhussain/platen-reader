@@ -7,8 +7,10 @@ import Foundation
 /// A background timer asks the main thread to answer ten times a second;
 /// when an answer comes late by more than `threshold`, the delay is logged.
 /// Cheap (one tiny block on the main queue every tenth of a second) and
-/// local: it only writes to the device's own log, which nothing sends
-/// anywhere (spec: no telemetry). Read it with `log collect` or Console.
+/// local: it writes to the device's own log and the app's diagnostics file
+/// (`DiagnosticLog`), which nothing sends anywhere (spec: no telemetry); the
+/// reader can share the file from Settings. The lines just before a busy
+/// moment in that file say what was going on.
 final class HangWatch: @unchecked Sendable {
     static let shared = HangWatch()
 

@@ -15,8 +15,14 @@ struct HomeActions {
 @MainActor
 final class HomeNavigation: ObservableObject {
     enum Tab: Int, Hashable, CaseIterable { case home, books, favourites }
-    @Published var tab: Tab = .home
-    @Published var folderPath: [URL] = []
+    // Each change is logged, so a busy moment in the diagnostics file shows
+    // which part of Home it came in (no names: just the tab and the depth).
+    @Published var tab: Tab = .home {
+        didSet { if tab != oldValue { log.info("home: \(String(describing: tab), privacy: .public) tab") } }
+    }
+    @Published var folderPath: [URL] = [] {
+        didSet { if folderPath.count != oldValue.count { log.info("home: folder depth \(folderPath.count)") } }
+    }
 
     /// Shows a folder in the Home tab (just chosen, or tapped in the list).
     func show(folder: URL) {

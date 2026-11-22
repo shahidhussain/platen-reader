@@ -192,7 +192,7 @@ struct FolderGridView: View {
         log.info("folder search: \(found.count) shown of \(model.entries.count) entries (\(books.count) books, \(titled) with titles read, \(byName) matching by file name), loaded: \(model.hasLoaded)")
         #if DEBUG
         // Debug builds only: the words and names themselves.
-        log.info("folder search for \(query, privacy: .public) in \(folder.lastPathComponent, privacy: .public): \(found.map(\.name).joined(separator: " | "), privacy: .public)")
+        log.info("folder search for \(query, privacy: .name) in \(folder.lastPathComponent, privacy: .name): \(found.map(\.name).joined(separator: " | "), privacy: .name)")
         #endif
     }
 

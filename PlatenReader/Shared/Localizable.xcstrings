@@ -32,6 +32,9 @@
     "A book’s title and author are known once Platen has read it; until then, and for books only in iCloud, its file name is shown." : {
 
     },
+    "A record of how the app has been running (how long books took to open, moments it was slow to respond, errors), kept on this device to help with a problem report. It holds no book titles or file names, and leaves the device only if you share it." : {
+
+    },
     "About %@" : {
 
     },
@@ -501,6 +504,9 @@
     "Plain text is left out, since most text files are not books. Use its own button to open all text files in Platen." : {
 
     },
+    "Platen Reader Diagnostics" : {
+
+    },
     "Platen does not open password-protected PDFs. Open it in another app." : {
 
     },
@@ -595,6 +601,9 @@
 
     },
     "Settings…" : {
+
+    },
+    "Share Diagnostics…" : {
 
     },
     "Share Selection…" : {
@@ -738,6 +747,9 @@
 
     },
     "View Options" : {
+
+    },
+    "Website" : {
 
     },
     "Where" : {

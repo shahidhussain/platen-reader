@@ -140,7 +140,11 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
                 case .success(let book):
                     if self.state.opening == .downloading { self.state.opening = .reading }
                     let elapsed = (CFAbsoluteTimeGetCurrent() - self.openStarted) * 1000
-                    log.info("Read \(url.lastPathComponent, privacy: .public) in \(elapsed, format: .fixed(precision: 0)) ms")
+                    // The kind and size of book, which the diagnostics file
+                    // keeps in place of its name ("Read <name> (epub, 2.1 MB)").
+                    let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { $0 } ?? 0
+                    let size = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+                    log.info("Read \(url.lastPathComponent, privacy: .name) (\(book.format.rawValue, privacy: .public), \(size, privacy: .public)) in \(elapsed, format: .fixed(precision: 0)) ms")
                     for warning in book.warnings { log.notice("\(warning, privacy: .public)") }
                     if book.isRepaired { log.notice("Opened a damaged book using a rebuilt package") }
                     self.book = book
@@ -193,7 +197,7 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
     }
 
     private func fail(_ error: Error) {
-        log.error("Could not open \(self.url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+        log.error("Could not open \(self.url.lastPathComponent, privacy: .name): \(String(describing: error), privacy: .public)")
         state.opening = nil
         host?.sessionDidFail(error)
     }

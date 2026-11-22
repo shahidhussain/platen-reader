@@ -268,7 +268,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                     log.info("First page visible after \(elapsed, format: .fixed(precision: 0)) ms")
                 case .failure(let error):
                     self.state.opening = nil
-                    log.error("Could not open \(url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+                    log.error("Could not open \(url.lastPathComponent, privacy: .name): \(String(describing: error), privacy: .public)")
                     self.showFailure(error)
                 }
             }

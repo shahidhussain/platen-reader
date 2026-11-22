@@ -129,7 +129,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
                         #endif
                     }
                 case .failure(let error):
-                    log.error("Could not open \(url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+                    log.error("Could not open \(url.lastPathComponent, privacy: .name): \(String(describing: error), privacy: .public)")
                     self.showFailure(error)
                 }
             }

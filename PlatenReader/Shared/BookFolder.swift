@@ -488,7 +488,7 @@ final class FolderModel: NSObject, ObservableObject {
         let done = DispatchSemaphore(value: 0)
         let result = ThumbnailResult()
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
-            if let error { log.info("No iCloud thumbnail for \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)") }
+            if let error { log.info("No iCloud thumbnail for \(url.lastPathComponent, privacy: .name): \(error.localizedDescription, privacy: .public)") }
             result.image = representation?.cgImage
             done.signal()
         }
@@ -517,7 +517,7 @@ final class FolderModel: NSObject, ObservableObject {
         do {
             try FileManager.default.startDownloadingUbiquitousItem(at: entry.url)
         } catch {
-            log.error("Could not download \(entry.url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            log.error("Could not download \(entry.url.lastPathComponent, privacy: .name): \(error.localizedDescription, privacy: .public)")
             return
         }
         downloading.insert(entry.url)

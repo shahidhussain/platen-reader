@@ -24,17 +24,18 @@ struct ReaderSettingsView: View {
                         ForEach(PageTurnStyle.allCases) { Text($0.label).tag($0) }
                     }
                     Toggle("Show Pages Left in Chapter", isOn: $settings.showPagesLeftInChapter)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Toggle("Justify Text", isOn: $settings.justify)
+                    // The explanation is the toggle's second line (the
+                    // system's title-and-subtitle row), so it wraps beside
+                    // the switch, which sits centred on both lines, instead
+                    // of running under it with the title pressed against it
+                    // (device testing, 22 Nov 2026).
+                    Toggle(isOn: $settings.justify) {
+                        Text("Justify Text")
                         Text("Lines flush at both sides, where the book asks for it. Off, lines end where their words do (ragged right), which leaves no wide gaps between words on a narrow screen.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Toggle("Hyphenate Text", isOn: $settings.hyphenate)
+                    Toggle(isOn: $settings.hyphenate) {
+                        Text("Hyphenate Text")
                         Text("Breaks long words at the ends of lines, so lines are more even and justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                 }
                 Section {
@@ -43,7 +44,22 @@ struct ReaderSettingsView: View {
                     Text("Platen keeps only where you are in each book and your bookmarks, on this device.")
                 }
                 Section {
+                    ShareLink(item: DiagnosticsFile(), preview: SharePreview("Platen Reader Diagnostics")) {
+                        Text("Share Diagnostics…")
+                    }
+                } footer: {
+                    Text("A record of how the app has been running (how long books took to open, moments it was slow to respond, errors), kept on this device to help with a problem report. It holds no book titles or file names, and leaves the device only if you share it.")
+                }
+                Section {
                     LabeledContent("Platen Reader", value: AppVersion.line)
+                    // Opens the website in the reader's browser; the app
+                    // itself loads nothing (spec: no network).
+                    Link(destination: AppLinks.website) {
+                        LabeledContent("Website") {
+                            Image(systemName: "arrow.up.right")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 } footer: {
                     // A little whimsy, unattributed (Slaughterhouse-Five).
                     Text(verbatim: "Poo-tee-weet?")
@@ -65,6 +81,16 @@ struct ReaderSettingsView: View {
             } message: {
                 Text("This cannot be undone.")
             }
+        }
+    }
+}
+
+/// The diagnostics file (`DiagnosticLog`) as the share sheet takes it: a
+/// copy made when the reader chooses where to send it, named for the day.
+private struct DiagnosticsFile: Transferable {
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .plainText) { _ in
+            SentTransferredFile(try DiagnosticLog.shared.export())
         }
     }
 }
