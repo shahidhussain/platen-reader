@@ -36,6 +36,7 @@ scripts/check-corpus.sh                                    # corpus must stay gr
 scripts/check-corpus-ios.sh                                # the same corpus on iOS (a few minutes)
 scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next();@toggleContents:"
 # → log lines with open timings; PNG snapshots in build/snaps/
+scripts/fetch-onnxruntime.sh                               # once: ONNX Runtime for the iOS app (Vendor/, not in git)
 xcodebuild -project PlatenReader.xcodeproj -scheme "PlatenReader iOS" -configuration Debug \
   -destination "generic/platform=iOS Simulator" -derivedDataPath build/DerivedData \
   CODE_SIGNING_ALLOWED=NO build                            # iOS app
@@ -69,6 +70,7 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 - Add a line to `scripts/corpus-cases.sh` for every new fixture (both corpus scripts read it).
 - Before pushing a change to the iOS reader (its look, the glow, the controls, layouts), run `scripts/ios-matrix.py` and look at `build/ios-matrix/sheet.png`; with `--samples` it also takes the books in `samples/` (never committed) through it. A bug found on a device that a rule could have caught becomes a rule there, or a state in one of its cases.
 - If you patch vendored foliate-js, record it in `PlatenReader/Web/foliate/VENDORED.md`.
+- Read aloud's natural voice (`PlatenReader/Shared/Kokoro`, docs/read-aloud.md) runs Kokoro on ONNX Runtime, whose Apple build has Microsoft's telemetry on by default. `KokoroModel` switches it off; after updating ONNX Runtime or touching `KokoroModel`, run `scripts/check-no-network.sh` (needs `python3 scripts/make-kokoro-pack.py`). Nothing GPL may be added (no eSpeak NG). The voice pack is built by `scripts/make-kokoro-pack.py` from pinned, hashed sources.
 
 ## Status
 

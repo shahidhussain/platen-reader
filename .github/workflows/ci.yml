@@ -31,6 +31,9 @@ jobs:
             -configuration Debug -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO build
 
+      - name: Fetch ONNX Runtime (read aloud's natural voice; pinned, checked)
+        run: scripts/fetch-onnxruntime.sh
+
       - name: Build the iOS app (Simulator)
         run: |
           xcodebuild -project PlatenReader.xcodeproj -scheme "PlatenReader iOS" \

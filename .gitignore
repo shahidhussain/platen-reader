@@ -14,3 +14,5 @@ samples/
 Config/Local.xcconfig
 # Screen recordings and screenshots of bugs, for hand testing.
 bugreports/
+# ONNX Runtime, fetched by scripts/fetch-onnxruntime.sh (too large for git).
+Vendor/onnxruntime/

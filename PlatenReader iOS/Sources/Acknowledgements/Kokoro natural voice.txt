@@ -1,0 +1,18 @@
+Read aloud's natural voice (downloaded only if you ask for it) uses:
+
+Kokoro-82M v1.0 by hexgrad: weights and voices, Apache License 2.0.
+  https://huggingface.co/hexgrad/Kokoro-82M
+  ONNX export by onnx-community, Apache License 2.0.
+Misaki English lexicons by hexgrad, Apache License 2.0.
+  https://github.com/hexgrad/misaki
+MisakiSwift by mlalma (Swift port of Misaki), and MLXUtilsLibrary's token
+  type, Apache License 2.0. Changes by Platen: no MLX, lexicons read from the
+  voice pack, an English fallback without a neural network.
+  https://github.com/mlalma/MisakiSwift
+CMU Pronouncing Dictionary, Copyright (C) 1993-2015 Carnegie Mellon
+  University, BSD 2-clause licence.
+  https://github.com/cmusphinx/cmudict
+ONNX Runtime by Microsoft, MIT licence (its telemetry is switched off).
+  https://onnxruntime.ai
+
+No GPL code or data is used.

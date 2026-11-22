@@ -685,6 +685,9 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
             let base = AppleVoices.baseLanguage(session.readAloudLanguage)
             AppDefaults.store.set(true, forKey: "readAloudVoiceNoteShown.\(base)")
             toggleReadAloud()
+        } else if step.hasPrefix("@voice:"), let choice = ReadAloudVoiceChoice(rawValue: String(step.dropFirst(7))) {
+            // "@voice:kokoro|apple|undecided": the choice for English books.
+            ReadAloudSettings.shared.choice = choice
         } else if step == "@readaloud:stop" {
             session.stopReadAloud()
         } else if step.hasPrefix("@axscroll:") {

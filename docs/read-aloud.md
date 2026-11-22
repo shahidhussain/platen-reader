@@ -81,7 +81,82 @@ install, and its speed on an iPhone's CPU is unmeasured (no Python wheel for
 this Mac's Python to time it here). The English G2P would be misaki's
 lexicons (Apache-2.0) in Swift, with CMUdict (BSD) for words they lack.
 
-The decision between these (or waiting) is the user's: see the PR.
+**Chosen by the user, 22 Nov 2026: ONNX Runtime on the CPU.**
+
+### ONNX Runtime: the build in use
+
+- ONNX Runtime 1.32.0 (MIT) from Microsoft's NuGet package
+  (`Microsoft.ML.OnnxRuntime`, signed by Microsoft Corporation and
+  countersigned by nuget.org; SHA-256 pinned in `scripts/fetch-onnxruntime.sh`).
+  Its GitHub repository, Swift package and `download.onnxruntime.ai` (an
+  Azure CDN name with the wrong certificate, and a 404 behind it) were all
+  unreachable. The script adds a module map so Swift can use the C API, and
+  puts it in `Vendor/onnxruntime/` (not in git: the static library is 49 MB
+  for devices, about 100 MB each for the Simulator and Mac Catalyst). CI runs
+  the script before the iOS build. No macOS slice: the Mac's natural voice
+  will use the package's `libonnxruntime.dylib`.
+- **Size.** The Release iOS app's executable grows from 5.7 MB to 45.1 MB;
+  the zipped app (about what is downloaded) from about 3 MB to 12.7 MB, for
+  everyone, whether or not they use the voice. A minimal build with only
+  Kokoro's operators would be far smaller, but needs ONNX Runtime's sources.
+- **ONNX Runtime's telemetry.** Its Apple build carries Microsoft's telemetry
+  client (1DS) and, as its header says, "Telemetry events are on by
+  default". Left on, the app connected to `mobile.events.data.microsoft.com`
+  (4.150.223.96, Microsoft Corporation) as soon as the model loaded.
+  `KokoroModel` sets `ORT_DISABLE_TELEMETRY` before ONNX Runtime does
+  anything and calls `DisableTelemetryEvents` once its environment exists;
+  with both, `scripts/check-no-network.sh` sees no socket at all while
+  reading and quitting. Run it after any ONNX Runtime update.
+
+### The model and the text
+
+- `kokoro.onnx`: Kokoro-82M v1.0, int8 (`model_quantized.onnx`, 92.4 MB), not
+  fp16 (163.2 MB): twice as fast and 300 MB less memory, which matters on
+  4 GB iPhones. Samples of both: `build/kokoro-samples/` (from the Mac test).
+- English text: Misaki's lexicons through the vendored MisakiSwift code
+  (`PlatenReader/Shared/Kokoro/Misaki`, Apache-2.0; no MLX), and for words
+  they lack `KokoroFallback`: the CMU Pronouncing Dictionary (BSD), a word
+  without a common ending, an acronym spelt out, else left unsaid. British
+  voices (`bf_`, `bm_`) use Misaki's British lexicons; the CMU fallback is
+  made non-rhotic for them.
+
+### Measurements (22 Nov 2026)
+
+| Where | Model | Threads | Real-time factor | Peak memory | First audio |
+| --- | --- | --- | --- | --- | --- |
+| Mac (M3 Pro), C++ test | int8 | 4 / 2 / 1 | 0.09 / 0.14 / 0.22 | 515 MB | |
+| Mac (M3 Pro), C++ test | fp16 | 4 / 2 / 1 | 0.19 / 0.32 / 0.58 | 800 MB | |
+| Mac, Swift test (text + model) | int8 | 2 | 0.13–0.15 | 440 MB | |
+| iOS Simulator, in the app | int8 | 2 | 0.13–0.16 | | model 0.25 s + first sentence 0.24 s |
+| iPhone (oldest supported) | int8 | 2 | to measure | to measure | to measure |
+
+(Real-time factor: time to make a second of speech; under 1 is faster than
+it is spoken.) The app logs each sentence's figure to the diagnostics file
+("natural voice: 3.7 s of speech in 507 ms"), so a device's numbers come from
+reading a chapter and sharing the file. The minimum device is set for now
+by memory (`KokoroVoice.hasMemoryForIt`: 6 GB or more), until measured.
+
+### The voice pack
+
+`scripts/make-kokoro-pack.py` builds `build/kokoro-pack/` from pinned,
+hashed sources (Kokoro and its voices from onnx-community, Kokoro's symbol
+table from hexgrad, Misaki's lexicons from hexgrad/misaki, CMUdict), with
+their licences and a NOTICE: 112.8 MB unpacked, 70.8 MB zipped
+(`build/kokoro-pack.zip`, SHA-256 printed). Eight voices: British Emma,
+Isabella, George, Lewis; American Heart, Bella, Michael, Fenrir.
+
+### To do in App Store Connect (yours)
+
+The iOS download is Apple-hosted Background Assets (iOS 26.4 and later in
+the code; iOS 17 to 26.3 get Apple's voices only). Until these are done the
+app does not offer the download (Debug builds can try it from a folder:
+`PLATEN_KOKORO_DOWNLOAD_FROM`):
+1. Add the Background Assets capability, an App Group, and a Background
+   Download extension target (Apple-hosted, managed) in Xcode.
+2. Add the Info.plist keys `BAHasManagedAssetPacks`, `BAUsesAppleHosting`,
+   `BAAppGroupID`, and Platen's own `PlatenKokoroAssetPack` = YES.
+3. Package `build/kokoro-pack/` as the asset pack "KokoroVoice" (`xcrun
+   ba-package`) and upload it with the build.
 
 
 ### Hosting the voice
@@ -115,8 +190,9 @@ are offered.
   page, and highlights the sentence Swift says is being spoken (the CSS
   Highlight API, so the page is not changed), turning the page to it.
 - **Speech (Swift, Shared).** `ReadAloud` holds the queue of sentences and
-  a `SpeechEngine`: `AppleSpeechEngine` (AVSpeechSynthesizer) or the Kokoro
-  engine, chosen by `SpeechEngineChooser` from the book's language, the
+  a `SpeechEngine`: `AppleSpeechEngine` (AVSpeechSynthesizer) or
+  `KokoroSpeechEngine` (Shared/Kokoro; Kokoro on ONNX Runtime, played through
+  AVAudioEngine), chosen by `SpeechEngineChooser` from the book's language, the
   reader's choice and whether the voice is installed. Sentences are spoken
   in order; Kokoro synthesises one or two sentences ahead of playback.
 - **iOS.** The speaker button is in the reader's controls; the audio session
@@ -157,11 +233,14 @@ are offered.
 
 ## Still to do
 
-- The Kokoro engine and the voice download (vendoring KokoroAne's English
-  parts, the asset pack, the Mac download), and the measurements above.
-- Uploading the asset pack in App Store Connect (yours: it is tied to the
-  app record).
-- The Mac's speaker button and Settings.
+- The App Store Connect steps above, then a TestFlight check of the real
+  download.
+- Measuring on the oldest supported iPhone (first audio, real-time factor,
+  memory, battery per hour), and setting the minimum device from them.
+- The Mac: its speaker button and Settings, ONNX Runtime from the package's
+  dylib, and the download from a GitHub release asset pinned by SHA-256.
 - PDFs (PDFKit's page text, no highlighting).
-- Checking reading at the lock screen on a device, and how long the
-  text read ahead lasts there (the Simulator cannot lock).
+- Reading at the lock screen on a device (the Simulator cannot lock).
+- Pronunciation gaps seen so far: currency ("£2.5 million" loses its number);
+  names in no dictionary are skipped.
+- A smaller ONNX Runtime (only Kokoro's operators), if its sources return.

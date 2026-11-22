@@ -100,7 +100,7 @@ def cases():
             "book": os.path.join(FIXTURES, "novel.epub"),
             "states": [
                 state("button", ["@theme:light", "@controls:show"], ["speaker_button", "read_aloud:off"], settle=True),
-                state("playing", ["@controls:hide", "@readaloud", "@wait", "@wait", "@controls:show"],
+                state("playing", ["@controls:hide", "@voice:apple", "@readaloud", "@wait", "@wait", "@controls:show"],
                       ["read_aloud:playing", "speaker_button", "page_drawn"]),
                 state("paused", ["@readaloud"], ["read_aloud:paused"]),
                 state("dark-playing", ["@readaloud", "@theme:dark"], ["read_aloud:playing", "bands_legible"], settle=True),
