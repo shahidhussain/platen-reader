@@ -163,11 +163,15 @@ struct KokoroTokenizer {
 }
 
 /// Pronounces words Misaki's lexicons lack, without a neural network (and
-/// without eSpeak, which is GPL): the CMU Pronouncing Dictionary (BSD), its
-/// ARPAbet turned into Kokoro's symbols; failing that, the word without a
-/// common ending ("-s", "-ed", "-ing"…) and the ending's sound; a short word
-/// in capitals is spelt out letter by letter (an acronym); anything else is
-/// left unsaid rather than guessed.
+/// without eSpeak, which is GPL). In order: the CMU Pronouncing Dictionary
+/// (BSD), its ARPAbet turned into Kokoro's symbols, for the word as written,
+/// without its accents ("café"), and in the other spelling ("civilisation",
+/// "theatre"); a possessive's owner and "z"; the word without a common
+/// ending ("-s", "-ed", "-ing"…) and the ending's sound; two known words
+/// joined ("drygoods"); a short word in capitals spelt out (an acronym);
+/// and last, English spelling rules (`KokoroLetterRules`), so that a name
+/// no dictionary has is still said, as a reader would guess it, never left
+/// out (the reader asked, 22 Nov 2026).
 final class KokoroFallback {
     let british: Bool
     private let dictionaryURL: URL
@@ -179,40 +183,118 @@ final class KokoroFallback {
     }
 
     /// Misaki's fallback answer: the sounds and a rating (1, as Misaki
-    /// rates its own fallback), or nil.
+    /// rates its own fallback), or nil when there is nothing to say (no
+    /// letters at all).
     func pronounce(_ word: String) -> (String?, Int?) {
-        let lower = word.lowercased()
-        if let arpabet = dictionary[lower] { return (Self.symbols(arpabet, british: british), 1) }
-        for (ending, sound) in Self.endings where lower.hasSuffix(ending) && lower.count > ending.count + 2 {
-            let stem = String(lower.dropLast(ending.count))
-            if let arpabet = dictionary[stem] ?? dictionary[stem + "e"] {
-                return (Self.symbols(arpabet, british: british) + sound, 1)
-            }
-        }
-        let letters = word.filter(\.isLetter)
-        if !letters.isEmpty, letters.count <= 5, letters == letters.uppercased() {
-            return (letters.compactMap { Self.letterNames[$0] }.joined(separator: " "), 1)
-        }
+        if let arpabet = arpabet(for: word) { return (Self.symbols(arpabet, british: british), 1) }
         return (nil, nil)
     }
 
+    /// The word's sounds as ARPAbet, by the first way that works.
+    func arpabet(for word: String) -> String? {
+        let plain = Self.plain(word)
+        let lower = plain.lowercased()
+        if let known = known(lower) { return known }
+        // A possessive: the owner, then "z" ("Grubach's").
+        for mark in ["'s", "s'"] where lower.hasSuffix(mark) && lower.count > 3 {
+            let owner = String(plain.dropLast(mark == "'s" ? 2 : 1))
+            if let sounds = arpabet(for: owner) { return mark == "'s" ? sounds + Self.possessive(after: sounds) : sounds }
+        }
+        for (ending, sound) in Self.endings where lower.hasSuffix(ending) && lower.count > ending.count + 2 {
+            let stem = String(lower.dropLast(ending.count))
+            if let sounds = known(stem) ?? known(stem + "e") { return sounds + " " + sound }
+        }
+        if let compound = compound(lower) { return compound }
+        let letters = plain.filter(\.isLetter)
+        if !letters.isEmpty, letters.count <= 5, letters == letters.uppercased(), letters.count > 1 || letters != "A" {
+            return letters.compactMap { Self.letterNames[$0] }.joined(separator: " _ ")
+        }
+        return KokoroLetterRules.arpabet(plain)
+    }
+
+    /// In the dictionary as written, or in the other spelling.
+    private func known(_ lower: String) -> String? {
+        if let arpabet = dictionary[lower] { return arpabet }
+        for variant in Self.spellingVariants(of: lower) {
+            if let arpabet = dictionary[variant] { return arpabet }
+        }
+        return nil
+    }
+
+    /// Two known words of three letters or more, the first as long as can
+    /// be ("drygoods", "tomtoms"). A part whose dictionary entry has more
+    /// sounds than letters plus one is an acronym ("mit" as M.I.T.), not a
+    /// word to build with.
+    private func compound(_ lower: String) -> String? {
+        let chars = Array(lower)
+        guard chars.count >= 6, chars.allSatisfy(\.isLetter) else { return nil }
+        func word(_ part: ArraySlice<Character>) -> String? {
+            guard let entry = dictionary[String(part)], entry.split(separator: " ").count <= part.count + 1 else { return nil }
+            return entry
+        }
+        for cut in stride(from: chars.count - 3, through: 3, by: -1) {
+            if let first = word(chars[..<cut]), let second = word(chars[cut...]) {
+                // The second word's stress becomes secondary.
+                return first + " " + second.replacingOccurrences(of: "1", with: "2")
+            }
+        }
+        return nil
+    }
+
+    /// The word without accents and with plain apostrophes ("Bürstner" →
+    /// "Burstner", "Dorchin’s" → "Dorchin's").
+    static func plain(_ word: String) -> String {
+        word.replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "ß", with: "ss").replacingOccurrences(of: "æ", with: "ae")
+            .replacingOccurrences(of: "œ", with: "oe")
+            .folding(options: [.diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en"))
+    }
+
+    /// British spellings as American, and the other way round, for the
+    /// dictionary (which is American).
+    static func spellingVariants(of lower: String) -> [String] {
+        var variants: [String] = []
+        let swaps = [("isation", "ization"), ("ise", "ize"), ("ised", "ized"), ("ising", "izing"), ("our", "or"),
+                     ("ours", "ors"), ("tre", "ter"), ("tres", "ters"), ("ogue", "og"), ("ence", "ense"),
+                     ("lled", "led"), ("lling", "ling"), ("eable", "able")]
+        for (from, to) in swaps {
+            if lower.hasSuffix(from) { variants.append(String(lower.dropLast(from.count)) + to) }
+            if lower.hasSuffix(to) { variants.append(String(lower.dropLast(to.count)) + from) }
+        }
+        return variants
+    }
+
+    /// "'s" after a hissing sound is "iz" ("Bush's"), after a voiceless
+    /// one "s", else "z".
+    private static func possessive(after sounds: String) -> String {
+        let last = sounds.split(separator: " ").last.map(String.init) ?? ""
+        if ["S", "Z", "SH", "ZH", "CH", "JH"].contains(last) { return " IH0 Z" }
+        if ["P", "T", "K", "F", "TH"].contains(last) { return " S" }
+        return " Z"
+    }
+
+    /// Common endings and their sounds (ARPAbet), for a known stem.
     private static let endings: [(String, String)] = [
-        ("'s", "z"), ("s", "z"), ("es", "ᵻz"), ("ed", "d"), ("ing", "ɪŋ"), ("ly", "li"), ("er", "əɹ"), ("est", "ᵻst"),
+        ("'s", "Z"), ("s", "Z"), ("es", "IH0 Z"), ("ed", "D"), ("ing", "IH0 NG"), ("ly", "L IY0"), ("er", "ER0"),
+        ("est", "IH0 S T"), ("ness", "N AH0 S"), ("less", "L AH0 S"),
     ]
 
-    /// The names of the letters, for spelling out an acronym.
+    /// The names of the letters (ARPAbet), for spelling out an acronym.
     static let letterNames: [Character: String] = [
-        "A": "ˈA", "B": "bˈi", "C": "sˈi", "D": "dˈi", "E": "ˈi", "F": "ˈɛf", "G": "ʤˈi", "H": "ˈAʧ", "I": "ˈI",
-        "J": "ʤˈA", "K": "kˈA", "L": "ˈɛl", "M": "ˈɛm", "N": "ˈɛn", "O": "ˈO", "P": "pˈi", "Q": "kjˈu", "R": "ˈɑɹ",
-        "S": "ˈɛs", "T": "tˈi", "U": "jˈu", "V": "vˈi", "W": "dˈʌbᵊljˌu", "X": "ˈɛks", "Y": "wˈI", "Z": "zˈi",
+        "A": "EY1", "B": "B IY1", "C": "S IY1", "D": "D IY1", "E": "IY1", "F": "EH1 F", "G": "JH IY1", "H": "EY1 CH",
+        "I": "AY1", "J": "JH EY1", "K": "K EY1", "L": "EH1 L", "M": "EH1 M", "N": "EH1 N", "O": "OW1", "P": "P IY1",
+        "Q": "K Y UW1", "R": "AA1 R", "S": "EH1 S", "T": "T IY1", "U": "Y UW1", "V": "V IY1", "W": "D AH1 B AH0 L Y UW0",
+        "X": "EH1 K S", "Y": "W AY1", "Z": "Z IY1",
     ]
 
     /// "HH AH0 L OW1" as Kokoro's symbols ("həlˈO"): each stress mark goes
-    /// just before its vowel, as Misaki writes them.
+    /// just before its vowel, as Misaki writes them. "_" is a space between
+    /// words (the letters of an acronym).
     static func symbols(_ arpabet: String, british: Bool) -> String {
         var out = ""
         let phones = arpabet.split(separator: " ").map(String.init)
         for (index, phone) in phones.enumerated() {
+            if phone == "_" { out += " "; continue }
             var base = phone
             var stress = ""
             if let last = base.last, last.isNumber {

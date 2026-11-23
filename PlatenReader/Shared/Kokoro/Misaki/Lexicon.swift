@@ -3,7 +3,7 @@
 // (Apache-2.0). See LICENSE in this folder and docs/read-aloud.md. Platen's
 // changes: no MLX (the neural fallback for unknown words is replaced by
 // `KokoroFallback`), the lexicons are read from the voice pack's folder, and
-// the types are internal to the app.
+// the types are internal to the app; "a" is the article unless tagged a noun.
 import Foundation
 import NaturalLanguage
 
@@ -209,8 +209,12 @@ final class Lexicon {
         return getNNP(word)
       }
     } else if word == "a" || word == "A" {
-      if tag == .determiner { return ("ɐ", 4) }
-      return ("ˈA", 4)
+      // Platen: the article ("uh") unless the tagger calls it a noun (the
+      // letter, "plan A"). Misaki says the letter whenever the tag is not a
+      // determiner, which is every time Apple's tagger gives no word class
+      // (heard on an iPhone, 22 Nov 2026).
+      if let tag, [.noun, .personalName, .organizationName, .placeName].contains(tag) { return ("ˈA", 4) }
+      return ("ɐ", 4)
     } else if ["am", "Am", "AM"].contains(word) {
       if let t = tag, pennTag(for: t, token: word).hasPrefix("NN") {
         return getNNP(word)

@@ -47,7 +47,28 @@ final class KokoroTextTests: XCTestCase {
         XCTAssertEqual(fallback.pronounce("walking").0, "wˈɔkɪŋ")
         XCTAssertEqual(fallback.pronounce("walked").0, "wˈɔkd")
         XCTAssertEqual(fallback.pronounce("BBC").0, "bˈi bˈi sˈi")
-        XCTAssertNil(fallback.pronounce("Zxqwv").0, "an unknown word is left unsaid, not guessed")
+        XCTAssertNotNil(fallback.pronounce("Zxqwv").0, "an unknown word is still said, by the spelling rules")
+        XCTAssertNil(fallback.pronounce("~").0, "nothing to say without letters")
+    }
+
+    /// Words no dictionary has are said by English spelling rules, as a
+    /// reader would guess them (the reader asked: never left out).
+    func testUnknownNamesAreSaidByTheSpellingRules() {
+        XCTAssertEqual(KokoroLetterRules.arpabet("Grubach"), "G R UW1 B AA0 K")
+        XCTAssertEqual(KokoroLetterRules.arpabet("Feckle"), "F EH1 K AH0 L")
+        XCTAssertEqual(KokoroLetterRules.arpabet("Grannitt"), "G R AE1 N IH0 T")
+        XCTAssertEqual(KokoroLetterRules.arpabet("Dorchin"), "D AO1 R CH IH0 N")
+        XCTAssertNil(KokoroLetterRules.arpabet("1234"))
+    }
+
+    /// Accents, the other spelling, possessives and compounds find the
+    /// dictionary before the rules are needed.
+    func testTheDictionaryIsTriedInOtherForms() {
+        let fallback = KokoroFallback(dictionary: folder.appendingPathComponent("cmudict.dict"), british: false)
+        XCTAssertEqual(fallback.arpabet(for: "Wálk"), "W AO1 K", "accents folded")
+        XCTAssertEqual(fallback.arpabet(for: "harbor"), "HH AA1 R B ER0", "American spelling of a British entry")
+        XCTAssertEqual(fallback.arpabet(for: "Quixote’s"), "K IY0 HH OW1 T IY0 Z", "a possessive, with a curly apostrophe")
+        XCTAssertEqual(fallback.arpabet(for: "walkharbour"), "W AO1 K HH AA2 R B ER0", "two known words")
     }
 
     func testTheTokenizerWrapsInZerosAndDropsUnknownSymbols() {
@@ -76,6 +97,14 @@ final class KokoroTextTests: XCTestCase {
         XCTAssertEqual(tokens.count, 1)
         XCTAssertEqual(tokens[0].first, 0)
         XCTAssertEqual(tokens[0].last, 0)
+    }
+
+    /// "a" is the article ("ɐ", "uh"), not the letter's name ("ˈA"), even
+    /// when Apple's tagger gives it no word class (as on an iPhone).
+    func testTheArticleASoundsLikeUh() throws {
+        let text = try XCTUnwrap(KokoroText(pack: folder, british: false))
+        XCTAssertEqual(text.phonemes("A hello."), "ɐ həlˈO.")
+        XCTAssertTrue(text.phonemes("hello a world").contains("ɐ wˈɜɹld"))
     }
 
     /// Each word's place in the sentence, and the token its sounds start

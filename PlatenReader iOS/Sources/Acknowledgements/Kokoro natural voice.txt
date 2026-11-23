@@ -37,5 +37,8 @@ MisakiSwift by mlalma (Swift port of Misaki), and MLXUtilsLibrary's token
 CMU Pronouncing Dictionary, Copyright (C) 1993-2015 Carnegie Mellon
   University, BSD 2-clause licence.
   https://github.com/cmusphinx/cmudict
+Spelling-to-sound rules for unknown words, written for Platen after the
+  method of Elovitz, Johnson, McHugh and Shore (US Naval Research
+  Laboratory, 1976), a US government work in the public domain.
 
 No GPL code or data is used.

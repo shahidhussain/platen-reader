@@ -222,8 +222,10 @@ function word(cfi, start, length) {
         // Apple sometimes reports a lone comma or dash as a word: the
         // underline stays where it was.
         if (!/[\p{L}\p{N}]/u.test(range.toString())) return
-        // The sentence may run over to the next page.
-        if (!isOnScreen(range)) reader.view.renderer.scrollToAnchor?.(range, true)
+        // The sentence may run over to the next page. (Without selecting
+        // it: foliate's `true` here selects the word, which then showed as
+        // a lasting selection instead of the underline.)
+        if (!isOnScreen(range)) reader.view.renderer.scrollToAnchor?.(range)
         return underline(reader.view.getCFI(shown.index, range))
     }).catch(() => {})
 }
@@ -240,7 +242,7 @@ async function showSentence(cfi) {
     }
     if (!shown?.doc || shown.index !== index) return null
     const range = anchor(shown.doc)
-    if (range && !isOnScreen(range)) reader.view.renderer.scrollToAnchor?.(range, true)
+    if (range && !isOnScreen(range)) reader.view.renderer.scrollToAnchor?.(range)
     return { index, doc: shown.doc, anchor }
 }
 

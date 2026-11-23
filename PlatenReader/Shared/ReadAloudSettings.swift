@@ -21,7 +21,9 @@ final class ReadAloudSettings: ObservableObject {
     @Published var appleVoice: String? {
         didSet { defaults.set(appleVoice, forKey: "readAloudAppleVoice") }
     }
-    /// The natural voice's speaker ("bf_emma"), for when it is installed.
+    /// The natural voice's speaker, for when it is installed: Bella
+    /// ("af_bella") unless chosen otherwise, the reader's pick of the voices
+    /// on an iPhone (22 Nov 2026; Emma sounded flat).
     @Published var kokoroVoice: String {
         didSet { defaults.set(kokoroVoice, forKey: "readAloudKokoroVoice") }
     }
@@ -33,7 +35,7 @@ final class ReadAloudSettings: ObservableObject {
     private init() {
         choice = ReadAloudVoiceChoice(rawValue: defaults.string(forKey: "readAloudChoice") ?? "") ?? .undecided
         appleVoice = defaults.string(forKey: "readAloudAppleVoice")
-        kokoroVoice = defaults.string(forKey: "readAloudKokoroVoice") ?? "bf_emma"
+        kokoroVoice = defaults.string(forKey: "readAloudKokoroVoice") ?? "af_bella"
         let saved = defaults.double(forKey: "readAloudSpeed")
         speed = saved > 0 ? saved : 1
     }

@@ -113,7 +113,7 @@ final class KokoroSpeechEngine: SpeechEngine {
     init(pack: URL, voice: String) {
         self.pack = pack
         let voices = KokoroPack.voices(in: pack)
-        voiceName = voices.contains(voice) ? voice : (voices.first ?? voice)
+        voiceName = voices.contains(voice) ? voice : (voices.contains("af_bella") ? "af_bella" : (voices.first ?? voice))
         audio.attach(player)
         audio.connect(player, to: audio.mainMixerNode, format: format)
     }
@@ -193,7 +193,15 @@ final class KokoroSpeechEngine: SpeechEngine {
             guard let model = loaded?.model,
                   let voicePack = KokoroVoicePack(url: pack.appendingPathComponent("voices/\(voice).bin")) else { return ([], []) }
             let british = voicePack.isBritish
-            if texts[british] == nil { texts[british] = KokoroText(pack: pack, british: british) }
+            if texts[british] == nil {
+                texts[british] = KokoroText(pack: pack, british: british)
+                // For the diagnostics file: how a fixed phrase (not the
+                // book's text) is pronounced, which shows whether Apple's
+                // word tagger is working on this device ("a" as "ɐ").
+                if let check = texts[british]?.phonemes("A man saw a cat.") {
+                    log.info("natural voice: pronunciation check: \(check, privacy: .public)")
+                }
+            }
             guard let kokoroText = texts[british] else { return ([], []) }
             let started = Date()
             var samples: [Float] = []
