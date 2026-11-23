@@ -1,8 +1,8 @@
 import Combine
 import UIKit
 
-/// Read aloud in a book (iOS; docs/read-aloud.md). The speaker button
-/// (ReaderTopBar) calls `toggleReadAloud`:
+/// Read aloud in a book or a PDF (iOS; docs/read-aloud.md). The speaker
+/// button (ReaderTopBar) calls `toggleReadAloud`:
 ///
 /// - Off: starts. An English book where the natural voice can be offered and
 ///   no choice has been made yet first asks which voice to use (Apple's, or
@@ -10,14 +10,15 @@ import UIKit
 ///   reads straight away, with the best Apple voice for its language.
 /// - Reading: pauses. Paused: goes on.
 ///
-/// The text, the highlight and the page turns are the session's
-/// (`BookSession.startReadAloud`); the audio session, the lock screen and
-/// interruptions are `ReadAloudAudio`'s.
-extension ReaderViewController {
+/// The text, the underline and the page turns are the reader's
+/// `readAloudSource`'s (a book's `BookSession`, a PDF's `PDFReadAloud`); the
+/// audio session, the lock screen and interruptions are `ReadAloudAudio`'s.
+extension ReaderBaseViewController {
     func toggleReadAloud() {
+        guard let source = readAloudSource else { return }
         switch state.readAloud {
-        case .starting, .playing: session.pauseReadAloud()
-        case .paused: session.resumeReadAloud()
+        case .starting, .playing: source.pauseReadAloud()
+        case .paused: source.resumeReadAloud()
         case .off: beginReadAloud()
         }
     }
@@ -25,8 +26,8 @@ extension ReaderViewController {
     private var readAloudSettings: ReadAloudSettings { .shared }
 
     private func beginReadAloud() {
-        guard session.hasRendered else { return }
-        let language = session.readAloudLanguage
+        guard let source = readAloudSource, source.canReadAloud else { return }
+        let language = source.readAloudLanguage
         let kind = SpeechEngineChooser.choose(language: language, choice: readAloudSettings.choice,
                                               kokoroOffered: KokoroVoice.isOffered,
                                               kokoroInstalled: KokoroVoice.isInstalled)
@@ -56,15 +57,15 @@ extension ReaderViewController {
     }
 
     private func startReading(with engine: SpeechEngine?) {
-        guard let engine else { return }
+        guard let engine, let source = readAloudSource else { return }
         ReadAloudAudio.shared.begin(
             title: state.title, author: state.author, chapter: state.chapter,
-            controls: .init(play: { [weak self] in self?.session.resumeReadAloud() },
-                            pause: { [weak self] in self?.session.pauseReadAloud() }))
+            controls: .init(play: { [weak self] in self?.readAloudSource?.resumeReadAloud() },
+                            pause: { [weak self] in self?.readAloudSource?.pauseReadAloud() }))
         watchReadAloud()
-        session.startReadAloud(engine: engine)
+        source.startReadAloud(engine: engine)
         let voice = engine is AppleSpeechEngine ? "Apple voice" : "natural voice"
-        log.info("read aloud: started (\(self.session.readAloudLanguage, privacy: .public), \(voice, privacy: .public))")
+        log.info("read aloud: started (\(source.readAloudLanguage, privacy: .public), \(voice, privacy: .public))")
     }
 
     /// Now Playing follows the reading (playing or paused, the chapter), and

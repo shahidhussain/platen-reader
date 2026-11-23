@@ -250,6 +250,50 @@ def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7
     open(path, "wb").write(bytes(out))
 
 
+def text_pdf(path, title, pages, doc_id="5D41402ABC4B2A76B9719D911017C592"):
+    """A PDF of text pages as a printed book has them: each page is
+    (header, body lines, footer), the header at the top, the footer at the
+    bottom (read aloud must leave both out, and join a word hyphenated at a
+    line's end and a sentence running onto the next page)."""
+    objects = []
+
+    def add(body):
+        objects.append(body)
+        return len(objects)
+
+    def esc(text):
+        return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    catalog = add(None)
+    pages_obj = add(None)
+    font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    page_ids = []
+    for header, body, footer in pages:
+        parts = [f"BT /F1 10 Tf 72 760 Td ({esc(header)}) Tj ET"]
+        parts.append("BT /F1 12 Tf 72 720 Td 16 TL " + " ".join(f"({esc(l)}) '" for l in body) + " ET")
+        parts.append(f"BT /F1 10 Tf 290 40 Td ({esc(footer)}) Tj ET")
+        text = " ".join(parts)
+        stream = add(f"<< /Length {len(text)} >>\nstream\n{text}\nendstream")
+        page_ids.append(add(f"<< /Type /Page /Parent {pages_obj} 0 R /MediaBox [0 0 612 792] "
+                            f"/Contents {stream} 0 R /Resources << /Font << /F1 {font} 0 R >> >> >>"))
+    objects[pages_obj - 1] = (f"<< /Type /Pages /Kids [{' '.join(f'{p} 0 R' for p in page_ids)}] "
+                              f"/Count {len(page_ids)} >>")
+    objects[catalog - 1] = f"<< /Type /Catalog /Pages {pages_obj} 0 R >>"
+    info = add(f"<< /Title ({esc(title)}) /Author (Pat D. Eff) >>")
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for n, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{n} 0 obj\n{body}\nendobj\n".encode("latin-1")
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for o in offsets:
+        out += f"{o:010d} 00000 n \n".encode()
+    out += (f"trailer\n<< /Size {len(objects) + 1} /Root {catalog} 0 R /Info {info} 0 R "
+            f"/ID [<{doc_id}> <{doc_id}>] >>\nstartxref\n{xref}\n%%EOF\n").encode()
+    open(path, "wb").write(bytes(out))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     rng = random.Random(7)
@@ -475,6 +519,22 @@ def main():
 
     # A picture book with square pages: Two Pages shows two side by side in
     # landscape (they were taken for spreads, and shown one at a time).
+    # A PDF laid out as a printed book: a running header, "Page N" footers,
+    # a word hyphenated across lines and a sentence running onto the next
+    # page (read aloud leaves out the header and footers, joins the rest).
+    p = os.path.join(OUT, "running-heads.pdf")
+    filler = ["The banks are green in spring and brown in autumn.", "Birds nest in the reeds along the shore.",
+              "Boats carry goods from the hills to the towns.", "Children swim in the shallows in summer."]
+    text_pdf(p, "River Studies", [
+        ("RIVER STUDIES", ["Rivers begin as rain falling on high ground. The water gathers in small",
+                           "streams that join and grow. Each stream finds its own path down the hill-",
+                           "side, and the river ran on and"], "Page 1"),
+        ("RIVER STUDIES", ["on until it met the sea at last. A second sentence follows here."] + filler, "Page 2"),
+        ("RIVER STUDIES", filler, "Page 3"),
+        ("RIVER STUDIES", filler + ["The end of the study comes here."], "Page 4"),
+    ])
+    made.append(p)
+
     p = os.path.join(OUT, "square-pages.pdf")
     simple_pdf(p, "Square Book", ["Bears", "Hats"], doc_id="2C26B46B68FFC68FF99B453C1D304134", square=True)
     made.append(p)

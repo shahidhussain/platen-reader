@@ -49,6 +49,9 @@ check outline.pdf             "-"                                      "PDF: 6 p
 check pictures.pdf            "-"                                      "PDF: 4 pages, 2 contents entries"
 check fixed-layout-wide.epub  "-"                                      "First page visible"
 check picture-book.epub       "-"                                      "First page visible"
+# Read aloud in a PDF: the running header and the page numbers left out, a
+# word hyphenated across lines joined, a sentence across pages read whole.
+check running-heads.pdf       "@readAloudPreview:"                     "read aloud: Rivers begin as rain falling on high ground. | The water gathers in small streams that join and grow. | Each stream finds its own path down the hillside, and the river ran on and on until it met the sea at last." "RIVER STUDIES"
 check square-pages.pdf        "-"                                      "PDF: 4 pages, 2 contents entries"
 # A note reference opens its note in a pop-up (and the page does not move);
 # a superscript link into a notes file counts as one too.

@@ -306,6 +306,13 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
     }
 
     #if DEBUG
+    /// "@readAloudPreview:": the first sentences read aloud from the start
+    /// (corpus checks: no headers, footers or page numbers in them).
+    @objc func readAloudPreview(_ sender: Any?) {
+        guard let document = pdfView.document else { return }
+        log.info("step result: read aloud: \(PDFReadAloud.preview(of: document), privacy: .public)")
+    }
+
     /// The same PLATEN_SNAPSHOT_DIR / PLATEN_STEPS hooks as the book window
     /// (see DebugHooks.swift), for "@<selector>" steps.
     private func runDebugSteps(bookName: String) {

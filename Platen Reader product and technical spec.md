@@ -353,6 +353,7 @@ Opening odd and broken files gracefully is the product's main quality bar; every
 | Zip problems (wrong `mimetype` position, extra data, Zip64) | Tolerated where the content is still readable |
 | Very large books (300 MB illustrated) | Lazy entry loading; no full read into memory |
 | Corrupt or truncated zip | Opens what can be read, reports the rest |
+| PDF read aloud, with running headers, footers and page numbers | Read as a reader would: headers, footers and page numbers left out, words hyphenated across lines joined, sentences across pages read whole |
 
 **Test corpus**
 

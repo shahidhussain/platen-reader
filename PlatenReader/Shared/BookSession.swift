@@ -65,7 +65,7 @@ extension BookSessionHost {
 ///
 /// The app's reader view makes the web view (with `makeConfiguration()`),
 /// calls `start(in:)`, and acts as the session's `host`.
-final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNavigationDelegate {
+final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMessageHandler, WKNavigationDelegate {
     let url: URL
     let state: ReaderState
     let settings = ReaderSettings.shared
@@ -435,6 +435,9 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
     private(set) var lastPageText = ""
     /// Reading aloud, while it is.
     private(set) var readAloud: ReadAloudController?
+
+    /// Ready to read aloud: the first page is on screen.
+    var canReadAloud: Bool { hasRendered }
 
     /// The language read aloud uses for this book.
     var readAloudLanguage: String {

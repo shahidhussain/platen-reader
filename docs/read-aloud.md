@@ -311,7 +311,46 @@ app does not offer the download (Debug builds can try it from a folder:
   Playing and its controls, and pauses for calls and unplugged headphones.
   Settings › Read Aloud: Apple voice with Play Sample, speed, and where
   better Apple voices come from.
-- **PDFs.** Not read aloud yet: the speaker button is only in books.
+- **PDFs** (23 Nov 2026): see "PDFs" below.
+- **Plain text** files open as a made-up book, so they are read as books are.
+
+## PDFs
+
+The speaker button is in PDFs too (iOS), with the same voices, choice and
+lock-screen controls: the button's logic is the base reader's
+(`ReaderBaseViewController+ReadAloud.swift`), reading through a
+`ReadAloudSource` (a book's `BookSession`, a PDF's `PDFReadAloud`).
+
+- **Text.** PDFKit's page text, read from a second copy of the document on a
+  background queue (PDFKit's objects are not for two threads), a batch of
+  about 20 sentences at a time, from the page on screen (with the sentence
+  that runs onto it from the page before).
+- **As a reader would read it** (`PDFReadAloudText`, unit-tested):
+  - Running heads and footers are left out: a line among the first or last
+    two of a page that recurs, numbers ignored, on at least 30% of the
+    pages on the same side within six either way (books often have one head
+    on left-hand pages, another on right-hand ones; a chapter's title on its
+    first page does not recur, so it is read).
+  - Page numbers at the top or bottom ("12", "– 12 –", "Page 3 of 20",
+    "xiv") are left out.
+  - Lines of nothing but ornaments ("* * *") are left out, and ornaments are
+    trimmed from the ends of lines.
+  - A word hyphenated at a line's end is joined ("hill-" / "side"); every
+    other line or page break is a space, so sentences cross pages whole.
+  - A heading in capitals (one line or several) is a sentence of its own.
+- **On the page.** Each sentence keeps which parts of which pages it came
+  from, so the page turns as the voice reaches it (with the page-turn
+  animation for the next page), and each word is underlined with a thin
+  accent-coloured underline annotation on the page in memory (never saved:
+  Platen does not write PDFs).
+- **What it cannot do.** A scanned PDF has no text (nothing is read).
+  Footnotes, captions and sidebars are read where the PDF puts them;
+  multi-column pages in the order the PDF was made; a drop capital may come
+  out as a separate letter ("Asimple").
+- **Checked** with the reader's sample PDF (Methods of Rationality, 1,983
+  pages: alternating running heads, "* 25*" page numbers, chapter titles of
+  several lines) and the fixture `running-heads.pdf` (corpus check
+  `@readAloudPreview:`, on the Mac and in the iOS Simulator).
 
 ## What is stored
 
@@ -345,6 +384,7 @@ app does not offer the download (Debug builds can try it from a folder:
 
 - Reading at the lock screen on a device (the Simulator cannot lock).
 - The Mac's speaker button and Settings.
-- PDFs (PDFKit's page text, no highlighting).
+- PDFs on the Mac (with the Mac's speaker button); footnotes in PDFs (see
+  "PDFs").
 - The natural voice: the App Store Connect steps above, and measuring it on
   an iPhone (speed, memory, the first sentence's wait).

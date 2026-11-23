@@ -218,6 +218,20 @@ class ReaderBaseViewController: UIViewController {
     func runDebugStep(_ step: String) {
         if step == "@close" {
             close()
+        } else if step == "@readaloud" {
+            // "@readaloud": the speaker button's tap. "@readaloud:stop": stop.
+            // (The once-only note about better voices is taken as read, so
+            // a scripted tap reads at once.)
+            if let source = readAloudSource {
+                let base = AppleVoices.baseLanguage(source.readAloudLanguage)
+                AppDefaults.store.set(true, forKey: "readAloudVoiceNoteShown.\(base)")
+            }
+            toggleReadAloud()
+        } else if step.hasPrefix("@voice:"), let choice = ReadAloudVoiceChoice(rawValue: String(step.dropFirst(7))) {
+            // "@voice:kokoro|apple|undecided": the choice for English books.
+            ReadAloudSettings.shared.choice = choice
+        } else if step == "@readaloud:stop" {
+            readAloudSource?.stopReadAloud()
         } else if step.hasPrefix("@theme:"), let choice = AppearanceChoice(rawValue: String(step.dropFirst(7))) {
             // "@theme:sepia": the page theme, as the Aa popover would set it.
             settings.appearance = choice
@@ -300,12 +314,18 @@ class ReaderBaseViewController: UIViewController {
         onClose?()
     }
 
-    // MARK: - Read aloud (books; ReaderViewController+ReadAloud.swift)
+    // MARK: - Read aloud (ReaderBaseViewController+ReadAloud.swift)
+
+    /// Follows read aloud for Now Playing.
+    var readAloudWatch: AnyCancellable?
 
     /// Whether this reader has the speaker button.
     var offersReadAloud: Bool { false }
-    func readAloudTapped() {}
-    func stopReadingAloud() {}
+    /// What reads aloud here (the book's session, the PDF's reader), once
+    /// it is ready.
+    var readAloudSource: ReadAloudSource? { nil }
+    func readAloudTapped() { toggleReadAloud() }
+    func stopReadingAloud() { readAloudSource?.stopReadAloud() }
 
     /// VoiceOver's two-finger scrub (the "back" gesture): closes the book,
     /// as Close does.
