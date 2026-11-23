@@ -26,9 +26,16 @@ enum KokoroDownload {
     /// the pack is live in App Store Connect, with the Background Assets keys
     /// it needs). `AssetPackManager` is never touched without them: it stops
     /// the app if the keys are missing.
+    ///
+    /// The asset pack API (`AssetPackManager`) is in the iOS 26 SDK; built
+    /// with an older Xcode (CI's, for now) the download is never offered.
     static var usesBackgroundAssets: Bool {
+        #if compiler(>=6.2)
         guard #available(iOS 26.4, *) else { return false }
         return Bundle.main.object(forInfoDictionaryKey: "PlatenKokoroAssetPack") as? Bool == true
+        #else
+        return false
+        #endif
     }
 
     /// Debug builds: a local folder to "download" from.
@@ -48,11 +55,13 @@ enum KokoroDownload {
         adoptCopiedPack()
         #endif
         KokoroVoice.downloadAvailable = isAvailable
+        #if compiler(>=6.2)
         if #available(iOS 26.4, *), usesBackgroundAssets,
            AssetPackManager.shared.assetPackIsAvailableLocally(withID: assetPackID) {
             KokoroPack.backgroundAssetsFolder = try? AssetPackManager.shared.url(for: FilePath("kokoro-weights.bin"))
                 .deletingLastPathComponent()
         }
+        #endif
     }
 
     /// Downloads the pack, reporting progress (0 to 1); returns its folder.
@@ -60,6 +69,7 @@ enum KokoroDownload {
         #if DEBUG
         if let source = testSource { return try await copyForTesting(from: source, progress: progress) }
         #endif
+        #if compiler(>=6.2)
         guard #available(iOS 26.4, *), usesBackgroundAssets else { throw CocoaError(.featureUnsupported) }
         let manager = AssetPackManager.shared
         let pack = try await manager.assetPack(withID: assetPackID)
@@ -75,14 +85,19 @@ enum KokoroDownload {
         let folder = try manager.url(for: FilePath("kokoro-weights.bin")).deletingLastPathComponent()
         KokoroPack.backgroundAssetsFolder = folder
         return folder
+        #else
+        throw CocoaError(.featureUnsupported)
+        #endif
     }
 
     /// Removes the downloaded voice (Settings › Read Aloud).
     static func remove() async {
         KokoroSpeechEngine.releaseModel()
+        #if compiler(>=6.2)
         if #available(iOS 26.4, *), usesBackgroundAssets {
             try? await AssetPackManager.shared.remove(assetPackWithID: assetPackID)
         }
+        #endif
         KokoroPack.backgroundAssetsFolder = nil
         try? FileManager.default.removeItem(at: KokoroPack.downloadFolder)
     }
