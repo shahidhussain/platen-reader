@@ -365,6 +365,9 @@ public final class KokoroModel {
         let mix = W.get(g + "m_source.l_linear.weight"), mixBias = W.get(g + "m_source.l_linear.bias")[0]
         var harmonic = [Float](repeating: mixBias, count: samples)
         var phase = [Float](repeating: 0, count: halfFrames)
+        var angles = [Float](repeating: 0, count: samples)
+        // 1 where the half-frame is voiced (its pitch above 10 Hz), else 0.
+        let voiced: [Float] = (0..<samples).map { f0[min($0 / upsample, halfFrames - 1)] > 10 ? 1 : 0 }
         for h in 0..<9 {
             // Phase at each half-frame: the running sum of cycles per sample
             // (wrapped to 0…1, as the original does), times 2π, scaled up.
@@ -375,14 +378,19 @@ public final class KokoroModel {
                 cycles += step
                 phase[f] = Float(cycles * 2 * .pi * Double(upsample))
             }
-            // Linear interpolation to every sample; silence where unvoiced.
+            // Linear interpolation to every sample, then the sines at once;
+            // silence where unvoiced.
             for n in 0..<samples {
                 let position = max(0, (Float(n) + 0.5) / Float(upsample) - 0.5)
                 let i0 = min(Int(position), halfFrames - 1), i1 = min(i0 + 1, halfFrames - 1)
                 let blend = position - Float(i0)
-                let voiced: Float = f0[min(n / upsample, halfFrames - 1)] > 10 ? 1 : 0
-                harmonic[n] += mix[h] * sin(phase[i0] * (1 - blend) + phase[i1] * blend) * 0.1 * voiced
+                angles[n] = phase[i0] * (1 - blend) + phase[i1] * blend
             }
+            var count = Int32(samples)
+            angles.withUnsafeMutableBufferPointer { vvsinf($0.baseAddress!, $0.baseAddress!, &count) }
+            var weight = mix[h] * 0.1
+            vDSP_vmul(angles, 1, voiced, 1, &angles, 1, vDSP_Length(samples))
+            vDSP_vsma(angles, 1, &weight, harmonic, 1, &harmonic, 1, vDSP_Length(samples))
         }
         var count = Int32(samples)
         harmonic.withUnsafeMutableBufferPointer { vvtanhf($0.baseAddress!, $0.baseAddress!, &count) }
@@ -475,9 +483,20 @@ private func conv1d(_ x: [Float], cin: Int, t: Int, _ w: [Float], _ b: [Float]?,
             for c in 0..<cin {
                 for j in 0..<k {
                     let row = (c * k + j) * n, base = c * t
-                    for i in 0..<n {
-                        let source = (start + i) * stride - padding + j * dilation
-                        cp[row + i] = (source >= 0 && source < t) ? xp[base + source] : 0
+                    if stride == 1 {
+                        // One block copy, with zeros where the window runs
+                        // off either end (most of the model's time was
+                        // here, copying one value at a time).
+                        let first = start - padding + j * dilation // source of column 0
+                        let lo = max(0, -first), hi = min(n, t - first)
+                        if lo > 0 { (cp.baseAddress! + row).update(repeating: 0, count: min(lo, n)) }
+                        if hi > lo { (cp.baseAddress! + row + lo).update(from: xp.baseAddress! + base + first + lo, count: hi - lo) }
+                        if hi < n { (cp.baseAddress! + row + max(hi, lo)).update(repeating: 0, count: n - max(hi, lo)) }
+                    } else {
+                        for i in 0..<n {
+                            let source = (start + i) * stride - padding + j * dilation
+                            cp[row + i] = (source >= 0 && source < t) ? xp[base + source] : 0
+                        }
                     }
                 }
             }
@@ -486,10 +505,12 @@ private func conv1d(_ x: [Float], cin: Int, t: Int, _ w: [Float], _ b: [Float]?,
             cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, Int32(cout), Int32(n), Int32(cin * k), 1, wp.baseAddress!,
                         Int32(cin * k), cp.baseAddress!, Int32(n), 0, pp.baseAddress!, Int32(n))
         } } }
-        for o in 0..<cout {
-            let bias = b?[o] ?? 0
-            for i in 0..<n { y[o * tout + start + i] = part[o * n + i] + bias }
-        }
+        y.withUnsafeMutableBufferPointer { yp in part.withUnsafeBufferPointer { pp in
+            for o in 0..<cout {
+                var bias = b?[o] ?? 0
+                vDSP_vsadd(pp.baseAddress! + o * n, 1, &bias, yp.baseAddress! + o * tout + start, 1, vDSP_Length(n))
+            }
+        } }
         start += n
     }
     return (y, tout)
@@ -548,7 +569,14 @@ private func depthwiseTranspose(_ x: [Float], c: Int, t: Int, _ w: [Float], _ b:
 }
 
 private func leakyRelu(_ x: inout [Float], _ slope: Float) {
-    for i in x.indices where x[i] < 0 { x[i] *= slope }
+    // slope·x + (1 − slope)·max(x, 0), in vector operations.
+    var positive = [Float](repeating: 0, count: x.count)
+    var zero: Float = 0, a = slope, b = 1 - slope
+    let n = vDSP_Length(x.count)
+    x.withUnsafeMutableBufferPointer { xp in
+        vDSP_vthres(xp.baseAddress!, 1, &zero, &positive, 1, n)
+        vDSP_vsmsma(xp.baseAddress!, 1, &a, positive, 1, &b, xp.baseAddress!, 1, n)
+    }
 }
 
 /// Each channel of x (c × t) normalised to mean 0 and variance 1 over time.
@@ -608,13 +636,18 @@ private func scale(_ x: inout [Float], _ factor: Float) {
 
 /// Snake: x + sin²(αx)/α, with an α for each channel.
 private func snake(_ x: inout [Float], c: Int, t: Int, _ alpha: [Float]) {
-    for ch in 0..<c {
-        let a = alpha[ch], inverse = 1 / a
-        for i in 0..<t {
-            let v = x[ch * t + i], s = sin(a * v)
-            x[ch * t + i] = v + inverse * s * s
+    var scratch = [Float](repeating: 0, count: t)
+    var count = Int32(t)
+    x.withUnsafeMutableBufferPointer { xp in scratch.withUnsafeMutableBufferPointer { sp in
+        for ch in 0..<c {
+            let row = xp.baseAddress! + ch * t, s = sp.baseAddress!
+            var a = alpha[ch], inverse = 1 / alpha[ch]
+            vDSP_vsmul(row, 1, &a, s, 1, vDSP_Length(t))          // αx
+            vvsinf(s, s, &count)                                  // sin(αx)
+            vDSP_vsq(s, 1, s, 1, vDSP_Length(t))                  // sin²(αx)
+            vDSP_vsma(s, 1, &inverse, row, 1, row, 1, vDSP_Length(t)) // x + sin²/α
         }
-    }
+    } }
 }
 
 // MARK: - Short-time Fourier transform (20-point, hop 5, periodic Hann, centred)

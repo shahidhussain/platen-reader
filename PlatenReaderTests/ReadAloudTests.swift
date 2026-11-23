@@ -177,6 +177,27 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertEqual(words, ["0:0+4", "0:8+7", "1:5+5"])
     }
 
+    /// The lock screen's next and previous: a sentence forward, or back to
+    /// the one heard before; reading goes on from there.
+    func testSkippingForwardAndBackASentence() {
+        let engine = FakeEngine()
+        let controller = ReadAloudController(engine: engine, language: "en", lookahead: 1)
+        controller.requestNext = {}
+        controller.start()
+        controller.receive(block(["One.", "Two.", "Three.", "Four."]))
+        engine.startNext()
+        engine.finishCurrent() // "One." heard
+        engine.startNext()     // "Two." being read
+        controller.skip(by: 1)
+        XCTAssertTrue(engine.stopped)
+        XCTAssertEqual(engine.queue.map(\.text), ["Three.", "Four."], "on from the next sentence")
+        engine.startNext()     // "Three."
+        controller.skip(by: -1)
+        XCTAssertEqual(engine.queue.map(\.text), ["One.", "Three.", "Four."],
+                       "back to the sentence heard last (\"Two.\" was skipped, never heard)")
+        XCTAssertEqual(controller.phase, .starting)
+    }
+
     func testBlocksWithNothingToReadAreSkipped() {
         let engine = FakeEngine()
         let controller = ReadAloudController(engine: engine, language: "en", lookahead: 2)

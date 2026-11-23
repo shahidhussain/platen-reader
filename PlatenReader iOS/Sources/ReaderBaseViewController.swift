@@ -232,6 +232,12 @@ class ReaderBaseViewController: UIViewController {
             ReadAloudSettings.shared.choice = choice
         } else if step == "@readaloud:stop" {
             readAloudSource?.stopReadAloud()
+        } else if step == "@outputchanged" {
+            // As when Bluetooth headphones come or go (the natural voice).
+            KokoroSpeechEngine.latest?.simulateOutputChange()
+        } else if step.hasPrefix("@skip:"), let delta = Int(step.dropFirst(6)) {
+            // "@skip:1" / "@skip:-1": the lock screen's next and previous.
+            readAloudSource?.skipReadAloud(by: delta)
         } else if step.hasPrefix("@theme:"), let choice = AppearanceChoice(rawValue: String(step.dropFirst(7))) {
             // "@theme:sepia": the page theme, as the Aa popover would set it.
             settings.appearance = choice
@@ -318,6 +324,9 @@ class ReaderBaseViewController: UIViewController {
 
     /// Follows read aloud for Now Playing.
     var readAloudWatch: AnyCancellable?
+    /// Reading aloud starts again on the page the reader moved to, once they
+    /// have settled there (`pageMovedByHand`).
+    var handMoveRestart: DispatchWorkItem?
 
     /// Whether this reader has the speaker button.
     var offersReadAloud: Bool { false }

@@ -397,19 +397,45 @@ struct BookShelfView: View {
 }
 
 /// Checks each item at once, in the background, each with its own time
-/// limit: they show as being checked until they answer.
+/// limit: they show as being checked until they answer. An item that does
+/// not answer in time is not shown as unavailable (it may be iCloud's file
+/// service still waking): it stays as being checked and is asked again, up
+/// to three times in all, a few seconds apart; only a clear no greys it.
 @MainActor
 private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: Binding<[RecentItem.ID: Reach]>) async {
     for item in items where reach.wrappedValue[item.id] == nil { reach.wrappedValue[item.id] = .checking }
-    // Each check answers within its time limit (see reachability), so this
-    // finishes even when a share does not answer.
-    await withTaskGroup(of: Void.self) { group in
-        for item in items {
-            group.addTask { @MainActor in
-                reach.wrappedValue[item.id] = Reach(await list.reachability(of: item))
+    var pending = items
+    var counts: [String: Int] = [:]
+    let started = Date()
+    for attempt in 1...3 where !pending.isEmpty {
+        if attempt > 1 { try? await Task.sleep(for: .seconds(4)) }
+        // Each check answers within its time limit (see reachability), so
+        // this finishes even when a share does not answer.
+        let silent: [RecentItem] = await withTaskGroup(of: RecentItem?.self) { group in
+            for item in pending {
+                group.addTask { @MainActor in
+                    let answer = await list.reachability(of: item)
+                    if case .noAnswer = answer {
+                        if attempt == 3 { reach.wrappedValue[item.id] = .unavailable }
+                        return item
+                    }
+                    reach.wrappedValue[item.id] = Reach(answer)
+                    return nil
+                }
             }
+            var silent: [RecentItem] = []
+            for await item in group { if let item { silent.append(item) } }
+            return silent
         }
+        counts["no answer \(attempt)"] = silent.count
+        pending = silent
     }
+    // For the diagnostics file: how the checks went (no names).
+    let states = items.map { reach.wrappedValue[$0.id] ?? .checking }
+    let summary = "\(states.filter { $0 == .available }.count) here, \(states.filter { $0 == .inCloud }.count) in iCloud, "
+        + "\(states.filter { $0 == .unavailable }.count) not available; no answer: \(counts["no answer 1"] ?? 0), "
+        + "then \(counts["no answer 2"] ?? 0), \(counts["no answer 3"] ?? 0)"
+    log.info("home: \(items.count) items checked in \(Int(Date().timeIntervalSince(started) * 1000)) ms: \(summary, privacy: .public)")
 }
 
 

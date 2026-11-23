@@ -4,9 +4,10 @@ import UIKit
 
 /// Read aloud's place in the system's audio (iOS): the audio session for
 /// spoken audio, kept going in the background and at the lock screen
-/// (Info.plist's audio background mode), the lock screen's Now Playing with
-/// play and pause, and pausing for calls and when headphones are unplugged,
-/// as audiobook apps do.
+/// (Info.plist's audio background mode), the lock screen's Now Playing (the
+/// book's cover, title and chapter; play and pause; previous and next
+/// sentence, and no seek bar, as a reading has no set length), and pausing
+/// for calls and when headphones are unplugged, as audiobook apps do.
 @MainActor
 final class ReadAloudAudio {
     static let shared = ReadAloudAudio()
@@ -15,7 +16,12 @@ final class ReadAloudAudio {
     struct Controls {
         var play: () -> Void
         var pause: () -> Void
+        /// A sentence forward (1) or back (-1).
+        var skip: (Int) -> Void
     }
+
+    /// The book's cover on the lock screen, set by `begin`.
+    private var artwork: MPMediaItemArtwork?
 
     private var controls: Controls?
     private var observers: [NSObjectProtocol] = []
@@ -26,8 +32,9 @@ final class ReadAloudAudio {
 
     /// Reading begins: the session becomes active and Now Playing shows the
     /// book.
-    func begin(title: String, author: String, chapter: String, controls: Controls) {
+    func begin(title: String, author: String, chapter: String, cover: UIImage?, controls: Controls) {
         self.controls = controls
+        artwork = cover.map { image in MPMediaItemArtwork(boundsSize: image.size) { _ in image } }
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .spokenAudio, options: [])
@@ -47,8 +54,12 @@ final class ReadAloudAudio {
             MPMediaItemPropertyAlbumTitle: title,
             MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+            // No length and no place in it: the lock screen shows no seek
+            // bar.
+            MPNowPlayingInfoPropertyIsLiveStream: true,
         ]
         if !author.isEmpty { info[MPMediaItemPropertyArtist] = author }
+        if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = playing ? .playing : .paused
     }
@@ -57,6 +68,7 @@ final class ReadAloudAudio {
     /// apps' audio may resume.
     func end() {
         controls = nil
+        artwork = nil
         pausedByInterruption = false
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
@@ -83,6 +95,13 @@ final class ReadAloudAudio {
         add(center.togglePlayPauseCommand) { [weak self] in
             guard let self else { return }
             if MPNowPlayingInfoCenter.default().playbackState == .playing { self.controls?.pause() } else { self.controls?.play() }
+        }
+        add(center.nextTrackCommand) { [weak self] in self?.controls?.skip(1) }
+        add(center.previousTrackCommand) { [weak self] in self?.controls?.skip(-1) }
+        // No seeking, and no "15 seconds" skips: sentences are the steps.
+        for command in [center.changePlaybackPositionCommand, center.skipForwardCommand, center.skipBackwardCommand,
+                        center.seekForwardCommand, center.seekBackwardCommand] as [MPRemoteCommand] {
+            command.isEnabled = false
         }
     }
 

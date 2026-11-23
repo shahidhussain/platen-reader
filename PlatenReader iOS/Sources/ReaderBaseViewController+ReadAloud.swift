@@ -25,6 +25,25 @@ extension ReaderBaseViewController {
 
     private var readAloudSettings: ReadAloudSettings { .shared }
 
+    /// The reader moved the page themselves while reading aloud: once they
+    /// have stopped moving (0.6 s), reading starts again from the page they
+    /// are on; if it was paused, it stops, so the speaker starts there.
+    func pageMovedByHand() {
+        guard state.readAloud != .off else { return }
+        handMoveRestart?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.restartReadAloudHere() }
+        handMoveRestart = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
+    }
+
+    private func restartReadAloudHere() {
+        guard let source = readAloudSource, state.readAloud != .off else { return }
+        let wasPaused = state.readAloud == .paused
+        source.stopReadAloud()
+        log.info("read aloud: the page was moved by hand; \(wasPaused ? "stopped" : "reading from there", privacy: .public)")
+        if !wasPaused { beginReadAloud() }
+    }
+
     private func beginReadAloud() {
         guard let source = readAloudSource, source.canReadAloud else { return }
         let language = source.readAloudLanguage
@@ -59,13 +78,21 @@ extension ReaderBaseViewController {
     private func startReading(with engine: SpeechEngine?) {
         guard let engine, let source = readAloudSource else { return }
         ReadAloudAudio.shared.begin(
-            title: state.title, author: state.author, chapter: state.chapter,
+            title: state.title, author: state.author, chapter: state.chapter, cover: readAloudCover,
             controls: .init(play: { [weak self] in self?.readAloudSource?.resumeReadAloud() },
-                            pause: { [weak self] in self?.readAloudSource?.pauseReadAloud() }))
+                            pause: { [weak self] in self?.readAloudSource?.pauseReadAloud() },
+                            skip: { [weak self] delta in self?.readAloudSource?.skipReadAloud(by: delta) }))
         watchReadAloud()
         source.startReadAloud(engine: engine)
         let voice = engine is AppleSpeechEngine ? "Apple voice" : "natural voice"
         log.info("read aloud: started (\(source.readAloudLanguage, privacy: .public), \(voice, privacy: .public))")
+    }
+
+    /// The book's cover, for the lock screen: the copy Recent Books keeps.
+    private var readAloudCover: UIImage? {
+        let books = RecentList.books
+        guard let item = books.item(at: url), let file = books.coverURL(for: item) else { return nil }
+        return UIImage(contentsOfFile: file.path)
     }
 
     /// Now Playing follows the reading (playing or paused, the chapter), and
