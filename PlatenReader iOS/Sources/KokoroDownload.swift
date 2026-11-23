@@ -13,7 +13,8 @@ import UIKit
 /// Info.plist says so (`PlatenKokoroAssetPack`), and the Background Assets
 /// keys and download extension come with that step. Debug builds can
 /// "download" from a local folder (`PLATEN_KOKORO_DOWNLOAD_FROM`), to try the
-/// whole flow in the Simulator.
+/// whole flow in the Simulator, and on a device take a pack copied into
+/// Documents (`adoptCopiedPack`).
 @MainActor
 enum KokoroDownload {
     static let assetPackID = "KokoroVoice"
@@ -43,6 +44,9 @@ enum KokoroDownload {
     /// At launch: says whether the download can be offered, and where an
     /// already downloaded Background Assets pack is.
     static func prepare() {
+        #if DEBUG
+        adoptCopiedPack()
+        #endif
         KokoroVoice.downloadAvailable = isAvailable
         if #available(iOS 26.4, *), usesBackgroundAssets,
            AssetPackManager.shared.assetPackIsAvailableLocally(withID: assetPackID) {
@@ -84,6 +88,30 @@ enum KokoroDownload {
     }
 
     #if DEBUG
+    /// Debug builds on a device, before the download exists: a voice pack
+    /// folder (`build/kokoro-pack`, made by scripts/make-kokoro-pack.py)
+    /// copied into the app's Documents with Finder, named "kokoro-pack", is
+    /// moved to where a downloaded pack lives, as if downloaded.
+    private static func adoptCopiedPack() {
+        let manager = FileManager.default
+        guard let documents = manager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let copied = documents.appendingPathComponent("kokoro-pack", isDirectory: true)
+        guard manager.fileExists(atPath: copied.path) else { return }
+        guard KokoroPack.isComplete(copied) else {
+            log.error("natural voice: Documents/kokoro-pack is incomplete; not installed")
+            return
+        }
+        let destination = KokoroPack.downloadFolder
+        do {
+            try? manager.removeItem(at: destination)
+            try manager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try manager.moveItem(at: copied, to: destination)
+            log.info("natural voice: installed the pack copied into Documents")
+        } catch {
+            log.error("natural voice: could not install the copied pack: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// The download, from a local folder (Debug builds), at a pace that
     /// shows the progress sheet: the pack's files copied one by one.
     private static func copyForTesting(from source: URL, progress: @escaping @MainActor (Double) -> Void) async throws -> URL {

@@ -24,7 +24,7 @@ PRODUCT_MODULE_NAME = PlatenReader
 // release with something new. Meanwhile the third number goes up by one with
 // every change made (each request's commit), so a build on a test device can
 // be matched to it: 0.8.1 is the first of these.
-MARKETING_VERSION = 0.8.38
+MARKETING_VERSION = 0.8.39
 CURRENT_PROJECT_VERSION = 1
 
 // The minimum systems from the spec's "Decisions made".

@@ -22,9 +22,18 @@ machine-learning runtime in the app, so nothing that could report anywhere.
 The app grows by a few hundred lines of code; the voice is an 82 MB download.
 Branch `kokoro-accelerate`.
 
-Still open: the download is a network exception, which the user has yet to
-agree; the App Store Connect steps (below) are the user's; and speed and
-memory still need measuring on an iPhone.
+The download is an agreed network exception (the user, 22 Nov 2026): it
+happens only on the reader's explicit request, after a dialog that says in
+plain words what is downloaded and how big it is, with a progress sheet.
+Still open: the App Store Connect steps (below) are the user's, and speed
+and memory need measuring on an iPhone.
+
+**Trying it on an iPhone before the download exists** (Debug builds): run
+`python3 scripts/make-kokoro-pack.py`, then in Finder select the iPhone,
+open Files, and drag `build/kokoro-pack` onto Platen Reader. At its next
+launch the app moves the folder to where a downloaded pack lives
+(`KokoroDownload.adoptCopiedPack`), and English books can be read with the
+natural voice (Settings › Read Aloud, or the dialog at the first tap).
 
 ## The natural voice: what was learned
 
@@ -315,6 +324,5 @@ app does not offer the download (Debug builds can try it from a folder:
 - Reading at the lock screen on a device (the Simulator cannot lock).
 - The Mac's speaker button and Settings.
 - PDFs (PDFKit's page text, no highlighting).
-- The natural voice: the user's go-ahead for its download (a network
-  exception), the App Store Connect steps above, and measuring it on an
-  iPhone (speed, memory, the first sentence's wait).
+- The natural voice: the App Store Connect steps above, and measuring it on
+  an iPhone (speed, memory, the first sentence's wait).

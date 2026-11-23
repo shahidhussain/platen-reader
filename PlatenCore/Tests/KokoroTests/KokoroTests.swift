@@ -7,8 +7,13 @@ final class KokoroTests: XCTestCase {
     /// The STFT and its inverse undo each other, as torch.stft and
     /// torch.istft do (the generator's sound comes out through the inverse).
     func testTheInverseSTFTGivesBackTheSignal() {
-        let signal: [Float] = (0..<600).map { n in
-            0.5 * sin(Float(n) * 0.31) + 0.2 * sin(Float(n) * 1.7 + 1) + 0.05 * Float((n * 7919) % 13) / 13
+        var signal = [Float](repeating: 0, count: 600)
+        for n in signal.indices {
+            let t = Float(n)
+            let low: Float = 0.5 * sin(t * 0.31)
+            let high: Float = 0.2 * sin(t * 1.7 + 1)
+            let rough: Float = 0.05 * Float((n * 7919) % 13) / 13
+            signal[n] = low + high + rough
         }
         let (magnitude, phase, frames) = kokoroSTFT(signal)
         XCTAssertEqual(frames, 600 / 5 + 1)
