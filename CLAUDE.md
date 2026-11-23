@@ -4,7 +4,7 @@ A free, open source (MPL-2.0), file-first ebook viewer for macOS, with iOS to fo
 
 ## Layout
 
-- `PlatenCore/`: Swift package, platform-neutral (no AppKit, UIKit or WebKit). It holds the zip reader (Zip64, recovery scan), EPUB package parser, cover extraction and cache (`BookCover`, `CoverCache`), DRM detection, font de-obfuscation, path fix-ups, book identity and the per-book position store. Unit-tested.
+- `PlatenCore/`: Swift package, platform-neutral (no AppKit, UIKit or WebKit). It holds the zip reader (Zip64, recovery scan), EPUB package parser, cover extraction and cache (`BookCover`, `CoverCache`), DRM detection, font de-obfuscation, path fix-ups, book identity and the per-book position store. Unit-tested. Its second module, `Kokoro`, is read aloud's natural voice (Kokoro-82M on Accelerate), compiled optimised even in Debug builds.
 - `PlatenReader/Shared/`: code used by both the Mac and iOS apps. A synchronised folder in both app targets (and compiled on its own by the `PlatenReaderTests` unit tests). Nothing here may import AppKit or UIKit; platform parts go in `+AppKit` / `+UIKit` files in each app.
   - `BookSession`: one open book (reading the file, the saved position and bookmarks, the conversation with reader.js, every `platen` command). Each app's `ReaderViewController` is its `BookSessionHost` and adds only what is the platform's own.
   - `ReaderBridge`: everything that crosses the JS bridge, typed: `ReaderMessage` (decoded once from `post()`), `WebSettings`, `PageTurn`, `ClickZone`. Add a case here when reader.js gains a message; never decode `[String: Any]` elsewhere.
@@ -69,6 +69,7 @@ The screen-control tools may lack macOS permissions in this environment, so veri
 - Add a line to `scripts/corpus-cases.sh` for every new fixture (both corpus scripts read it).
 - Before pushing a change to the iOS reader (its look, the glow, the controls, layouts), run `scripts/ios-matrix.py` and look at `build/ios-matrix/sheet.png`; with `--samples` it also takes the books in `samples/` (never committed) through it. A bug found on a device that a rule could have caught becomes a rule there, or a state in one of its cases.
 - If you patch vendored foliate-js, record it in `PlatenReader/Web/foliate/VENDORED.md`.
+- Read aloud's natural voice (`PlatenReader/Shared/Kokoro`, docs/read-aloud.md) runs Kokoro-82M with our own code on Accelerate (`KokoroModel`): no machine-learning runtime, so nothing that could send telemetry. Keep it that way (ONNX Runtime was tried and dropped for its size and Microsoft telemetry). The voice pack is built by `scripts/make-kokoro-pack.py` from pinned, hashed sources (needs numpy); `scripts/check-no-network.sh` checks that reading with it opens no connection. Nothing GPL may be added (no eSpeak NG).
 
 ## Status
 

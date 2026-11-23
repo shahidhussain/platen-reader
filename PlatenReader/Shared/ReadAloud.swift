@@ -304,12 +304,27 @@ final class ReadAloudController {
 // MARK: - The natural voice's availability
 
 /// Whether the natural voice (Kokoro) can be offered on this device, and
-/// whether it is downloaded. It needs iOS 26 or later (Apple-hosted
-/// Background Assets) and a recent enough device (docs/read-aloud.md,
-/// Measurements). Not offered until its engine is in the app.
+/// whether it is downloaded (docs/read-aloud.md). Offered where its
+/// download can be had (`downloadAvailable`, set by each app: iOS 26 and
+/// later, with Background Assets) on a device with the memory for it
+/// (`hasMemoryForIt`), or where a pack is already installed.
 enum KokoroVoice {
-    static var isOffered: Bool { false }
-    static var isInstalled: Bool { false }
-    /// The download's size, for the dialog and Settings.
-    static let downloadSize = Measurement(value: 165, unit: UnitInformationStorage.megabytes)
+    /// Set by the app at launch: the voice pack can be downloaded here.
+    nonisolated(unsafe) static var downloadAvailable = false
+
+    /// Reading takes up to about 300 MB (the pronunciation lexicons, and the
+    /// model's working memory for a piece of about ten seconds; the weights
+    /// themselves are mapped from the file, not held); devices with 6 GB of
+    /// memory or more (iPhone 13 Pro, iPhone 15 and later) keep that
+    /// comfortably alongside the book (docs/read-aloud.md, Measurements).
+    static var hasMemoryForIt: Bool { ProcessInfo.processInfo.physicalMemory >= 5_500_000_000 }
+
+    static var isOffered: Bool { isInstalled || (downloadAvailable && hasMemoryForIt) }
+    static var isInstalled: Bool { KokoroPack.installed != nil }
+
+    /// The download's size (the dialog says it), and what it takes on the
+    /// device once installed (Settings' Remove says it). From
+    /// scripts/make-kokoro-pack.py: 81.8 MB zipped, 103.1 MB unpacked.
+    static let downloadSize = Measurement(value: 82, unit: UnitInformationStorage.megabytes)
+    static let installedSize = Measurement(value: 103, unit: UnitInformationStorage.megabytes)
 }

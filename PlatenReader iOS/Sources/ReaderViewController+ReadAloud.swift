@@ -34,12 +34,18 @@ extension ReaderViewController {
         case .apple(let language):
             noteIfOnlyStandardVoice(for: language) { [weak self] in self?.startReading(with: self?.appleEngine()) }
         case .kokoro:
-            // The natural voice's engine is not in the app yet (KokoroVoice
-            // is never offered until it is).
-            startReading(with: appleEngine())
+            startReading(with: naturalEngine() ?? appleEngine())
         case .askFirst(let language):
             askForVoice(language: language)
         }
+    }
+
+    /// The natural voice, if its pack is installed.
+    private func naturalEngine() -> SpeechEngine? {
+        guard let pack = KokoroPack.installed else { return nil }
+        let engine = KokoroSpeechEngine(pack: pack, voice: readAloudSettings.kokoroVoice)
+        engine.speed = readAloudSettings.speed
+        return engine
     }
 
     private func appleEngine() -> SpeechEngine {
@@ -57,7 +63,8 @@ extension ReaderViewController {
                             pause: { [weak self] in self?.session.pauseReadAloud() }))
         watchReadAloud()
         session.startReadAloud(engine: engine)
-        log.info("read aloud: started (\(self.session.readAloudLanguage, privacy: .public))")
+        let voice = engine is AppleSpeechEngine ? "Apple voice" : "natural voice"
+        log.info("read aloud: started (\(self.session.readAloudLanguage, privacy: .public), \(voice, privacy: .public))")
     }
 
     /// Now Playing follows the reading (playing or paused, the chapter), and
@@ -96,9 +103,11 @@ extension ReaderViewController {
         })
         alert.addAction(UIAlertAction(title: String(localized: "Download Better Voice (about \(size))"), style: .default) { [weak self] _ in
             ReadAloudSettings.shared.choice = .kokoro
-            // The download comes with the natural voice's engine; until
-            // then, read with Apple's voice.
-            self?.startReading(with: self?.appleEngine())
+            if KokoroVoice.isInstalled {
+                self?.startReading(with: self?.naturalEngine())
+            } else {
+                self?.downloadNaturalVoice()
+            }
         })
         alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         present(alert, animated: true)
@@ -122,5 +131,16 @@ extension ReaderViewController {
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { _ in read() })
         present(alert, animated: true)
+    }
+
+    // MARK: - The natural voice's download
+
+    /// Downloads the natural voice (`KokoroDownload`), showing its progress
+    /// with Cancel, then starts reading with it.
+    func downloadNaturalVoice() {
+        KokoroDownloadUI.present(from: self) { [weak self] installed in
+            guard let self else { return }
+            self.startReading(with: installed ? self.naturalEngine() : self.appleEngine())
+        }
     }
 }

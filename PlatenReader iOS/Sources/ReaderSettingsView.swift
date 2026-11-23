@@ -53,6 +53,7 @@ struct ReaderSettingsView: View {
                 }
                 Section {
                     LabeledContent("Platen Reader", value: AppVersion.line)
+                    NavigationLink("Acknowledgements") { AcknowledgementsView() }
                     // Opens the website in the reader's browser; the app
                     // itself loads nothing (spec: no network).
                     Link(destination: AppLinks.website) {
@@ -111,6 +112,15 @@ private struct ReadAloudSettingsSection: View {
             .sorted { $0.quality != $1.quality ? $0.quality > $1.quality : $0.name < $1.name }
     }
 
+    @State private var installed = KokoroVoice.isInstalled
+    @State private var confirmRemove = false
+    @State private var downloading = false
+    @State private var downloadProgress = 0.0
+
+    private var size: String {
+        KokoroVoice.downloadSize.formatted(.measurement(width: .abbreviated, usage: .asProvided))
+    }
+
     var body: some View {
         Section {
             if KokoroVoice.isOffered {
@@ -118,6 +128,24 @@ private struct ReadAloudSettingsSection: View {
                     Text("Apple Voice").tag(ReadAloudVoiceChoice.apple)
                     Text("Natural Voice").tag(ReadAloudVoiceChoice.kokoro)
                     if settings.choice == .undecided { Text("Ask First").tag(ReadAloudVoiceChoice.undecided) }
+                }
+                if installed, let pack = KokoroPack.installed {
+                    Picker("Natural Voice", selection: $settings.kokoroVoice) {
+                        ForEach(KokoroPack.voices(in: pack), id: \.self) { voice in
+                            Text(Self.describeNatural(voice)).tag(voice)
+                        }
+                    }
+                    Button("Play Natural Sample") {
+                        sampler.playNatural(pack: pack, voice: settings.kokoroVoice, speed: settings.speed)
+                    }
+                    Button("Remove Voice Download (\(KokoroVoice.installedSize.formatted(.measurement(width: .abbreviated, usage: .asProvided))))",
+                           role: .destructive) { confirmRemove = true }
+                } else if downloading {
+                    ProgressView(value: downloadProgress) {
+                        Text("Downloading the Better Voice")
+                    }
+                } else {
+                    Button("Download Better Voice (about \(size))") { download() }
                 }
             }
             Picker("Apple Voice", selection: $settings.appleVoice) {
@@ -135,7 +163,53 @@ private struct ReadAloudSettingsSection: View {
         } header: {
             Text("Read Aloud")
         } footer: {
-            Text("Better Apple voices can be added in Settings › Accessibility › Read & Speak › Voices.")
+            VStack(alignment: .leading, spacing: 6) {
+                if KokoroVoice.isOffered {
+                    Text("The natural voice reads English books. It is a one-time download, kept on this device; nothing about you is sent. Other languages use Apple’s voices.")
+                }
+                Text("Better Apple voices can be added in Settings › Accessibility › Read & Speak › Voices.")
+            }
+        }
+        .confirmationDialog("Remove the natural voice?", isPresented: $confirmRemove, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
+                Task {
+                    await KokoroDownload.remove()
+                    installed = false
+                    if settings.choice == .kokoro { settings.choice = .undecided }
+                }
+            }
+        } message: {
+            Text("English books will be read with Apple’s voices until you download it again.")
+        }
+    }
+
+    private func download() {
+        downloading = true
+        downloadProgress = 0
+        Task {
+            do {
+                _ = try await KokoroDownload.download { downloadProgress = $0 }
+                installed = true
+                settings.choice = .kokoro
+            } catch {
+                log.error("natural voice: download failed: \(error.localizedDescription, privacy: .public)")
+            }
+            downloading = false
+        }
+    }
+
+    /// "Emma (British, female)".
+    private static func describeNatural(_ voice: String) -> String {
+        let parts = voice.split(separator: "_", maxSplits: 1)
+        guard parts.count == 2, let code = parts.first, code.count == 2 else { return voice }
+        let name = parts[1].prefix(1).uppercased() + parts[1].dropFirst()
+        let british = code.hasPrefix("b")
+        let female = code.hasSuffix("f")
+        switch (british, female) {
+        case (true, true): return String(localized: "\(name) (British, female)")
+        case (true, false): return String(localized: "\(name) (British, male)")
+        case (false, true): return String(localized: "\(name) (American, female)")
+        case (false, false): return String(localized: "\(name) (American, male)")
         }
     }
 
@@ -154,11 +228,49 @@ private struct ReadAloudSettingsSection: View {
 @MainActor
 private final class VoiceSampler {
     private let engine = AppleSpeechEngine()
+    private var natural: KokoroSpeechEngine?
+
+    func playNatural(pack: URL, voice: String, speed: Double) {
+        engine.stop()
+        natural?.stop()
+        let natural = KokoroSpeechEngine(pack: pack, voice: voice)
+        natural.speed = speed
+        self.natural = natural
+        natural.enqueue([(0, String(localized: "This is how books will sound when they are read aloud."))], language: "en")
+    }
 
     func play(voice: String?, speed: Double) {
+        natural?.stop()
         engine.stop()
         engine.preferredVoice = voice
         engine.speed = speed
         engine.enqueue([(0, String(localized: "This is how books will sound when they are read aloud."))], language: "en")
+    }
+}
+
+/// The licences of the code and data Platen uses that others wrote: the
+/// text files in Acknowledgements/, one page each.
+private struct AcknowledgementsView: View {
+    private var files: [URL] {
+        (Bundle.main.urls(forResourcesWithExtension: "txt", subdirectory: nil) ?? [])
+            .filter { Self.names.contains($0.deletingPathExtension().lastPathComponent) }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+    private static let names: Set<String> = ["MisakiSwift and Misaki (Apache-2.0)", "foliate-js", "Kokoro natural voice"]
+
+    var body: some View {
+        List(files, id: \.self) { file in
+            NavigationLink(file.deletingPathExtension().lastPathComponent) {
+                ScrollView {
+                    Text((try? String(contentsOf: file, encoding: .utf8)) ?? "")
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                        .padding()
+                }
+                .navigationTitle(file.deletingPathExtension().lastPathComponent)
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+        .navigationTitle("Acknowledgements")
     }
 }

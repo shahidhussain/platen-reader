@@ -7,6 +7,18 @@
     "%@ (%@, Premium)" : {
 
     },
+    "%@ (American, female)" : {
+
+    },
+    "%@ (American, male)" : {
+
+    },
+    "%@ (British, female)" : {
+
+    },
+    "%@ (British, male)" : {
+
+    },
     "%@ (⌘%@)" : {
       "localizations" : {
         "en-GB" : {
@@ -41,10 +53,16 @@
     "A book’s title and author are known once Platen has read it; until then, and for books only in iCloud, its file name is shown." : {
 
     },
+    "A one-time download of about %@. Nothing about you is sent. Reading starts when it finishes." : {
+
+    },
     "A record of how the app has been running (how long books took to open, moments it was slow to respond, errors), kept on this device to help with a problem report. It holds no book titles or file names, and leaves the device only if you share it." : {
 
     },
     "About %@" : {
+
+    },
+    "Acknowledgements" : {
 
     },
     "Add to Favourites" : {
@@ -140,6 +158,9 @@
     "Choose a folder of books to find it here." : {
 
     },
+    "Check your connection and try again from Settings › Read Aloud." : {
+
+    },
     "Choose Folder…" : {
 
     },
@@ -215,6 +236,9 @@
     "Downloading" : {
 
     },
+    "Downloading the Better Voice" : {
+
+    },
     "Downloading “%@” from iCloud…" : {
 
     },
@@ -234,6 +258,9 @@
 
     },
     "English Books" : {
+
+    },
+    "English books will be read with Apple’s voices until you download it again." : {
 
     },
     "Enter Full Screen" : {
@@ -555,6 +582,9 @@
     "Platen Reader" : {
 
     },
+    "Play Natural Sample" : {
+
+    },
     "Play Sample" : {
 
     },
@@ -591,10 +621,16 @@
     "Recent Books" : {
 
     },
+    "Remove" : {
+
+    },
     "Remove Bookmark" : {
 
     },
     "Remove Bookmark (⌘D)" : {
+
+    },
+    "Remove Voice Download (%@)" : {
 
     },
     "Remove from Favourites" : {
@@ -604,6 +640,9 @@
 
     },
     "Remove from Recents" : {
+
+    },
+    "Remove the natural voice?" : {
 
     },
     "Resume Reading" : {
@@ -729,6 +768,9 @@
     "Text Size" : {
 
     },
+    "The Better Voice Could Not Be Downloaded" : {
+
+    },
     "The better voice is a one-time download of about %@. Nothing about you is sent. It is used for English books only; other languages use Apple’s voices." : {
 
     },
@@ -736,6 +778,9 @@
 
     },
     "The file may be damaged, or not a PDF." : {
+
+    },
+    "The natural voice reads English books. It is a one-time download, kept on this device; nothing about you is sent. Other languages use Apple’s voices." : {
 
     },
     "The picture could not be saved to Photos." : {

@@ -5,30 +5,26 @@ voices, underlining the word being read and turning pages as it goes.
 iOS first; the Mac follows with the same shared code. What ships is in "How
 it works" below.
 
-## The natural voice: parked (22 Nov 2026)
+## The natural voice: taken up again, without a runtime (22 Nov 2026)
 
-A natural-sounding English voice (Kokoro-82M) was built and worked in the iOS
-Simulator, then **parked** by the user: more work and more compromises than
-expected for now, though a good direction. The work is kept, complete, on the
-branch **`kokoro-natural-voice`** (commit `c0cc641`, version 0.8.35; draft PR
-shahidhussain/platen-reader#21 was closed in its favour). Everything learned
-is below, so it can be picked up again.
+A natural-sounding English voice (Kokoro-82M) was first built on ONNX
+Runtime (branch `kokoro-natural-voice`, commit `c0cc641`) and **parked**: ONNX
+Runtime added about 40 MB to every install and sent Microsoft telemetry
+unless switched off. Hearing Apple's voice, the user found it not good
+enough to ship as read aloud, and asked whether the brief could be met
+another way: downloaded on demand, English only, relatively small,
+absolutely no telemetry, and ideally no larger app for those who do not use
+it.
 
-What it would cost (the compromises):
-- **App size for everyone:** ONNX Runtime adds about 40 MB to the installed
-  app and about 10 MB to the download, whether or not the voice is used.
-- **Telemetry to switch off:** ONNX Runtime's Apple build sends Microsoft
-  telemetry by default (see below). It can be switched off and the switch
-  checked, but it is a standing risk with every update.
-- **Fragile supply:** Microsoft's usual homes for the iOS build were
-  unreachable; the build came from its NuGet package.
-- **App Store Connect work** for the download (Background Assets, iOS 26.4
-  and later only), and measurements still to make on the oldest iPhone.
-- **Quality:** the user could not tell the int8 model from fp16 in a short
-  sample; a longer listen is needed before choosing.
+It can: **Kokoro now runs on our own Swift code on Apple's Accelerate**
+(`PlatenCore/Sources/Kokoro`, "Running the model" below). There is no
+machine-learning runtime in the app, so nothing that could report anywhere.
+The app grows by a few hundred lines of code; the voice is an 82 MB download.
+Branch `kokoro-accelerate`.
 
-The spec's Read aloud decision now covers Apple's voices only; the voice
-download is not an exception in force while this is parked.
+Still open: the download is a network exception, which the user has yet to
+agree; the App Store Connect steps (below) are the user's; and speed and
+memory still need measuring on an iPhone.
 
 ## The natural voice: what was learned
 
@@ -49,6 +45,9 @@ and are not used anywhere.
 | mlalma/MisakiSwift | Apache-2.0 | Considered (MLX) |
 | ml-explore/mlx-swift | MIT | Considered |
 | mlalma/eSpeakNGSwift | GPL-3.0 | Commented out of kokoro-ios's manifest; never used |
+
+(The table and sections below record the first round, 22 Nov 2026. FluidAudio
+and ONNX Runtime are no longer used; "Running the model" is what ships.)
 
 ### Runtimes considered
 
@@ -106,13 +105,14 @@ install, and its speed on an iPhone's CPU is unmeasured (no Python wheel for
 this Mac's Python to time it here). The English G2P would be misaki's
 lexicons (Apache-2.0) in Swift, with CMUdict (BSD) for words they lack.
 
-**Chosen by the user, 22 Nov 2026: ONNX Runtime on the CPU.**
+**Chosen by the user, 22 Nov 2026: ONNX Runtime on the CPU.** Superseded the
+same day by our own code on Accelerate (below).
 
-### ONNX Runtime: the build in use
+### ONNX Runtime: the build that was tried
 
 - ONNX Runtime 1.32.0 (MIT) from Microsoft's NuGet package
   (`Microsoft.ML.OnnxRuntime`, signed by Microsoft Corporation and
-  countersigned by nuget.org; SHA-256 pinned in `scripts/fetch-onnxruntime.sh`).
+  countersigned by nuget.org; SHA-256 pinned in `scripts/fetch-onnxruntime.sh`, since removed).
   Its GitHub repository, Swift package and `download.onnxruntime.ai` (an
   Azure CDN name with the wrong certificate, and a 404 behind it) were all
   unreachable. The script adds a module map so Swift can use the C API, and
@@ -133,11 +133,58 @@ lexicons (Apache-2.0) in Swift, with CMUdict (BSD) for words they lack.
   with both, `scripts/check-no-network.sh` sees no socket at all while
   reading and quitting. Run it after any ONNX Runtime update.
 
-### The model and the text
+### Running the model: our own code on Accelerate (22 Nov 2026)
 
-- `kokoro.onnx`: Kokoro-82M v1.0, int8 (`model_quantized.onnx`, 92.4 MB), not
-  fp16 (163.2 MB): twice as fast and 300 MB less memory, which matters on
-  4 GB iPhones. Samples of both: `build/kokoro-samples/` (from the Mac test).
+`KokoroModel` (`PlatenCore/Sources/Kokoro/KokoroModel.swift`) is a port of
+hexgrad's PyTorch Kokoro (Apache-2.0; it builds on StyleTTS 2, iSTFTNet and
+HiFi-GAN, all MIT) to plain Swift: Albert (one shared layer applied 12
+times), the duration and prosody predictors (bidirectional LSTMs, AdaIN
+residual blocks), the text encoder, the decoder and the iSTFTNet generator
+(harmonic source, two upsampling stages, a 20-point inverse STFT).
+Convolutions are matrix products (`cblas_sgemm` over im2col columns, in
+spans of time so working buffers stay under 8 MB); LSTMs do their input
+products at once and step the recurrence with `cblas_sgemv`.
+
+- **A module of its own** (`Kokoro` in the PlatenCore package), compiled with
+  `-O` even in Debug builds: unoptimised it is about 60 times slower
+  (real-time factor 21), too slow to try in the Simulator.
+- **The weights** (`kokoro-weights.bin` and `.json` in the voice pack) are
+  converted by `scripts/make-kokoro-pack.py` from hexgrad's own checkpoint
+  (`kokoro-v1_0.pth`, read without PyTorch: a pickle that refuses anything
+  but tensors), with weight normalisation folded in and every weight of 4096
+  values or more stored as int8 with a scale per row. The file is
+  memory-mapped, and a layer's weights are turned into floats only while it
+  runs, so the 82 MB never count as the app's own memory.
+- **Checked against ONNX Runtime's fp32 model** on the same tokens: the same
+  durations (equal lengths) and the same pitch curve; the spectrum differs
+  from it about as much as ONNX's own fp16 model does from its fp32 one,
+  which the user could not tell apart. The waveforms differ sample by
+  sample only because the harmonic source integrates the pitch, so tiny
+  float differences become phase. With int8 weights the difference is a
+  little larger, and still well under that of the int8 ONNX model the user
+  heard.
+- **A trap in the ONNX export.** onnx-community's `model.onnx` divides its
+  inverse STFT by the window's summed square over the first 20 samples only
+  (`window_sum` was traced at that length), so everything after is 1.5×
+  louder than hexgrad's model. Ours follows torch.istft, as the original
+  does. Compare against the PyTorch model's behaviour, not the export's
+  levels.
+- **No randomness.** The original adds noise and random phases to the
+  harmonic source while training; like the export, reading uses none, so the
+  same text always sounds the same.
+- **Pieces of about ten seconds.** Memory grows with the length of what is
+  made at once (about 15 MB per second of speech, mostly the generator's
+  last stage), so `KokoroText` splits a sentence of more than 130 sounds at
+  its last pause before that (Kokoro's own limit is 510). This also starts a
+  long first sentence sooner.
+- **Word timing for the underline.** Kokoro predicts how many 600-sample
+  frames each sound lasts; `KokoroText.pieces` knows which sounds belong to
+  which word of the sentence (Misaki's tokens keep their text), so
+  `KokoroSpeechEngine` knows when each word starts and reports it as the
+  player reaches it (checked in the Simulator: each word within 40 ms of its
+  audio).
+
+### The model and the text
 - English text: Misaki's lexicons through the vendored MisakiSwift code
   (`PlatenReader/Shared/Kokoro/Misaki`, Apache-2.0; no MLX), and for words
   they lack `KokoroFallback`: the CMU Pronouncing Dictionary (BSD), a word
@@ -154,20 +201,31 @@ lexicons (Apache-2.0) in Swift, with CMUdict (BSD) for words they lack.
 | Mac, Swift test (text + model) | int8 | 2 | 0.13–0.15 | 440 MB | |
 | iOS Simulator, in the app | int8 | 2 | 0.13–0.16 | | model 0.25 s + first sentence 0.24 s |
 | iPhone (oldest supported) | int8 | 2 | to measure | to measure | to measure |
+| **Accelerate (ours), Mac (M3 Pro), one core** | int8 weights | 1 | 0.32–0.35 | 150–350 MB* | |
+| **Accelerate (ours), iOS Simulator, in the app** | int8 weights | | 0.87 | | first sentence (5.5 s) in 4.8 s |
+| **Accelerate (ours), iPhone** | int8 weights | | to measure | to measure | to measure |
+
+\* With the text side: Misaki's lexicons take about 105 MB of it; the model
+about 40 MB plus 15 MB per second of speech in a piece, so up to about
+300 MB with pieces of about ten seconds. The Simulator is slower than the
+Mac's own command line (its Accelerate may not use the Mac's matrix unit);
+the iPhone's figure will come from its diagnostics file.
 
 (Real-time factor: time to make a second of speech; under 1 is faster than
 it is spoken.) The app logs each sentence's figure to the diagnostics file
 ("natural voice: 3.7 s of speech in 507 ms"), so a device's numbers come from
 reading a chapter and sharing the file. The minimum device is set for now
-by memory (`KokoroVoice.hasMemoryForIt`: 6 GB or more), until measured.
+by memory (`KokoroVoice.hasMemoryForIt`: 6 GB or more), until measured. (The
+rows above the bold ones are the ONNX Runtime version.)
 
 ### The voice pack
 
-`scripts/make-kokoro-pack.py` builds `build/kokoro-pack/` from pinned,
-hashed sources (Kokoro and its voices from onnx-community, Kokoro's symbol
-table from hexgrad, Misaki's lexicons from hexgrad/misaki, CMUdict), with
-their licences and a NOTICE: 112.8 MB unpacked, 70.8 MB zipped
-(`build/kokoro-pack.zip`, SHA-256 printed). Eight voices: British Emma,
+`scripts/make-kokoro-pack.py` (needs numpy) builds `build/kokoro-pack/` from
+pinned, hashed sources (Kokoro's weights converted from hexgrad's checkpoint,
+its voices from onnx-community, its symbol table from hexgrad, Misaki's
+lexicons from hexgrad/misaki, CMUdict), with their licences and a NOTICE:
+103.1 MB unpacked, 81.8 MB zipped (`build/kokoro-pack.zip`, SHA-256 printed;
+int8 weights hardly compress). Eight voices: British Emma,
 Isabella, George, Lewis; American Heart, Bella, Michael, Fenrir.
 
 ### To do in App Store Connect (yours)
@@ -211,7 +269,11 @@ app does not offer the download (Debug builds can try it from a folder:
   (the queue of sentences, asking for more while 40 remain), the
   `SpeechEngine` protocol, `SpeechEngineChooser` (language and choice) and
   `AppleVoices` (Premium, then Enhanced, then default, for the book's
-  language); `AppleSpeechEngine` speaks with AVSpeechSynthesizer.
+  language); `AppleSpeechEngine` speaks with AVSpeechSynthesizer, and
+  `KokoroSpeechEngine` with the natural voice: it makes each sentence on a
+  background queue, up to two ahead of what is playing, plays them back to
+  back through an `AVAudioPlayerNode`, and reports each word as the player
+  reaches it.
 - **iOS.** The speaker button is in the reader's top bar (Pause and Resume
   while reading; Stop Reading on a long press); `ReadAloudAudio` holds the
   audio session (spoken audio, background playback), the lock screen's Now
@@ -253,5 +315,6 @@ app does not offer the download (Debug builds can try it from a folder:
 - Reading at the lock screen on a device (the Simulator cannot lock).
 - The Mac's speaker button and Settings.
 - PDFs (PDFKit's page text, no highlighting).
-- The natural voice, if it is taken up again: see the parked section above
-  and the branch `kokoro-natural-voice`.
+- The natural voice: the user's go-ahead for its download (a network
+  exception), the App Store Connect steps above, and measuring it on an
+  iPhone (speed, memory, the first sentence's wait).

@@ -447,7 +447,7 @@ These are deliberately excluded to keep Platen a viewer rather than a reading pl
 | DRM removal or DRM-protected playback | Out of scope | Legal and licensing reasons |
 | KFX format | Out of scope | Proprietary and poorly documented |
 | Read-aloud sync with a book's own recorded narration (EPUB media overlays) | Parked | Read aloud with synthetic voices is decided (see Decisions made); playing a book's own audio in step with its text is not |
-| Natural read-aloud voice (Kokoro-82M, downloaded on request) | Parked, 22 Nov 2026 | Built and working in the iOS Simulator (branch `kokoro-natural-voice`), but costly for now: ONNX Runtime adds about 40 MB to every install and sends Microsoft telemetry unless switched off; Core ML's Kokoro crashes on current iOS; the download needs App Store Connect work and iOS 26.4. Its download would be a second network exception. Everything learned is in docs/read-aloud.md |
+| Natural read-aloud voice (Kokoro-82M, downloaded on request) | Under way again, 22 Nov 2026 (branch `kokoro-accelerate`) | First built on ONNX Runtime and parked: it added about 40 MB to every install and sent Microsoft telemetry unless switched off. Now runs on our own Swift code on Accelerate, with no runtime (nothing that could send telemetry, no larger app for those who do not use it), as an 82 MB English download. Not yet decided: its download is a network exception awaiting the go-ahead; App Store Connect steps; measuring it on an iPhone. See docs/read-aloud.md |
 | Custom themes | Parked to M2 |  |
 | Visual typography control | Parked to M2 |  |
 | In-app book list, OPDS catalogues, downloading books | Out of scope | Platen shows files the user already has; a catalogue is a library and needs the network |
