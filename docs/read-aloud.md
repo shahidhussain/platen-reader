@@ -193,6 +193,21 @@ products at once and step the recurrence with `cblas_sgemv`.
   player reaches it (checked in the Simulator: each word within 40 ms of its
   audio).
 
+### Cadence: the voices differ (22 Nov 2026)
+
+On the iPhone the reader found Emma (`bf_emma`) flat: every sentence ended on
+much the same pitch. Measured on the Mac (a pitch track of the same seven
+sentences): Emma's sentence endings all fall to between 2.5 and 4 semitones
+below her median, Isabella's likewise, while Heart's (`af_heart`, the voice
+hexgrad grades highest) range from 4 below to 5 above, and Bella's similarly.
+The int8 weights change nothing here (fp32 and int8 give the same endings to
+a tenth of a semitone). Reading several sentences in one piece, as Kokoro's
+own pipeline does, adds only the odd rise for Emma. Kokoro's British voices
+had far less training data than its American ones. Options: an American
+voice; Heart's voice with British pronunciation (Misaki's British lexicon);
+or a blend of voices (their 256 style values averaged). Samples:
+`build/kokoro-samples/cadence/`.
+
 ### The model and the text
 - English text: Misaki's lexicons through the vendored MisakiSwift code
   (`PlatenReader/Shared/Kokoro/Misaki`, Apache-2.0; no MLX), and for words

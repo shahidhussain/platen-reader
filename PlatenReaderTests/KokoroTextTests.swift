@@ -78,6 +78,14 @@ final class KokoroTextTests: XCTestCase {
         XCTAssertEqual(tokens[0].last, 0)
     }
 
+    /// "a" is the article ("ɐ", "uh"), not the letter's name ("ˈA"), even
+    /// when Apple's tagger gives it no word class (as on an iPhone).
+    func testTheArticleASoundsLikeUh() throws {
+        let text = try XCTUnwrap(KokoroText(pack: folder, british: false))
+        XCTAssertEqual(text.phonemes("A hello."), "ɐ həlˈO.")
+        XCTAssertTrue(text.phonemes("hello a world").contains("ɐ wˈɜɹld"))
+    }
+
     /// Each word's place in the sentence, and the token its sounds start
     /// at, for the underline: punctuation is no word, and the places count
     /// UTF-16 units, as the page does.

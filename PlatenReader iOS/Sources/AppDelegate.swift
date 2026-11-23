@@ -13,6 +13,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // Read aloud's natural voice: whether its download can be offered,
         // and where it is if it has been downloaded (KokoroDownload).
         KokoroDownload.prepare()
+        // Apple's voice list is slow to read: read it now, in the background.
+        AppleSpeechEngine.prepareVoices()
         HangWatch.shared.start()
         // The default text size follows Dynamic Type (spec, "Layout"): about
         // 20 points at the standard size, like Apple Books, scaled with the

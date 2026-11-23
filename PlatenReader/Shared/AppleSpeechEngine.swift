@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 
 /// Read aloud with Apple's voices (AVSpeechSynthesizer): every language, and
 /// English for readers who have not downloaded the natural voice. The voice
@@ -23,8 +24,34 @@ final class AppleSpeechEngine: NSObject, SpeechEngine {
         synthesizer.delegate = self
     }
 
-    /// Apple's installed voices, as `AppleVoices` takes them.
-    static func installedVoices() -> [AppleVoiceInfo] {
+    /// Apple's installed voices, as `AppleVoices` takes them. Asking iOS for
+    /// them takes seconds on a phone with many voices (seen as 2 to 3 s
+    /// stalls of the main thread, 22 Nov 2026), so the list is kept: read in
+    /// the background at launch (`prepareVoices`), and again whenever iOS
+    /// says the installed voices changed.
+    nonisolated static func installedVoices() -> [AppleVoiceInfo] {
+        voiceCache.withLock { cached in
+            if let cached { return cached }
+            let voices = readVoices()
+            cached = voices
+            return voices
+        }
+    }
+
+    /// Reads the voice list on a background queue, so the first book read
+    /// aloud does not wait for it, and keeps it current.
+    nonisolated static func prepareVoices() {
+        DispatchQueue.global(qos: .utility).async { _ = installedVoices() }
+        NotificationCenter.default.addObserver(forName: AVSpeechSynthesizer.availableVoicesDidChangeNotification,
+                                               object: nil, queue: nil) { _ in
+            voiceCache.withLock { $0 = nil }
+            DispatchQueue.global(qos: .utility).async { _ = installedVoices() }
+        }
+    }
+
+    nonisolated private static let voiceCache = OSAllocatedUnfairLock<[AppleVoiceInfo]?>(initialState: nil)
+
+    nonisolated private static func readVoices() -> [AppleVoiceInfo] {
         AVSpeechSynthesisVoice.speechVoices().map { voice in
             let quality: AppleVoiceInfo.Quality
             switch voice.quality {
