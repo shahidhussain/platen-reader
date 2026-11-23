@@ -448,11 +448,12 @@ These are deliberately excluded to keep Platen a viewer rather than a reading pl
 | DRM removal or DRM-protected playback | Out of scope | Legal and licensing reasons |
 | KFX format | Out of scope | Proprietary and poorly documented |
 | Read-aloud sync with a book's own recorded narration (EPUB media overlays) | Parked | Read aloud with synthetic voices is decided (see Decisions made); playing a book's own audio in step with its text is not |
-| Natural read-aloud voice (Kokoro-82M, downloaded on request) | Under way, 22 Nov 2026 | First built on ONNX Runtime and parked: it added about 40 MB to every install and sent Microsoft telemetry unless switched off. Now runs on our own Swift code on Accelerate, with no runtime (nothing that could send telemetry, no larger app for those who do not use it), as an 82 MB English download. Its download is an agreed network exception (see Privacy: only on the reader's explicit request). Still to do: the App Store Connect steps for the download, and measuring it on an iPhone. See docs/read-aloud.md |
+| Natural read-aloud voice (Kokoro-82M, downloaded on request) | Under way, 22 Nov 2026 | First built on ONNX Runtime and parked: it added about 40 MB to every install and sent Microsoft telemetry unless switched off. Now runs on our own Swift code on Accelerate, with no runtime (nothing that could send telemetry, no larger app for those who do not use it), as an 82 MB English download. Its download is an agreed network exception (see Privacy: only on the reader's explicit request). Its download comes from a GitHub release at launch (decided 23 Nov 2026), checked against a pinned SHA-256, on Mac and every supported iOS. See docs/read-aloud.md |
 | Custom themes | Parked to M2 |  |
 | Visual typography control | Parked to M2 |  |
 | In-app book list, OPDS catalogues, downloading books | Out of scope | Platen shows files the user already has; a catalogue is a library and needs the network |
 | Mac App Store build | After launch | See "iOS and iPadOS (M3)" |
+| A second source for the voice download | After launch | At launch the natural voice comes from a GitHub release, checked against a pinned SHA-256; a second host (Cloudflare R2, Backblaze B2 or similar) as a fallback comes after. See docs/read-aloud.md, "Hosting the voice" |
 | CBZ comics | Parked | foliate-js supports it, so it may come almost free; decide after M1 |
 
 ## To be decided
