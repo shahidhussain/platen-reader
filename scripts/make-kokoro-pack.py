@@ -12,9 +12,9 @@ sources, each checked against its SHA-256, into build/kokoro-pack/:
   voices/*.bin      Kokoro voices (onnx-community), Apache-2.0
   LICENSES/         each source's licence, and NOTICE
 
-and build/kokoro-pack.zip with its SHA-256 (for the Mac's download, which
-pins it). The same folder is the Background Assets pack uploaded in App Store
-Connect for iOS (see docs/read-aloud.md, "Hosting").
+and build/kokoro-pack.zip with its SHA-256: the file published as a GitHub
+release, which the app downloads and pins (KokoroVoiceRelease; see
+docs/read-aloud.md, "Hosting the voice").
 
 The app runs the model with its own code on Accelerate (KokoroModel.swift),
 which reads kokoro-weights.json for each weight's shape, type and place.

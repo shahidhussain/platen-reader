@@ -278,11 +278,29 @@ projects), versioned with the code, and the same for the direct-download
 Mac app. Its risks: GitHub may slow "excessive" use under its terms (no
 published limit); some networks block it; it is one company.
 
+**Built (23 Nov 2026, 0.8.45).** The pack is the release `voice-1`
+(marked not-latest, so it is never taken for an app release). The app pins
+its address, size and SHA-256 (`KokoroVoiceRelease`), checks there is room
+(the download and the unpacked voice at once), downloads with no cookies,
+no cache and a user agent of just "PlatenReader", checks the size and
+SHA-256, unpacks it with PlatenCore's zip reader (refusing any path that
+would leave the voice's folder) beside the voice's folder and then moves it
+into place, so a voice is all there or not at all; it is left out of the
+device's backups (`KokoroVoiceDownloader`). On iOS it keeps going for a
+while if the reader leaves the app. Debug steps `@downloadvoice` and
+`@removevoice`.
+
+To publish a new voice pack: `python3 scripts/make-kokoro-pack.py`, then a
+new release (`voice-2`, not latest) with `build/kokoro-pack.zip`, then the
+new address, size, SHA-256 and unpacked size in `KokoroVoiceRelease` (and
+the sizes in `KokoroVoice`). Leave the old release up: apps already out
+still fetch it.
+
 **After launch: a second source** (Cloudflare R2, Backblaze B2 or similar),
 tried when GitHub fails, checked against the same SHA-256 (README, "After
 launch"). Apple-hosted Background Assets (iOS 26.4 and later, an App Store
 Connect step) was considered and set aside: it would not reach iOS 17 to
-26.3 or the Mac. Its code is still in `KokoroDownload` and can go.
+26.3 or the Mac; its code is gone.
 
 ## How it works
 

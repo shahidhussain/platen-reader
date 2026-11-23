@@ -29,12 +29,9 @@ enum KokoroPack {
             if isComplete(url) { return url }
         }
         #endif
-        if let url = backgroundAssetsFolder, isComplete(url) { return url }
         return isComplete(downloadFolder) ? downloadFolder : nil
     }
 
-    /// Set by the iOS app once Background Assets has the pack on the device.
-    static var backgroundAssetsFolder: URL?
 
     static func isComplete(_ folder: URL) -> Bool {
         let manager = FileManager.default
