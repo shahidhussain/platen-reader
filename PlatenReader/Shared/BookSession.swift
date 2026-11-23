@@ -452,6 +452,7 @@ final class BookSession: NSObject, ReaderCommands, WKScriptMessageHandler, WKNav
         }
         controller.requestNext = { [weak self] in self?.call("readAloudMore") }
         controller.mark = { [weak self] name in self?.call("readAloudMark", name) }
+        controller.markWord = { [weak self] name, start, length in self?.call("readAloudWord", name, start, length) }
         readAloud = controller
         controller.start()
         state.readAloud = .starting

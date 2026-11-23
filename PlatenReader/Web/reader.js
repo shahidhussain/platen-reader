@@ -408,6 +408,7 @@ window.platen = {
     readAloudStart: () => readAloud.start(),
     readAloudMore: () => readAloud.more(),
     readAloudMark: name => readAloud.mark(name),
+    readAloudWord: (name, start, length) => readAloud.word(name, start, length),
     readAloudStop: () => readAloud.stop(),
     readAloudPreview: () => readAloud.preview(),
     setControlsVisible: on => document.getElementById('page-numbers')?.classList.toggle('under-controls', !!on),
