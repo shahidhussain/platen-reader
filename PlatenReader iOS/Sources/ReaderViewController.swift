@@ -35,6 +35,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         session = BookSession(url: url, state: state)
         super.init(url: url, state: state)
         session.host = self
+        session.onPageMovedByHand = { [weak self] in self?.pageMovedByHand() }
     }
 
     override var commands: ReaderCommands { session }

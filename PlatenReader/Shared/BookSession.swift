@@ -354,20 +354,27 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
     // MARK: - Commands (ReaderCommands)
 
     /// Turns the page as the reader's view draws it (curl, slide or none).
+    /// The reader moved the page themselves (a turn, a swipe, a jump, the
+    /// slider, a chapter, Back), not read aloud: reading aloud starts again
+    /// from there (iOS; the app sets it).
+    var onPageMovedByHand: (() -> Void)?
+
     func turn(_ turn: PageTurn) {
         guard isOpenInPage else { return }
+        onPageMovedByHand?()
         if let host { host.animateTurn(turn) } else { turnPlainly(turn) }
     }
 
     func jump(to target: String, keepOrigin: Bool = false) {
+        onPageMovedByHand?()
         call("jumpTo", target, keepOrigin)
         host?.sessionDidJump()
     }
 
-    func jump(toFraction fraction: Double) { call("jumpToFraction", fraction) }
-    func goBack() { call("goBack") }
-    func previousChapter() { call("prevSection") }
-    func nextChapter() { call("nextSection") }
+    func jump(toFraction fraction: Double) { onPageMovedByHand?(); call("jumpToFraction", fraction) }
+    func goBack() { onPageMovedByHand?(); call("goBack") }
+    func previousChapter() { onPageMovedByHand?(); call("prevSection") }
+    func nextChapter() { onPageMovedByHand?(); call("nextSection") }
     func toggleBookmark() { call("toggleBookmark") }
 
     func removeBookmark(cfi: String) {
@@ -408,6 +415,7 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
     /// whether the page changed (not at either end of the book) and how many
     /// pages are side by side.
     func turnInstantly(_ turn: PageTurn, completion: @escaping (_ moved: Bool, _ columns: Int) -> Void) {
+        onPageMovedByHand?()
         guard isOpenInPage, let webView else { return completion(false, 1) }
         webView.callAsyncJavaScript("return await platen.turnInstantly(direction)", arguments: ["direction": turn.rawValue],
                                     in: nil, in: .page) { result in
@@ -463,6 +471,7 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
     }
 
     func pauseReadAloud() { readAloud?.pause() }
+    func skipReadAloud(by delta: Int) { readAloud?.skip(by: delta) }
     func resumeReadAloud() { readAloud?.resume() }
 
     func stopReadAloud() {

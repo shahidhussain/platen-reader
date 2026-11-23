@@ -457,13 +457,19 @@ final class RecentList: ObservableObject {
     /// iOS's own file service has been seen to stop answering altogether.
     /// The check runs on a queue of its own (`checkQueue`), and the time
     /// limit is kept on the main thread, so the answer comes at the limit
-    /// whatever the checks are doing. When the item is found, the list
-    /// learns where it is now (`found`).
+    /// whatever the checks are doing. The limit counts from when the check
+    /// starts, not from when it was asked for: checks wait their turn, four
+    /// at a time, and just after launch (iCloud's file service still waking)
+    /// those at the back of the queue used to run out of time before they
+    /// had begun, and showed as unavailable until the next look (the reader
+    /// saw it, 23 Nov 2026). When the item is found, the list learns where it
+    /// is now (`found`).
     func reachability(of item: RecentItem, timeout: TimeInterval = 6) async -> Reached {
         let answer: Reached = await withCheckedContinuation { continuation in
             let once = ResumeOnce(continuation)
-            Self.checks.check(item) { once.resume($0) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { once.resume(.noAnswer) }
+            Self.checks.check(item, started: {
+                DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { once.resume(.noAnswer) }
+            }) { once.resume($0) }
         }
         if let url = answer.url { found(item.id, at: url) }
         return answer
@@ -483,14 +489,17 @@ final class RecentList: ObservableObject {
         private let lock = NSLock()
         private var waiting: [RecentItem.ID: [(Reached) -> Void]] = [:]
 
-        func check(_ item: RecentItem, answer: @escaping (Reached) -> Void) {
+        /// `started` is called (on the main thread) when the check begins,
+        /// or at once if one for the item is already running.
+        func check(_ item: RecentItem, started: @escaping @Sendable () -> Void, answer: @escaping (Reached) -> Void) {
             let first = lock.withLock { () -> Bool in
                 if waiting[item.id] != nil { waiting[item.id]!.append(answer); return false }
                 waiting[item.id] = [answer]
                 return true
             }
-            guard first else { return }
+            guard first else { return DispatchQueue.main.async(execute: started) }
             RecentList.checkQueue.addOperation {
+                DispatchQueue.main.async(execute: started)
                 let result = RecentList.check(item)
                 let answers = self.lock.withLock { self.waiting.removeValue(forKey: item.id) ?? [] }
                 for answer in answers { answer(result) }

@@ -175,6 +175,7 @@ async function sendMore(fromRange) {
 // Begins at the first sentence on the current page.
 async function start() {
     active = true
+    wordsComing = false
     clearHighlight()
     const shown = onScreen()
     cursor = shown ? await cursorAt(shown.index) : null
@@ -193,6 +194,11 @@ let marking = Promise.resolve()
 let sentenceTimer = null
 let currentSentence = null
 let wordSeen = false
+// Some word of this reading has been underlined: the voice reports words,
+// so a sentence whose first word is slow to come (a pause after a quotation
+// mark, the next sentence still being made) is not underlined whole in the
+// meantime, which showed as a flash of the whole sentence.
+let wordsComing = false
 
 function mark(cfi) {
     if (!active || !cfi) return
@@ -202,7 +208,7 @@ function mark(cfi) {
     // One at a time, in order (turning to another chapter takes a moment).
     marking = marking.then(() => showSentence(cfi)).catch(() => {})
     sentenceTimer = setTimeout(() => {
-        if (active && !wordSeen && currentSentence === cfi)
+        if (active && !wordSeen && !wordsComing && currentSentence === cfi)
             marking = marking.then(() => underline(cfi)).catch(() => {})
     }, WORD_WAIT)
 }
@@ -212,6 +218,7 @@ function mark(cfi) {
 function word(cfi, start, length) {
     if (!active || !cfi) return
     wordSeen = true
+    wordsComing = true
     clearTimeout(sentenceTimer)
     marking = marking.then(async () => {
         const shown = await showSentence(cfi)

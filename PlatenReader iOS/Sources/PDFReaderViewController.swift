@@ -34,6 +34,8 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     private var model: PDFReaderModel?
     /// Read aloud, made the first time the speaker is tapped (PDFReadAloud).
     private var pdfReadAloud: PDFReadAloud?
+    /// Read aloud is turning the page (so it is not a turn by hand).
+    private var movingForReadAloud = false
     /// Read aloud's underline: annotations on the pages (never saved).
     private var readAloudAnnotations: [(page: PDFPage, annotation: PDFAnnotation)] = []
 
@@ -566,6 +568,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         case .changed:
             pageTurner.moveSwipe(translation: dx)
         case .ended:
+            pageMovedByHand()
             pageTurner.endSwipe(velocity: pan.velocity(in: pdfView).x, cancelled: false)
         case .cancelled, .failed:
             pageTurner.endSwipe(velocity: 0, cancelled: true)
@@ -638,6 +641,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// Turns a page (PDFs are always left to right), drawn in the Page Turn
     /// style: none in Scroll layout or under Reduce Motion.
     func turn(_ turn: PageTurn) {
+        if !movingForReadAloud { pageMovedByHand() }
         let forward = turn.isForward
         var style: PageTurnAnimator.Style
         switch settings.pageTurnStyle {
@@ -859,6 +863,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// A jump (contents, bookmark, search result, slider): remembered, so the
     /// overlay offers "Back to p. N".
     private func jump(toPage index: Int, keepOrigin: Bool = false) {
+        pageMovedByHand()
         guard let model, let page = pdfView.document?.page(at: index) else { return }
         model.noteJump(from: currentIndex, to: index, keepOrigin: keepOrigin)
         pdfView.go(to: page)
@@ -874,6 +879,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     func goBack() {
         guard let target = model?.takeBackTarget(), let page = pdfView.document?.page(at: target) else { return }
+        pageMovedByHand()
         pdfView.go(to: page)
     }
 
@@ -1063,6 +1069,8 @@ extension PDFReaderViewController: PDFReadAloudHost {
         }
         let visible = visiblePages
         guard !visible.contains(index) else { return }
+        movingForReadAloud = true
+        defer { movingForReadAloud = false }
         if let last = visible.last, index == last + 1, !pageTurner.isBusy {
             turn(.next)
         } else {

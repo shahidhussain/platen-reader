@@ -234,7 +234,8 @@ or a blend of voices (their 256 style values averaged). Samples:
 | iPhone (oldest supported) | int8 | 2 | to measure | to measure | to measure |
 | **Accelerate (ours), Mac (M3 Pro), one core** | int8 weights | 1 | 0.32–0.35 | 150–350 MB* | |
 | **Accelerate (ours), iOS Simulator, in the app** | int8 weights | | 0.87 | | first sentence (5.5 s) in 4.8 s |
-| **Accelerate (ours), iPhone** | int8 weights | | to measure | to measure | to measure |
+| **Accelerate (ours), iPhone 16 Pro Max, in the app** | int8 weights | | 0.27 (0.24–0.76), before the vectorising below | | 1.1 s |
+| **Accelerate (ours), vectorised, Mac (M3 Pro)** | int8 weights | 1 | 0.13 | | |
 
 \* With the text side: Misaki's lexicons take about 105 MB of it; the model
 about 40 MB plus 15 MB per second of speech in a piece, so up to about
@@ -313,6 +314,43 @@ app does not offer the download (Debug builds can try it from a folder:
   better Apple voices come from.
 - **PDFs** (23 Nov 2026): see "PDFs" below.
 - **Plain text** files open as a made-up book, so they are read as books are.
+
+## Reading on the go (23 Nov 2026, from a day of use on an iPhone)
+
+- **Lock screen and Control Center** (`ReadAloudAudio`): the book's cover
+  (the copy Recent Books keeps), title and chapter; play and pause; previous
+  and next sentence (`ReadAloudController.skip`). No seek bar and no
+  15-second skips: a reading has no set length (`IsLiveStream`).
+- **A change of output** (Bluetooth headphones on or off, AirPlay): iOS
+  restarts the audio engine and the player's clock starts again, which put
+  the natural voice's words out of step with its sound. Now
+  `KokoroSpeechEngine` keeps every queued sentence's sound and word times
+  and, on `AVAudioEngineConfigurationChange`, plays on from the start of the
+  word being read, every later word timed again. (Apple's voices keep their
+  own timing.) Debug step `@outputchanged`.
+- **Turning the page by hand while reading** (a tap, a swipe, the keys, the
+  slider, Contents, Back): once the reader settles (0.6 s), reading starts
+  again from the page they are on; if it was paused, it stops, so the
+  speaker starts there. Read aloud's own turns do not count
+  (`BookSession.onPageMovedByHand`; in PDFs, `movingForReadAloud`).
+- **No flash of the whole sentence:** a sentence is underlined whole only
+  for a voice that has given no word timing in this reading; before, a
+  sentence whose first word came late (after a pause) was underlined whole
+  for a moment.
+- **"live" said as in "alive", and "a" as the letter:** Misaki tells such
+  words apart by word class (verb or adjective), from Apple's tagger, which
+  had no English data on the phone (in the Simulator too: "English word
+  classes before asking: no"). The natural voice now asks iOS for it when it
+  starts (`NLTagger.requestAssets`); the system fetches it. The diagnostics
+  file says whether it is available.
+- **Battery.** A day's diagnostics: 1.4 hours of speech made in 22 minutes
+  of processor time (0.27 of real time). Sampling showed most of that was
+  our own loops, not the matrix maths: copying values one at a time for the
+  convolutions, and per-sample sines. Done with vDSP and vForce instead, the
+  same sound (to within 0.0001) takes 0.13 of real time on the Mac, 2.6
+  times less work. Threading made no difference (Accelerate already keeps
+  these on one core), and the efficiency cores are too slow (1.8 times real
+  time).
 
 ## PDFs
 

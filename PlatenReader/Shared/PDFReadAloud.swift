@@ -77,6 +77,7 @@ final class PDFReadAloud: ReadAloudSource {
     }
 
     func pauseReadAloud() { controller?.pause() }
+    func skipReadAloud(by delta: Int) { controller?.skip(by: delta) }
     func resumeReadAloud() { controller?.resume() }
     func stopReadAloud() { controller?.stop() }
 

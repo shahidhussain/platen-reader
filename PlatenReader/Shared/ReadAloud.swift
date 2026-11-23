@@ -33,6 +33,8 @@ protocol ReadAloudSource: AnyObject {
     func pauseReadAloud()
     func resumeReadAloud()
     func stopReadAloud()
+    /// Skips a sentence forward (1) or back (-1).
+    func skipReadAloud(by delta: Int)
 }
 
 /// What read aloud is doing, for the speaker button.
@@ -287,8 +289,38 @@ final class ReadAloudController {
         engine.stop()
         queued.removeAll()
         order.removeAll()
+        heard.removeAll()
         awaitingBlock = false
         phase = .off
+    }
+
+    /// The sentences heard last (the latest at the end), for skipping back.
+    private var heard: [(id: Int, sentence: ReadAloudSentence)] = []
+
+    /// Skips forward a sentence (`by` 1, the lock screen's next) or back
+    /// one (-1, previous: the sentence before the one being read). Reading
+    /// goes on (or starts again, if paused) from there.
+    func skip(by delta: Int) {
+        guard phase != .off, !order.isEmpty || !heard.isEmpty else { return }
+        engine.stop()
+        if delta > 0 {
+            if let current = order.first {
+                order.removeFirst()
+                queued[current] = nil
+            }
+        } else if let previous = heard.popLast() {
+            queued[previous.id] = previous.sentence
+            order.insert(previous.id, at: 0)
+        }
+        let items = order.compactMap { id in queued[id].map { (id: id, text: $0.text) } }
+        guard !items.isEmpty else {
+            if reachedEnd { stop() } else { phase = .starting; askForMore() }
+            return
+        }
+        phase = .starting
+        engine.enqueue(items, language: language)
+        engine.resume()
+        if order.count <= lookaheadCount { askForMore() }
     }
 
     /// The sentences queued and not yet finished, in order (for tests).
@@ -309,6 +341,10 @@ final class ReadAloudController {
     }
 
     private func finished(_ id: Int) {
+        if let sentence = queued[id] {
+            heard.append((id, sentence))
+            if heard.count > 10 { heard.removeFirst() }
+        }
         queued[id] = nil
         order.removeAll { $0 == id }
         if order.isEmpty {
