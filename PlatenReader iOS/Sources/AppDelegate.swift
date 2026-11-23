@@ -10,6 +10,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // (DiagnosticLog), and logs to it any moment the app is too busy to
         // answer a tap (HangWatch).
         DiagnosticLog.shared.start()
+        // Read aloud's natural voice: whether its download can be offered,
+        // and where it is if it has been downloaded (KokoroDownload).
+        KokoroDownload.prepare()
         HangWatch.shared.start()
         // The default text size follows Dynamic Type (spec, "Layout"): about
         // 20 points at the standard size, like Apple Books, scaled with the
