@@ -113,7 +113,7 @@ final class KokoroSpeechEngine: SpeechEngine {
     init(pack: URL, voice: String) {
         self.pack = pack
         let voices = KokoroPack.voices(in: pack)
-        voiceName = voices.contains(voice) ? voice : (voices.first ?? voice)
+        voiceName = voices.contains(voice) ? voice : (voices.contains("af_bella") ? "af_bella" : (voices.first ?? voice))
         audio.attach(player)
         audio.connect(player, to: audio.mainMixerNode, format: format)
     }

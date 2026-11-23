@@ -211,8 +211,15 @@ or a blend of voices (their 256 style values averaged). Samples:
 ### The model and the text
 - English text: Misaki's lexicons through the vendored MisakiSwift code
   (`PlatenReader/Shared/Kokoro/Misaki`, Apache-2.0; no MLX), and for words
-  they lack `KokoroFallback`: the CMU Pronouncing Dictionary (BSD), a word
-  without a common ending, an acronym spelt out, else left unsaid. British
+  they lack `KokoroFallback`: the CMU Pronouncing Dictionary (BSD), as
+  written, without accents and in the other spelling (British or
+  American); a possessive's owner; a word without a common ending; two
+  known words joined; an acronym spelt out; and last English spelling rules
+  (`KokoroLetterRules`, after the US Naval Research Laboratory's
+  letter-to-sound rules of 1976, public domain, written afresh), so that no
+  word is left unsaid. Before the rules, 343 of 42,749 words in the
+  reader's sample books went unsaid (mostly names: Grubach, Bürstner,
+  Feckle); after, none. "a" is the article ("ɐ") unless tagged a noun. British
   voices (`bf_`, `bm_`) use Misaki's British lexicons; the CMU fallback is
   made non-rhotic for them.
 
