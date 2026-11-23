@@ -19,6 +19,22 @@ struct ReadAloudBlock: Equatable, Sendable {
     var sentences: [ReadAloudSentence]
 }
 
+/// What can be read aloud: a book (`BookSession`) or a PDF (`PDFReadAloud`).
+/// Each app's reader starts and steers it from the speaker button; it gives
+/// the voice its sentences and the page its marks.
+@MainActor
+protocol ReadAloudSource: AnyObject {
+    /// Ready to read (the first page is on screen).
+    var canReadAloud: Bool { get }
+    /// The language to read in.
+    var readAloudLanguage: String { get }
+    /// Starts reading from the first sentence on the page on screen.
+    func startReadAloud(engine: SpeechEngine)
+    func pauseReadAloud()
+    func resumeReadAloud()
+    func stopReadAloud()
+}
+
 /// What read aloud is doing, for the speaker button.
 enum ReadAloudPhase: Equatable, Sendable {
     case off

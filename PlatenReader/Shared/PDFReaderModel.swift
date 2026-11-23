@@ -34,6 +34,8 @@ final class PDFReaderModel: NSObject, PDFDocumentDelegate {
     let state: ReaderState
     let document: PDFDocument
     private(set) var record: BookRecord
+    /// A second copy of the document, for read aloud's text (`Loaded.reopen`).
+    let reopen: @Sendable () -> PDFDocument?
 
     /// The outline flattened in reading order: where each entry starts.
     private var outlineStarts: [(page: Int, label: String, href: String)] = []
@@ -53,6 +55,10 @@ final class PDFReaderModel: NSObject, PDFDocumentDelegate {
         let fingerprint: String
         let key: String
         let documentID: String?
+        /// Another copy of the document, for reading its text in the
+        /// background (read aloud) without touching the one on screen:
+        /// PDFKit's objects are not made to be used from two threads.
+        let reopen: @Sendable () -> PDFDocument?
     }
 
     /// Reads a PDF off the main thread. Files up to 50 MB are read into
@@ -68,13 +74,16 @@ final class PDFReaderModel: NSObject, PDFDocumentDelegate {
                 let size = (try FileManager.default.attributesOfItem(atPath: readURL.path)[.size] as? NSNumber)?.uint64Value ?? 0
                 let source: ByteSource
                 let document: PDFDocument?
+                let reopen: @Sendable () -> PDFDocument?
                 if size <= Book.inMemoryLimit {
                     let data = try Data(contentsOf: readURL)
                     source = MemoryByteSource(data: data)
                     document = PDFDocument(data: data)
+                    reopen = { PDFDocument(data: data) } // the same bytes, not a copy
                 } else {
                     source = try FileByteSource(url: readURL)
                     document = PDFDocument(url: readURL)
+                    reopen = { PDFDocument(url: url) }
                 }
                 guard let document else { throw PDFOpenError.unreadable }
                 if document.isLocked { throw PDFOpenError.locked }
@@ -88,7 +97,7 @@ final class PDFReaderModel: NSObject, PDFDocumentDelegate {
                 }
                 let identity = try PDFIdentity.identify(source: source)
                 return Loaded(document: document, fingerprint: identity.fingerprint,
-                              key: identity.key, documentID: identity.documentID)
+                              key: identity.key, documentID: identity.documentID, reopen: reopen)
             }
         }
         if let coordinationError { throw coordinationError }
@@ -98,6 +107,7 @@ final class PDFReaderModel: NSObject, PDFDocumentDelegate {
     init(loaded: Loaded, url: URL, state: ReaderState) {
         self.state = state
         self.document = loaded.document
+        self.reopen = loaded.reopen
         var record = PositionStore.shared.load(key: loaded.key)
             ?? BookRecord(key: loaded.key, uniqueIdentifier: loaded.documentID.map { "pdf:" + $0 },
                           fingerprint: loaded.fingerprint)

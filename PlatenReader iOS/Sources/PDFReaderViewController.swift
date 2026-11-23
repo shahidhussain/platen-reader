@@ -32,6 +32,18 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// moves with its page.
     private var scrollObservation: NSKeyValueObservation?
     private var model: PDFReaderModel?
+    /// Read aloud, made the first time the speaker is tapped (PDFReadAloud).
+    private var pdfReadAloud: PDFReadAloud?
+    /// Read aloud's underline: annotations on the pages (never saved).
+    private var readAloudAnnotations: [(page: PDFPage, annotation: PDFAnnotation)] = []
+
+    // Read aloud: the speaker button (ReaderBaseViewController+ReadAloud),
+    // reading through PDFReadAloud, with this reader as its page.
+    override var offersReadAloud: Bool { true }
+    override var readAloudSource: ReadAloudSource? {
+        if pdfReadAloud == nil, let model { pdfReadAloud = PDFReadAloud(model: model, host: self) }
+        return pdfReadAloud
+    }
     /// Landscape: whether the pairs start at an odd page (see the type's
     /// notes). Decided when the reader rotates to landscape.
     private var spreadsStartOdd = false
@@ -502,6 +514,12 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             reportPage()
         } else if step == "@fit" {
             zoomToFit()
+        } else if step == "@readAloudPreview:" {
+            // The first sentences read aloud from the start (corpus checks:
+            // no headers, footers or page numbers in them).
+            if let document = pdfView.document {
+                log.notice("step result: read aloud: \(PDFReadAloud.preview(of: document), privacy: .public)")
+            }
         } else if step.hasPrefix("@swipe:") {
             // A finger drawn across the page: left brings the next page.
             let towardsLeft = step.hasSuffix("left")
@@ -1025,6 +1043,58 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                     next.backgroundColor = .clear
                 }
                 queue.append(contentsOf: next.subviews)
+            }
+        }
+    }
+}
+
+// MARK: - Read aloud (PDFReadAloud; the speaker button is ReaderBaseViewController's)
+
+extension PDFReaderViewController: PDFReadAloudHost {
+    var readAloudStartPage: Int { visiblePages.first ?? 0 }
+
+    /// Turns to `index` when the voice reaches it: with the page-turn
+    /// animation when it is the next page, else straight there.
+    func readAloudShow(page index: Int) {
+        guard let document = pdfView.document, let page = document.page(at: index) else { return }
+        if state.flow == .scrolled {
+            if !pdfView.visiblePages.contains(page) { pdfView.go(to: page) }
+            return
+        }
+        let visible = visiblePages
+        guard !visible.contains(index) else { return }
+        if let last = visible.last, index == last + 1, !pageTurner.isBusy {
+            turn(.next)
+        } else {
+            pdfView.go(to: page)
+        }
+    }
+
+    /// A thin underline in the accent colour under each line of the words,
+    /// as an underline annotation on the page in memory (Platen never
+    /// writes PDFs, so it is never saved).
+    func readAloudUnderline(_ ranges: [(page: Int, range: NSRange)]) {
+        for (page, annotation) in readAloudAnnotations { page.removeAnnotation(annotation) }
+        readAloudAnnotations.removeAll()
+        guard let document = pdfView.document else { return }
+        for item in ranges {
+            guard let page = document.page(at: item.page), let selection = page.selection(for: item.range) else { continue }
+            for line in selection.selectionsByLine() {
+                let bounds = line.bounds(for: page)
+                guard bounds.width > 0, bounds.height > 0 else { continue }
+                let annotation = PDFAnnotation(bounds: bounds, forType: .underline, withProperties: nil)
+                annotation.color = view.tintColor
+                // The underline runs along the bottom of the bounds (the
+                // points are relative to them).
+                annotation.quadrilateralPoints = [
+                    CGPoint(x: 0, y: bounds.height), CGPoint(x: bounds.width, y: bounds.height),
+                    CGPoint(x: 0, y: 0), CGPoint(x: bounds.width, y: 0),
+                ].map { NSValue(cgPoint: $0) }
+                let border = PDFBorder()
+                border.lineWidth = 1.5
+                annotation.border = border
+                page.addAnnotation(annotation)
+                readAloudAnnotations.append((page, annotation))
             }
         }
     }
