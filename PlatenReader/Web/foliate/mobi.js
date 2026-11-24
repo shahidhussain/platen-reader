@@ -5,6 +5,18 @@ const unescapeHTML = str => {
     return textarea.value
 }
 
+// Platen: a picture's type from its first bytes (PNG, JPEG, GIF, BMP), for
+// MOBI records, which do not say.
+const sniffImageType = raw => {
+    const b = raw instanceof ArrayBuffer ? new Uint8Array(raw, 0, Math.min(4, raw.byteLength))
+        : new Uint8Array(raw.buffer, raw.byteOffset, Math.min(4, raw.byteLength))
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
+    if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg'
+    if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif'
+    if (b[0] === 0x42 && b[1] === 0x4d) return 'image/bmp'
+    return ''
+}
+
 const MIME = {
     XML: 'application/xml',
     XHTML: 'application/xhtml+xml',
@@ -790,7 +802,9 @@ class MOBI6 {
     async loadResource(index) {
         if (this.#resourceCache.has(index)) return this.#resourceCache.get(index)
         const raw = await this.mobi.loadResource(index)
-        const url = URL.createObjectURL(new Blob([raw]))
+        // Platen: typed from the picture's first bytes; WebKit will not draw
+        // a picture from a blob with no type.
+        const url = URL.createObjectURL(new Blob([raw], { type: sniffImageType(raw) }))
         this.#resourceCache.set(index, url)
         return url
     }
@@ -1094,7 +1108,10 @@ class KF8 {
         const newData = await event.detail.data
         const newType = await event.detail.type
         const doc = newType === MIME.SVG ? this.parser.parseFromString(newData, newType) : null
-        return [new Blob([newData], { newType }),
+        // Platen: `{ type: newType }` (upstream passed `{ newType }`, which a
+        // Blob ignores, so every KF8 picture was a blob with no type, and
+        // WebKit would not draw it: AZW3 covers and plates came out blank).
+        return [new Blob([newData], { type: newType }),
             // SVG wrappers need to be inlined
             // as browsers don't allow external resources when loading SVG as an image
             doc?.getElementsByTagNameNS('http://www.w3.org/2000/svg', 'image')?.length
@@ -1110,7 +1127,12 @@ class KF8 {
     }
     replaceResources(str) {
         const regex = new RegExp(kindleResourceRegex, 'g')
-        return replaceSeries(str, regex, this.loadResource.bind(this))
+        // Platen: `srcset` dropped. Converters keep the EPUB's file paths in
+        // it ("../images/logo-2x.png 2x"), which a KF8 book has no files
+        // for; on a Retina screen WebKit picks the 2x one over `src`, so
+        // the picture failed to load (Standard Ebooks AZW3s, every picture).
+        const noSrcset = str.replace(/\s(?:srcset|sizes)\s*=\s*("[^"]*"|'[^']*')/g, '')
+        return replaceSeries(noSrcset, regex, this.loadResource.bind(this))
     }
     // NOTE: there doesn't seem to be a way to access text randomly?
     // how to know the decompressed size of the records without decompressing?

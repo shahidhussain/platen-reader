@@ -38,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             if NSDocumentController.shared.documents.isEmpty, NSApp.windows.allSatisfy({ !$0.isVisible }) {
                 WelcomeWindowController.shared.show()
+                #if DEBUG
+                // Design checks: the welcome window, as a snapshot.
+                DebugHooks.snapshotWindows(name: "welcome")
+                #endif
             }
         }
     }
@@ -108,9 +112,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// About Platen Reader: the system's panel, with the version (which the
+    /// welcome window no longer shows) and no build number, which stays 1
+    /// outside release builds and so says nothing.
+    @objc func showAbout(_ sender: Any?) {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationVersion: version, .version: ""])
+        NSApp.activate()
+    }
+
     @objc func showSettings(_ sender: Any?) {
         if settingsWindowController == nil { settingsWindowController = SettingsWindowController() }
         settingsWindowController?.showWindow(sender)
         settingsWindowController?.window?.makeKeyAndOrderFront(sender)
     }
+
+    #if DEBUG
+    /// Settings on a given tab (debug step "@settings:<n>").
+    func showSettings(tab: Int) {
+        showSettings(nil)
+        if let tabs = settingsWindowController?.contentViewController as? NSTabViewController,
+           tabs.tabViewItems.indices.contains(tab) {
+            tabs.selectedTabViewItemIndex = tab
+        }
+    }
+    #endif
 }

@@ -27,6 +27,7 @@ once and its steps run 1.5 s apart. Exits with 1 if any rule fails.
 """
 
 import argparse
+import base64
 import json
 import os
 import shutil
@@ -162,13 +163,14 @@ def cases():
 
 
 def sample_cases():
-    """Every EPUB, PDF and text file in samples/ (the reader's own books, never
-    committed): a few pages in Dark and Light, with ambient light."""
+    """Every book in samples/ (EPUB, KEPUB, MOBI, AZW, AZW3, PDF and text; the
+    reader's own books, never committed): a few pages in Dark and Light, with
+    ambient light. Each case is named for its file, format included."""
     folder = os.path.join(ROOT, "samples")
     found = []
     for name in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
         lower = name.lower()
-        if not lower.endswith((".epub", ".pdf", ".txt")):
+        if not lower.endswith((".epub", ".pdf", ".txt", ".mobi", ".azw", ".azw3", ".kepub")):
             continue
         pdf = lower.endswith(".pdf")
         text_rules = [] if pdf else ["readable_text"]
@@ -177,7 +179,7 @@ def sample_cases():
             states.append(state(f"dark-p{page + 1}", ["@turn:next"], ["page_drawn"] + text_rules, settle=True))
         states.append(state("dark-controls", ["@controls:show"], ["bands_legible"]))
         states.append(state("light", ["@controls:hide", "@theme:light"], ["page_drawn"] + text_rules, settle=True))
-        found.append({"name": "sample-" + os.path.splitext(name)[0][:40], "book": os.path.join(folder, name),
+        found.append({"name": "sample-" + os.path.splitext(name)[0][:40] + os.path.splitext(name)[1], "book": os.path.join(folder, name),
                       "states": states, "pdf": pdf})
     return found
 
@@ -395,6 +397,12 @@ def build():
         sys.exit(2)
 
 
+def parse_report(text):
+    """A report line: base64 of the JSON (the app writes it so, as the log
+    viewer re-escapes characters of a book's text and broke plain JSON)."""
+    return json.loads(base64.b64decode(text.strip()))
+
+
 def run_case(case):
     """Opens the case's book, runs its states and returns {state name:
     {"shot": Image, "report": dict}}."""
@@ -448,7 +456,7 @@ def run_case(case):
         elif "main thread busy for" in line:
             busy.append(f"{line.split('main thread busy for', 1)[1].strip()} after {last_step}")
         if "] report: " in line:
-            reports.append(json.loads(line.split("] report: ", 1)[1]))
+            reports.append(parse_report(line.split("] report: ", 1)[1]))
         elif "] step result: " in line:
             try:
                 audits.append(json.loads(line.split("] step result: ", 1)[1]))

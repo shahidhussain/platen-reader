@@ -52,6 +52,9 @@ scripts/ios-matrix.py [--samples] [--only <name>] [--no-build]
 - `@search:<query>` runs a search; `@tab:<contents|bookmarks|search>` opens the panel on a tab.
 - `@ax` logs the window's accessibility tree as VoiceOver sees it (lines starting `ax:`).
 - `@resize:<w>x<h>` resizes the window and logs how long re-layout took.
+- `@snapwindows` saves every visible window (Settings, the Contents popover…) as `windows-window-<n>-<name>.png`; `@settings:<tab>` opens Settings on a tab; with no book, the welcome window is saved as `welcome-window-…png`. Glass does not draw offscreen, so snapshot runs use the material (check glass on screen).
+- `platen.measureText()` returns the body text's size, line spacing, column width and characters per line on the page shown.
+- `PLATEN_TEST_SETTINGS="lineWidth=narrow,pageLayout=one"` (with `PLATEN_TEST_HOME`) starts from those settings.
 
 UI tests (`PlatenReaderUITests`, run by `xcodebuild test -scheme PlatenReader -only-testing:PlatenReaderUITests`) drive the real app and read the page through its VoiceOver "page" element. `PLATEN_TEST_HOME` (Debug builds) sends settings, positions and bookmarks to a throwaway place; keep using it for anything automated. `scripts/measure-performance.py <book> [<second book>]` times a Release build against the spec's performance targets.
 

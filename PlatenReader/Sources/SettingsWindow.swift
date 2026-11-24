@@ -9,7 +9,11 @@ final class SettingsWindowController: NSWindowController {
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
         func tab(_ title: String, _ symbol: String, _ view: some View) -> NSTabViewItem {
-            let item = NSTabViewItem(viewController: NSHostingController(rootView: view.frame(width: 460)))
+            // Each tab sizes the window to its content (the standard Settings
+            // behaviour), rather than one height that cut off the longest.
+            let hosting = NSHostingController(rootView: view.frame(width: 460))
+            hosting.sizingOptions = [.preferredContentSize]
+            let item = NSTabViewItem(viewController: hosting)
             item.label = title
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
             return item
@@ -35,21 +39,27 @@ final class SettingsWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 }
 
-/// Appearance: the same two groups as the controls over the page. Text
-/// matches the Aa popover; Layout matches the Layout popover.
+/// Appearance: a preview of the text as set, then the same two groups as
+/// the controls over the page. Text matches the Aa popover; Layout matches
+/// the Layout popover.
 private struct AppearanceSettingsView: View {
     @ObservedObject var settings = ReaderSettings.shared
     @ObservedObject var frontWindow = FrontWindowLayout.shared
 
     var body: some View {
         Form {
+            Section {
+                TextPreview(settings: settings)
+                    .frame(height: 132)
+                    .listRowInsets(EdgeInsets())
+            }
             Section("Text") {
                 Picker("Font", selection: $settings.fontFamily) {
                     ForEach(ReaderSettings.curatedFonts, id: \.self) { name in
                         Text(name.isEmpty ? String(localized: "Publisher Default") : name).tag(name)
                     }
                 }
-                Picker("Text size", selection: $settings.fontSizeIndex) {
+                Picker("Size", selection: $settings.fontSizeIndex) {
                     ForEach(ReaderSettings.fontSizes.indices, id: \.self) { i in
                         Text("\(Int(ReaderSettings.fontSizes[i])) pt").tag(i)
                     }
@@ -59,10 +69,13 @@ private struct AppearanceSettingsView: View {
                         Text(value == 0 ? String(localized: "Publisher Default") : value.formatted(.number.precision(.fractionLength(1...2)))).tag(value)
                     }
                 }
-                Toggle("Justify text", isOn: $settings.justify)
-                Toggle("Hyphenate text in paginated mode", isOn: $settings.hyphenate)
-                Picker("Appearance", selection: $settings.appearance) {
-                    ForEach(AppearanceChoice.allCases) { Text($0.label).tag($0) }
+                Toggle("Justify", isOn: $settings.justify)
+                Toggle(isOn: $settings.hyphenate) {
+                    Text("Hyphenate")
+                    Text("Breaks long words at the ends of lines on pages (not when scrolling).")
+                }
+                LabeledContent("Theme") {
+                    ThemeSwatches(selection: $settings.appearance)
                 }
                 Text("Automatic matches macOS: Light in Light Mode, Dark in Dark Mode.")
                     .font(.caption)
@@ -80,7 +93,7 @@ private struct AppearanceSettingsView: View {
                 Picker("Line width", selection: $settings.lineWidth) {
                     ForEach(LineWidth.allCases) { Text($0.label).tag($0) }
                 }
-                Picker("Page turn animation", selection: $settings.pageTurnStyle) {
+                Picker("Page turn", selection: $settings.pageTurnStyle) {
                     ForEach(PageTurnStyle.allCases) { Text($0.label).tag($0) }
                 }
                 Toggle("Show pages left in chapter", isOn: $settings.showPagesLeftInChapter)
@@ -88,6 +101,105 @@ private struct AppearanceSettingsView: View {
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A few lines of a book as they would be set now: the font, size, line
+/// spacing, justification and hyphenation chosen, on the theme's page and
+/// in its ink, so a change can be seen without a book open. (AppKit's text
+/// view, as SwiftUI's text cannot justify or hyphenate.)
+private struct TextPreview: NSViewRepresentable {
+    @ObservedObject var settings: ReaderSettings
+    @Environment(\.colorScheme) private var colorScheme
+
+    // Austen (public domain), the opening of Pride and Prejudice.
+    private static let sample = "It is a truth universally acknowledged, that a single man in possession of a good "
+        + "fortune, must be in want of a wife. However little known the feelings or views of such a man may be on "
+        + "his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding "
+        + "families, that he is considered as the rightful property of some one or other of their daughters."
+
+    func makeNSView(context: Context) -> NSTextView {
+        let view = NSTextView()
+        view.isEditable = false
+        view.isSelectable = false
+        view.drawsBackground = true
+        view.textContainerInset = NSSize(width: 18, height: 14)
+        view.textContainer?.lineFragmentPadding = 0
+        view.setAccessibilityLabel(String(localized: "Preview of the text"))
+        return view
+    }
+
+    func updateNSView(_ view: NSTextView, context: Context) {
+        let theme = settings.theme(systemIsDark: colorScheme == .dark)
+        let size = settings.fontSize
+        let font = settings.fontFamily.isEmpty ? NSFont(name: "Iowan Old Style", size: size) ?? .systemFont(ofSize: size)
+            : NSFont(name: settings.fontFamily, size: size) ?? NSFont(name: "Iowan Old Style", size: size) ?? .systemFont(ofSize: size)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = settings.justify ? .justified : .natural
+        paragraph.hyphenationFactor = settings.hyphenate ? 1 : 0
+        // Publisher Default leaves spacing to the book: about 1.25 is typical.
+        let spacing = settings.lineHeight == 0 ? 1.25 : settings.lineHeight
+        paragraph.lineHeightMultiple = spacing / max(font.ascender - font.descender + font.leading, 1) * size
+        view.backgroundColor = NSColor(Color(hex: theme.background))
+        view.textStorage?.setAttributedString(NSAttributedString(string: Self.sample, attributes: [
+            .font: font, .foregroundColor: NSColor(Color(hex: theme.foreground)), .paragraphStyle: paragraph,
+        ]))
+    }
+}
+
+/// The page themes as swatches of their own colours, with a name under
+/// each; Automatic is half Light, half Dark. The chosen one is ringed in the
+/// accent.
+private struct ThemeSwatches: View {
+    @Binding var selection: AppearanceChoice
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(AppearanceChoice.allCases) { choice in
+                Button {
+                    selection = choice
+                } label: {
+                    VStack(spacing: 4) {
+                        swatch(choice)
+                            .frame(width: 34, height: 24)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.18), lineWidth: 0.5))
+                            .padding(2.5)
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(selection == choice ? Color.platenAccent : .clear, lineWidth: 2))
+                        Text(choice.label)
+                            .font(.caption)
+                            .foregroundStyle(selection == choice ? .primary : .secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(choice.label))
+                .accessibilityAddTraits(selection == choice ? .isSelected : [])
+            }
+        }
+    }
+
+    @ViewBuilder private func swatch(_ choice: AppearanceChoice) -> some View {
+        switch choice {
+        case .automatic:
+            HStack(spacing: 0) { page(.light); page(.dark) }
+        case .light: page(.light)
+        case .sepia: page(.sepia)
+        case .dark: page(.dark)
+        case .black: page(.black)
+        }
+    }
+
+    /// A tiny page: the theme's paper with two lines of its ink.
+    private func page(_ theme: Theme) -> some View {
+        ZStack {
+            Color(hex: theme.background)
+            VStack(alignment: .leading, spacing: 3) {
+                Capsule().fill(Color(hex: theme.foreground)).frame(width: 14, height: 2)
+                Capsule().fill(Color(hex: theme.foreground)).frame(width: 10, height: 2)
+            }
+        }
     }
 }
 

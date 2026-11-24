@@ -65,6 +65,17 @@ private struct ContentsList: View {
                             .padding(.leading, CGFloat(min(item.depth, 4)) * 14)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
+                            // The chapter being read: a slim bar of the
+                            // accent at its edge, as well as the weight.
+                            .overlay(alignment: .leading) {
+                                if current {
+                                    Capsule().fill(Color.platenAccent)
+                                        .frame(width: 3)
+                                        .padding(.vertical, 1)
+                                        .offset(x: -9)
+                                        .accessibilityHidden(true)
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(current ? Color.platenAccent.opacity(0.15) : Color.clear)
@@ -87,6 +98,8 @@ private struct BookmarksList: View {
     @ObservedObject var state: ReaderState
     let actions: ContentsActions
 
+    private var showsPages: Bool { state.bookmarks.contains { $0.page?.isEmpty == false } }
+
     var body: some View {
         if state.bookmarks.isEmpty {
             #if os(macOS)
@@ -97,22 +110,31 @@ private struct BookmarksList: View {
         } else {
             List(state.bookmarks, id: \.cfi) { bookmark in
                 Button { actions.goToBookmark(bookmark) } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
+                    // The page in a column of its own at the right, as in a
+                    // book's contents page, so the list scans down it.
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(bookmark.chapter?.isEmpty == false ? bookmark.chapter! : String(localized: "Bookmark"))
                                 .font(.callout.weight(.semibold))
                                 .lineLimit(1)
-                            Spacer()
-                            if let page = bookmark.page {
-                                Text("p. \(page)").font(.caption).foregroundStyle(.secondary)
-                            }
+                            Text(bookmark.snippet)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
                         }
-                        Text(bookmark.snippet)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // (Only where some bookmark has a page: an EPUB's
+                        // bookmarks have one when the book gives printed
+                        // page numbers; a PDF's always do.)
+                        if showsPages {
+                            Text(bookmark.page ?? "")
+                                .font(.callout)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 44, alignment: .trailing)
+                                .accessibilityLabel(bookmark.page.map { Text("page \($0)") } ?? Text(verbatim: ""))
+                        }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -128,6 +150,15 @@ private struct BookmarksList: View {
 }
 
 private struct SearchPanel: View {
+    /// A result's line, its match in the text colour on a translucent tint
+    /// of the accent, as matches are marked on the page.
+    static func excerpt(_ hit: ReaderState.SearchHit) -> AttributedString {
+        var match = AttributedString(hit.match)
+        match.foregroundColor = .primary
+        match.backgroundColor = Color.platenAccent.opacity(0.3)
+        return AttributedString(hit.pre) + match + AttributedString(hit.post)
+    }
+
     @ObservedObject var state: ReaderState
     let actions: ContentsActions
     @FocusState private var fieldFocused: Bool
@@ -160,7 +191,7 @@ private struct SearchPanel: View {
                     Section(group.label.isEmpty ? String(localized: "Untitled") : group.label) {
                         ForEach(group.hits) { hit in
                             Button { actions.goToHit(hit) } label: {
-                                (Text(hit.pre) + Text(hit.match).bold().foregroundColor(.primary) + Text(hit.post))
+                                Text(Self.excerpt(hit))
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(3)
