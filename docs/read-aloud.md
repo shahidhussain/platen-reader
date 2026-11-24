@@ -260,30 +260,47 @@ lexicons from hexgrad/misaki, CMUdict), with their licences and a NOTICE:
 int8 weights hardly compress). Eight voices: British Emma,
 Isabella, George, Lewis; American Heart, Bella, Michael, Fenrir.
 
-### To do in App Store Connect (yours)
+### Hosting the voice (decided 23 Nov 2026)
 
-The iOS download is Apple-hosted Background Assets (iOS 26.4 and later in
-the code; iOS 17 to 26.3 get Apple's voices only). Until these are done the
-app does not offer the download (Debug builds can try it from a folder:
-`PLATEN_KOKORO_DOWNLOAD_FROM`):
-1. Add the Background Assets capability, an App Group, and a Background
-   Download extension target (Apple-hosted, managed) in Xcode.
-2. Add the Info.plist keys `BAHasManagedAssetPacks`, `BAUsesAppleHosting`,
-   `BAAppGroupID`, and Platen's own `PlatenKokoroAssetPack` = YES.
-3. Package `build/kokoro-pack/` as the asset pack "KokoroVoice" (`xcrun
-   ba-package`) and upload it with the build.
+**At launch: a GitHub release, on Mac and iOS alike.** The voice pack
+(`build/kokoro-pack.zip`, from `scripts/make-kokoro-pack.py`) is attached to
+a release of this repository; the app downloads it only when the reader
+agrees (the dialog says what it is and its size; a progress sheet with
+Cancel), checks it against a SHA-256 pinned in the app, and refuses it if it
+does not match. No other network request; nothing about the reader is sent
+(GitHub sees the address the download comes from, as any host would). Every
+iOS version the app supports (17 and later) gets the voice, and there is no
+App Store Connect step.
 
+Why GitHub: free for release downloads of a public project (files up to
+2 GB; 20,000 downloads of 82 MB is about 1.6 TB, ordinary for open-source
+projects), versioned with the code, and the same for the direct-download
+Mac app. Its risks: GitHub may slow "excessive" use under its terms (no
+published limit); some networks block it; it is one company.
 
-### Hosting the voice
+**Built (23 Nov 2026, 0.8.45).** The pack is the release `voice-1`
+(marked not-latest, so it is never taken for an app release). The app pins
+its address, size and SHA-256 (`KokoroVoiceRelease`), checks there is room
+(the download and the unpacked voice at once), downloads with no cookies,
+no cache and a user agent of just "PlatenReader", checks the size and
+SHA-256, unpacks it with PlatenCore's zip reader (refusing any path that
+would leave the voice's folder) beside the voice's folder and then moves it
+into place, so a voice is all there or not at all; it is left out of the
+device's backups (`KokoroVoiceDownloader`). On iOS it keeps going for a
+while if the reader leaves the app. Debug steps `@downloadvoice` and
+`@removevoice`.
 
-- **iOS:** Apple-hosted Background Assets (an asset pack uploaded with the
-  build in App Store Connect). Apple-hosted packs need **iOS 26** or later.
-  The app supports iOS 17, so on iOS 17 to 25 the Kokoro voice is not
-  offered: English books read with Apple's voices, with no first-tap
-  dialog, and Settings shows only Apple's voices. Uploading the asset pack
-  is a step in App Store Connect (see "Still to do").
-- **Mac (direct download):** a GitHub release asset, checked against a
-  SHA-256 pinned in the app before it is used. No other network call.
+To publish a new voice pack: `python3 scripts/make-kokoro-pack.py`, then a
+new release (`voice-2`, not latest) with `build/kokoro-pack.zip`, then the
+new address, size, SHA-256 and unpacked size in `KokoroVoiceRelease` (and
+the sizes in `KokoroVoice`). Leave the old release up: apps already out
+still fetch it.
+
+**After launch: a second source** (Cloudflare R2, Backblaze B2 or similar),
+tried when GitHub fails, checked against the same SHA-256 (README, "After
+launch"). Apple-hosted Background Assets (iOS 26.4 and later, an App Store
+Connect step) was considered and set aside: it would not reach iOS 17 to
+26.3 or the Mac; its code is gone.
 
 ## How it works
 

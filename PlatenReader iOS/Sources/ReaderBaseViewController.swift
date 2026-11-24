@@ -232,6 +232,11 @@ class ReaderBaseViewController: UIViewController {
             ReadAloudSettings.shared.choice = choice
         } else if step == "@readaloud:stop" {
             readAloudSource?.stopReadAloud()
+        } else if step == "@downloadvoice" {
+            // The natural voice's download, as from the first-tap dialog.
+            downloadNaturalVoice()
+        } else if step == "@removevoice" {
+            Task { await KokoroDownload.remove() }
         } else if step == "@outputchanged" {
             // As when Bluetooth headphones come or go (the natural voice).
             KokoroSpeechEngine.latest?.simulateOutputChange()

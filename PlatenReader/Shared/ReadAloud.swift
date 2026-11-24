@@ -356,10 +356,10 @@ final class ReadAloudController {
 // MARK: - The natural voice's availability
 
 /// Whether the natural voice (Kokoro) can be offered on this device, and
-/// whether it is downloaded (docs/read-aloud.md). Offered where its
-/// download can be had (`downloadAvailable`, set by each app: iOS 26 and
-/// later, with Background Assets) on a device with the memory for it
-/// (`hasMemoryForIt`), or where a pack is already installed.
+/// whether it is downloaded (docs/read-aloud.md). Offered where the app can
+/// download it (`downloadAvailable`, set by each app; from GitHub, "Hosting
+/// the voice") on a device with the memory for it (`hasMemoryForIt`), or
+/// where a pack is already installed.
 enum KokoroVoice {
     /// Set by the app at launch: the voice pack can be downloaded here.
     nonisolated(unsafe) static var downloadAvailable = false
