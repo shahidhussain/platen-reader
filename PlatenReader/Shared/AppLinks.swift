@@ -18,6 +18,16 @@ enum AppLinks {
     /// what to do instead. The failure screen for a DRM book links to it.
     static let drmGuide = URL(string: "https://platenreader.org/drm")!
 
+    /// The author's website (About: "Made by Shahid Hussain").
+    static let author = URL(string: "https://shahidhussain.com")!
+
+    /// The source code: the GitHub repository (from the git remote).
+    static let repository = URL(string: "https://github.com/shahidhussain/platen-reader")!
+    /// The app's licence, the MPL 2.0, as it is in the repository.
+    static let licence = repository.appendingPathComponent("blob/main/LICENSE")
+    /// A new issue on GitHub (About: "Report an Issue").
+    static let newIssue = repository.appendingPathComponent("issues/new")
+
     /// Where problem reports and feedback go (Report This Book, Send
     /// Feedback).
     static let supportEmail = "support@platenreader.org"

@@ -148,6 +148,15 @@ extension ReaderViewController {
                 DebugHooks.resizeStarted = CFAbsoluteTimeGetCurrent()
                 window.setContentSize(NSSize(width: parts[0], height: parts[1]))
             }
+        } else if step == "@about" {
+            // "@about": the About window (snapshot it with "@snapwindows").
+            AboutWindowController.shared.show()
+            let window = AboutWindowController.shared.window
+            log.info("about: visible \(window?.isVisible == true, privacy: .public), \(String(describing: window?.frame), privacy: .public)")
+        } else if step == "@acknowledgements" {
+            AcknowledgementsWindowController.shared.show()
+            let list = Acknowledgements.bundled
+            log.info("acknowledgements: \(list.components.count, privacy: .public) components, \(list.texts.count, privacy: .public) licence texts")
         } else if step == "@snapwindows" {
             DebugHooks.snapshotWindows(name: "windows")
         } else if step.hasPrefix("@settings:"), let tab = Int(step.dropFirst("@settings:".count)) {

@@ -1,0 +1,132 @@
+{
+  "_about": "Every third-party component in Platen Reader, the one list both THIRD_PARTY_LICENSES.md and the apps' Acknowledgements are made from (scripts/make-acknowledgements.py). Add or change a component here, put its licence text in Licenses/texts/, and run the script. 'shipped' is 'app' (inside the macOS and iOS apps) or 'voice' (in the natural-voice pack, downloaded only when the reader asks).",
+  "components": [
+    {
+      "name": "foliate-js",
+      "version": "commit 78914ae (1 May 2026), with Platen's patches (PlatenReader/Web/foliate/VENDORED.md)",
+      "licence": "MIT",
+      "notice": "Copyright (c) 2022 John Factotum",
+      "source": "https://github.com/johnfactotum/foliate-js",
+      "included": "Vendored JavaScript in PlatenReader/Web/foliate, bundled in both apps; draws books in the reader's web view.",
+      "shipped": "app",
+      "text": "MIT-foliate-js.txt"
+    },
+    {
+      "name": "fflate",
+      "version": "the minified build vendored by foliate-js at commit 78914ae (the file does not state its version)",
+      "licence": "MIT",
+      "notice": "Copyright (c) 2023 Arjun Barrett",
+      "source": "https://github.com/101arrowz/fflate",
+      "included": "Vendored JavaScript in PlatenReader/Web/foliate/vendor/fflate.js, bundled in both apps; decompresses MOBI and AZW3 text.",
+      "shipped": "app",
+      "text": "MIT-fflate.txt"
+    },
+    {
+      "name": "MisakiSwift",
+      "version": "commit b7477b1, modified (no MLX; Platen's own fallback for unknown words)",
+      "licence": "Apache-2.0",
+      "notice": "MisakiSwift by mlalma (Swift port of hexgrad/misaki). Changes by Platen: no MLX, lexicons read from the voice pack, an English fallback without a neural network.",
+      "source": "https://github.com/mlalma/MisakiSwift",
+      "included": "Vendored Swift source in PlatenReader/Shared/Kokoro/Misaki, compiled into both apps; turns English text into the sounds Kokoro speaks.",
+      "shipped": "app",
+      "text": "Apache-2.0.txt"
+    },
+    {
+      "name": "MLXUtilsLibrary (token type)",
+      "version": "one file (MToken.swift), modified",
+      "licence": "Apache-2.0",
+      "notice": "MLXUtilsLibrary by mlalma.",
+      "source": "https://github.com/mlalma/MLXUtilsLibrary",
+      "included": "Vendored Swift source in PlatenReader/Shared/Kokoro/Misaki/MToken.swift, compiled into both apps.",
+      "shipped": "app",
+      "text": "Apache-2.0.txt"
+    },
+    {
+      "name": "Misaki (G2P method)",
+      "version": "commit fba1236",
+      "licence": "Apache-2.0",
+      "notice": "Misaki by hexgrad: the English grapheme-to-phoneme method MisakiSwift ports.",
+      "source": "https://github.com/hexgrad/misaki",
+      "included": "Through MisakiSwift (above); its lexicons are in the voice pack (below).",
+      "shipped": "app",
+      "text": "Apache-2.0.txt"
+    },
+    {
+      "name": "Kokoro (model code)",
+      "version": "the PyTorch model (model.py, modules.py, istftnet.py), ported to Swift",
+      "licence": "Apache-2.0",
+      "notice": "Kokoro by hexgrad. Platen runs the model with its own Swift code on Accelerate (PlatenCore/Sources/Kokoro/KokoroModel.swift), a port of this code.",
+      "source": "https://github.com/hexgrad/kokoro",
+      "included": "Ported (not copied) into PlatenCore's Kokoro module, compiled into both apps.",
+      "shipped": "app",
+      "text": "Apache-2.0.txt"
+    },
+    {
+      "name": "StyleTTS 2",
+      "version": "the architecture Kokoro builds on",
+      "licence": "MIT",
+      "notice": "Copyright (c) 2023 Aaron (Yinghao) Li",
+      "source": "https://github.com/yl4579/StyleTTS2",
+      "included": "Through the Kokoro model code (above).",
+      "shipped": "app",
+      "text": "MIT-StyleTTS2.txt"
+    },
+    {
+      "name": "iSTFTNet",
+      "version": "the vocoder Kokoro builds on",
+      "licence": "MIT",
+      "notice": "Copyright (c) 2022 Rishikesh (ऋषिकेश)",
+      "source": "https://github.com/rishikksh20/iSTFTNet-pytorch",
+      "included": "Through the Kokoro model code (above).",
+      "shipped": "app",
+      "text": "MIT-iSTFTNet.txt"
+    },
+    {
+      "name": "HiFi-GAN",
+      "version": "the generator iSTFTNet builds on",
+      "licence": "MIT",
+      "notice": "Copyright (c) 2020 Jungil Kong",
+      "source": "https://github.com/jik876/hifi-gan",
+      "included": "Through the Kokoro model code (above).",
+      "shipped": "app",
+      "text": "MIT-HiFi-GAN.txt"
+    },
+    {
+      "name": "Kokoro-82M (weights and voices)",
+      "version": "v1.0; weights at Hugging Face commit f3ff357, converted to 8-bit integers by Platen; voices as exported by onnx-community at commit 1939ad2",
+      "licence": "Apache-2.0",
+      "notice": "Kokoro-82M by hexgrad.",
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "included": "In the natural-voice pack (kokoro-weights.bin, voices/), downloaded from Platen's GitHub release only when the reader asks; built by scripts/make-kokoro-pack.py from pinned, hashed sources.",
+      "shipped": "voice",
+      "text": "Apache-2.0.txt"
+    },
+    {
+      "name": "Misaki English lexicons",
+      "version": "commit fba1236 (us_gold, us_silver, gb_gold, gb_silver)",
+      "licence": "Apache-2.0",
+      "notice": "Misaki by hexgrad.",
+      "source": "https://github.com/hexgrad/misaki",
+      "included": "In the natural-voice pack, downloaded only when the reader asks.",
+      "shipped": "voice",
+      "text": "Apache-2.0.txt"
+    },
+    {
+      "name": "CMU Pronouncing Dictionary",
+      "version": "commit 7479086",
+      "licence": "BSD-2-Clause",
+      "notice": "Copyright (C) 1993-2015 Carnegie Mellon University. All rights reserved.",
+      "source": "https://github.com/cmusphinx/cmudict",
+      "included": "In the natural-voice pack (cmudict.dict), downloaded only when the reader asks; pronounces words the Misaki lexicons lack.",
+      "shipped": "voice",
+      "text": "BSD-2-Clause-cmudict.txt"
+    }
+  ],
+  "notes": [
+    "Spelling-to-sound rules for words no dictionary has (PlatenReader/Shared/Kokoro/KokoroLetterRules.swift) were written for Platen after the method of Elovitz, Johnson, McHugh and Shore (US Naval Research Laboratory, 1976), a US government work in the public domain.",
+    "No GPL or LGPL code or data is used. In particular, eSpeak NG (GPL-3.0) is not bundled, linked or called, not even as a fallback for unknown words.",
+    "Apple's frameworks (WebKit, PDFKit, AVFoundation, NaturalLanguage, Accelerate and others) and Apple's voices are part of the operating system, not shipped with Platen.",
+    "The app icon is Platen's own (design/icon/make-icons.py). No third-party fonts or icons are bundled; the reader uses the system's fonts and SF Symbols.",
+    "Not shipped: the untracked Vendor/ folder (ONNX Runtime, from a trial that was dropped) is not referenced by the Xcode project, and scripts/make-kokoro-pack.py's numpy runs only on the developer's machine."
+  ]
+}
