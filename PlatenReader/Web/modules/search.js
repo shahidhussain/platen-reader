@@ -18,7 +18,9 @@ async function search(query) {
         for await (const result of reader.view.search({
             query,
             draw: Overlayer.highlight,
-            drawOptions: { color: '#ffcc00' },
+            // A tint of the app's honey accent (the light or dark variant
+            // for the page's theme), drawn translucent over the text.
+            drawOptions: { color: reader.settings?.theme?.dark ? '#ff9f0a' : '#f0861a' },
         })) {
             if (token !== searchToken) return // superseded by a newer search
             if (result === 'done') break

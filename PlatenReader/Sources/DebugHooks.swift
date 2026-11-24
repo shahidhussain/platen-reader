@@ -70,6 +70,26 @@ enum DebugHooks {
         step(0)
     }
 
+    /// Every visible window, popovers and Settings included, drawn from its
+    /// own views ("@snapwindows"): `<name>-window-<kind>.png`, where kind is
+    /// the window's title or class. (Glass does not draw this way; check it
+    /// on screen.)
+    static func snapshotWindows(name: String) {
+        guard let dir = ProcessInfo.processInfo.environment["PLATEN_SNAPSHOT_DIR"] else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            for (index, window) in NSApp.windows.enumerated() where window.isVisible {
+                guard let view = window.contentView?.superview ?? window.contentView,
+                      let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+                view.cacheDisplay(in: view.bounds, to: rep)
+                let kind = window.title.isEmpty ? String(describing: type(of: window)) : window.title
+                let safe = kind.replacingOccurrences(of: "[^A-Za-z0-9]+", with: "-", options: .regularExpression)
+                let url = URL(fileURLWithPath: dir).appendingPathComponent("\(name)-window-\(index)-\(safe).png")
+                try? rep.representation(using: .png, properties: [:])?.write(to: url)
+                log.info("snapshot: \(url.lastPathComponent, privacy: .public)")
+            }
+        }
+    }
+
     /// Snapshot of native views (e.g. the failure message), which
     /// `WKWebView.takeSnapshot` cannot capture.
     static func snapshotView(_ view: NSView, name: String, suffix: String = "-failure") {
@@ -102,6 +122,11 @@ extension ReaderViewController {
                 DebugHooks.resizeStarted = CFAbsoluteTimeGetCurrent()
                 window.setContentSize(NSSize(width: parts[0], height: parts[1]))
             }
+        } else if step == "@snapwindows" {
+            DebugHooks.snapshotWindows(name: "windows")
+        } else if step.hasPrefix("@settings:"), let tab = Int(step.dropFirst("@settings:".count)) {
+            // "@settings:0": Settings, on its first tab (Appearance).
+            (NSApp.delegate as? AppDelegate)?.showSettings(tab: tab)
         } else if step == "@ax" {
             // What VoiceOver sees in this window: the accessibility tree,
             // walked in-process, plus where focus and hit-testing land.

@@ -587,8 +587,11 @@ def main():
     # a chapter that is one picture.
     words = " ".join(["The ship drifted on through the long grey afternoon."] * 6)
     text = "".join(f"<p>{words}</p>" for _ in range(3))
+    # Short enough to fit on one iPhone page at any line spacing, so the
+    # next page is the plate.
+    opening = "<p>" + " ".join(["The ship drifted on through the long grey afternoon."] * 3) + "</p>"
     plate = xhtml("Plates",
-                  f'<h1>Plates</h1>{text}'
+                  f'<h1>Plates</h1>{opening}'
                   '<div style="break-before: column"><img src="images/plate.png" alt="A plate"/></div>'
                   # WebKit's columns ignore break-after, so the text after
                   # the plate starts its own page the way books do it: a

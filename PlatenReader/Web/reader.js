@@ -34,7 +34,7 @@ import { post } from './modules/bridge.js'
 import { sendContents } from './modules/contents.js'
 import { attachPointerHandlers, noteScroll, pictureAt, swipe, tapTarget } from './modules/input.js'
 import { goBack, jump, noteMovement, rememberJumpOrigin } from './modules/jumps.js'
-import { applyLayout } from './modules/layout.js'
+import { applyLayout, measureText, shownFontSize } from './modules/layout.js'
 import { nameBook, nameSection, pageChanged, readPage, setVoiceOver } from './modules/accessibility.js'
 import { followScroll, updatePageNumbers } from './modules/pagenumbers.js'
 import { clearSearch, search } from './modules/search.js'
@@ -270,7 +270,7 @@ window.platen = {
                     // after the page (imported style sheets, say).
                     setTimeout(() => ensureReadableColours(doc), 600)
                     // Body text at the size chosen, whatever the book's CSS.
-                    normaliseBodyTextSize(doc, reader.settings?.fontSize ?? 16)
+                    normaliseBodyTextSize(doc, shownFontSize())
                     // A page that is one picture, as large as the page.
                     fitLonePicture(doc)
                     // Ragged right, if Justify Text is off.
@@ -399,7 +399,7 @@ window.platen = {
         return !!(doc && pagePicture(doc))
     },
     // The text size chosen, in pixels (for checks: body text should be it).
-    fontSize: () => reader.settings?.fontSize,
+    fontSize: () => shownFontSize(),
     // Esc closes an open note pop-up; says whether there was one.
     closeNote,
     // iOS: the controls are up (or not). Their location line covers the
@@ -411,6 +411,7 @@ window.platen = {
     readAloudWord: (name, start, length) => readAloud.word(name, start, length),
     readAloudStop: () => readAloud.stop(),
     readAloudPreview: () => readAloud.preview(),
+    measureText,
     setControlsVisible: on => document.getElementById('page-numbers')?.classList.toggle('under-controls', !!on),
     // For debugging and automated checks (scripts/run-debug.sh steps).
     get view() { return reader.view },

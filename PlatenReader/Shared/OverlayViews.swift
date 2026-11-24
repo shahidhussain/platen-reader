@@ -241,18 +241,24 @@ struct OverlayBar: View {
                 layoutButton
                 typographyButton
             }
+            // The symbols a step larger than the system's default, of one
+            // weight (the chevrons too), in the text colour: plain controls
+            // that read clearly against the bar. The accent marks a state
+            // only (a bookmarked page).
+            .font(.title2)
+            .fontWeight(.medium)
+            .imageScale(.medium)
+            .foregroundStyle(.primary)
             .frame(minHeight: 32)
         }
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
-        .font(.title3)
-        .imageScale(.large)
         .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.vertical, 14)
         // Liquid Glass on macOS 26 / iOS 26 and later. Before that, the
         // material is slightly see-through (about 18%), so the bar reads as
         // something laid over the page; solid while the pointer is over it.
-        .overlaySurface(RoundedRectangle(cornerRadius: 16, style: .continuous),
+        .overlaySurface(RoundedRectangle(cornerRadius: 22, style: .continuous),
                         seeThrough: !(hovering || isTouch))
         #if os(iOS)
         // Icons in the text colour, as on the Mac (not the system blue).
@@ -341,12 +347,22 @@ struct OverlayBar: View {
         )
     }
 
+    /// A bookmarked page's symbol: the honey accent on the Mac (the state, in
+    /// the app's one accent); red on iOS, matching its ribbon.
+    #if os(macOS)
+    private static let bookmarkedColour = Color.platenAccent
+    #else
+    private static let bookmarkedColour = Color.red
+    #endif
+
     /// Bookmarks the page on screen (or removes its bookmark).
     private var bookmarkButton: some View {
         Button(action: actions.toggleBookmark) {
             Label(state.isPageBookmarked ? String(localized: "Remove Bookmark") : String(localized: "Bookmark This Page"),
                   systemImage: state.isPageBookmarked ? "bookmark.fill" : "bookmark")
-                .foregroundStyle(state.isPageBookmarked ? Color.red : Color.primary)
+                // The hierarchical primary style, as the other symbols (an
+                // explicit Color.primary did not draw on glass).
+                .foregroundStyle(state.isPageBookmarked ? AnyShapeStyle(Self.bookmarkedColour) : AnyShapeStyle(.primary))
         }
         .help(state.isPageBookmarked ? String(localized: "Remove Bookmark (⌘D)") : String(localized: "Bookmark This Page (⌘D)"))
     }

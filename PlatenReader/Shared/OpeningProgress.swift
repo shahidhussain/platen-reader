@@ -24,14 +24,15 @@ enum OpeningStage: Int, Comparable {
     static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
 
     /// The line under the bar: which book is opening, by name ("Opening
-    /// “Sense and Sensibility”…"), rather than which step it is on; the bar
-    /// shows how far it has got. `title` is empty if no name is known.
+    /// “Sense and Sensibility”"), rather than which step it is on; the bar
+    /// shows how far it has got. No ellipsis: the bar already says it is
+    /// under way. `title` is empty if no name is known.
     func label(title: String) -> String {
         switch (self, title.isEmpty) {
-        case (.downloading, false): return String(localized: "Downloading “\(title)” from iCloud…")
-        case (.downloading, true): return String(localized: "Downloading from iCloud…")
-        case (_, false): return String(localized: "Opening “\(title)”…")
-        case (_, true): return String(localized: "Opening the book…")
+        case (.downloading, false): return String(localized: "Downloading “\(title)” from iCloud")
+        case (.downloading, true): return String(localized: "Downloading from iCloud")
+        case (_, false): return String(localized: "Opening “\(title)”")
+        case (_, true): return String(localized: "Opening the book")
         }
     }
 
