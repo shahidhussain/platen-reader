@@ -7,6 +7,16 @@
     "%@ (%@, Premium)" : {
 
     },
+    "%@ (⌘%@)" : {
+      "localizations" : {
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (⌘%2$@)"
+          }
+        }
+      }
+    },
     "%@ (American, female)" : {
 
     },
@@ -18,16 +28,6 @@
     },
     "%@ (British, male)" : {
 
-    },
-    "%@ (⌘%@)" : {
-      "localizations" : {
-        "en-GB" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ (⌘%2$@)"
-          }
-        }
-      }
     },
     "%@, page %lld" : {
 
@@ -161,6 +161,9 @@
     "Books you open appear here." : {
 
     },
+    "Breaks long words at the ends of lines on pages (not when scrolling)." : {
+
+    },
     "Breaks long words at the ends of lines, so lines are more even and justified text has fewer wide gaps between words. Not used in books whose pages are laid out by the publisher." : {
 
     },
@@ -173,16 +176,16 @@
     "Change the filter to see the other books here." : {
 
     },
-    "Choose a folder of books to find it here." : {
-
-    },
     "Check your connection and try again from Settings › Read Aloud." : {
 
     },
-    "Choose Folder…" : {
+    "Choose a folder of books to find it here." : {
 
     },
     "Choose a voice for English books. You can change it later in Settings › Read Aloud." : {
+
+    },
+    "Choose Folder…" : {
 
     },
     "Clear" : {
@@ -257,13 +260,13 @@
     "Downloading" : {
 
     },
-    "Downloading the Better Voice" : {
-
-    },
     "Downloading “%@” from iCloud" : {
 
     },
     "Downloading from iCloud" : {
+
+    },
+    "Downloading the Better Voice" : {
 
     },
     "Edit" : {
@@ -368,10 +371,10 @@
     "Home" : {
 
     },
-    "Hyphenate Text" : {
+    "Hyphenate" : {
 
     },
-    "Hyphenate text in paginated mode" : {
+    "Hyphenate Text" : {
 
     },
     "iCloud Drive" : {
@@ -396,6 +399,9 @@
 
     },
     "It may have been moved or deleted, or it is on a drive or network share that is not connected." : {
+
+    },
+    "Justify" : {
 
     },
     "Justify Text" : {
@@ -533,6 +539,9 @@
     "Open Book…" : {
 
     },
+    "Open in New Window" : {
+
+    },
     "Open Recent" : {
 
     },
@@ -540,9 +549,6 @@
 
     },
     "Opening “%@”" : {
-
-    },
-    "Open in New Window" : {
 
     },
     "Opening the book" : {
@@ -570,13 +576,16 @@
     "page" : {
 
     },
+    "page %@" : {
+
+    },
     "Page Curl" : {
 
     },
-    "Page Turn" : {
+    "Page turn" : {
 
     },
-    "Page turn animation" : {
+    "Page Turn" : {
 
     },
     "Paginated" : {
@@ -597,9 +606,6 @@
     "Plain text is left out, since most text files are not books. Use its own button to open all text files in Platen." : {
 
     },
-    "Platen Reader Diagnostics" : {
-
-    },
     "Platen does not open password-protected PDFs. Open it in another app." : {
 
     },
@@ -609,10 +615,16 @@
     "Platen Reader" : {
 
     },
+    "Platen Reader Diagnostics" : {
+
+    },
     "Play Natural Sample" : {
 
     },
     "Play Sample" : {
+
+    },
+    "Preview of the text" : {
 
     },
     "Previous Chapter" : {
@@ -628,6 +640,9 @@
 
     },
     "Quit %@" : {
+
+    },
+    "Random" : {
 
     },
     "Read Aloud" : {
@@ -660,9 +675,6 @@
     "Remove Bookmark (⌘D)" : {
 
     },
-    "Remove Voice Download (%@)" : {
-
-    },
     "Remove from Favourites" : {
 
     },
@@ -673,6 +685,9 @@
 
     },
     "Remove the natural voice?" : {
+
+    },
+    "Remove Voice Download (%@)" : {
 
     },
     "Report This Book…" : {
@@ -801,9 +816,6 @@
     "Text and Appearance" : {
 
     },
-    "Text size" : {
-
-    },
     "Text Size" : {
 
     },
@@ -831,6 +843,12 @@
     "The window is too narrow for two pages. Make it wider to see them side by side." : {
 
     },
+    "Theme" : {
+
+    },
+    "These pages are already spreads, so they show one at a time." : {
+
+    },
     "This book can’t be opened" : {
 
     },
@@ -852,13 +870,13 @@
     "This folder can’t be opened" : {
 
     },
+    "This is how books will sound when they are read aloud." : {
+
+    },
     "This PDF could not be opened." : {
 
     },
     "This PDF is protected by a password." : {
-
-    },
-    "This is how books will sound when they are read aloud." : {
 
     },
     "Title" : {
@@ -868,9 +886,6 @@
 
     },
     "Title, then Author" : {
-
-    },
-    "These pages are already spreads, so they show one at a time." : {
 
     },
     "Touch and hold a book’s cover, in a folder or in Recent Books, and choose Add to Favourites." : {
