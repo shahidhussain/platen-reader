@@ -52,6 +52,16 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
     /// ↑ or ↓ in Scroll layout. Return false to leave it to the page view.
     func scrollByKey(lines: Int) -> Bool { false }
 
+    // MARK: - Read aloud (ReaderBaseViewController+ReadAloud.swift)
+
+    /// Whether this reader has the speaker button.
+    var offersReadAloud: Bool { false }
+    /// What reads aloud here (the book's session, the PDF's reader), once
+    /// it is ready.
+    var readAloudSource: ReadAloudSource? { nil }
+    /// Starts, pauses and restarts read aloud (shared with iOS).
+    private(set) lazy var readAloudStarter = ReadAloudStarter(state: state, host: self)
+
     // MARK: - View setup
 
     /// Call at the end of `loadView`, once the page view is in `root`: adds
@@ -59,12 +69,14 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
     func installChrome(in root: ReaderRootView) {
         root.onMouseMoved = { [weak self] point in self?.chrome.pointerMoved(to: point) }
 
-        let chrome = ReaderChrome(
-            state: state,
-            actions: OverlayActions(commands: commands,
-                                    toggleContents: { [weak self] in self?.toggleContents(nil) },
-                                    interacted: { [weak self] in self?.chrome.restartHideTimer() }),
-            sidebarActions: ContentsActions(commands: commands))
+        var actions = OverlayActions(commands: commands,
+                                     toggleContents: { [weak self] in self?.toggleContents(nil) },
+                                     interacted: { [weak self] in self?.chrome.restartHideTimer() })
+        if offersReadAloud {
+            actions.readAloud = ReadAloudButtonActions(tap: { [weak self] in self?.readAloudStarter.toggle() },
+                                                       stop: { [weak self] in self?.readAloudStarter.stop() })
+        }
+        let chrome = ReaderChrome(state: state, actions: actions, sidebarActions: ContentsActions(commands: commands))
         chrome.onSidebarClosed = { [weak self] in
             guard let self else { return }
             // Search highlights are temporary: they go when the panel closes.
@@ -135,7 +147,10 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
     func showFailure(_ error: Error) {
         spinner.stopAnimation(nil)
         guard failureHost == nil else { return }
-        let host = NSHostingView(rootView: OpenFailureView(error: error, fallback: failureFallbackTitle))
+        let host = NSHostingView(rootView: OpenFailureView(error: error, fallback: failureFallbackTitle) { [weak self] attachBook in
+            guard let self else { return }
+            ProblemMail.reportBook(error: error, bookURL: self.document.fileURL, attachBook: attachBook, window: self.view.window)
+        })
         host.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(host)
         NSLayoutConstraint.activate([
@@ -249,6 +264,8 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
         if let layout = (sender.representedObject as? String).flatMap(ReadingLayout.init) { commands.setLayout(layout) }
     }
     @objc func toggleReaderControls(_ sender: Any?) { chrome.toggle() }
+    @objc func toggleReadAloud(_ sender: Any?) { readAloudStarter.toggle() }
+    @objc func stopReadingAloud(_ sender: Any?) { readAloudStarter.stop() }
     @objc func setThemeFromMenu(_ sender: NSMenuItem) {
         if let choice = (sender.representedObject as? String).flatMap(AppearanceChoice.init) {
             settings.appearance = choice
@@ -290,6 +307,15 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
             item.title = chrome.isVisible ? String(localized: "Hide Controls") : String(localized: "Show Controls")
             item.toolTip = String(localized: "Or press C.")
             return ready
+        case #selector(toggleReadAloud(_:)):
+            switch state.readAloud {
+            case .off: item.title = String(localized: "Read Aloud")
+            case .starting, .playing: item.title = String(localized: "Pause Reading")
+            case .paused: item.title = String(localized: "Resume Reading")
+            }
+            return ready && offersReadAloud && readAloudSource?.canReadAloud == true
+        case #selector(stopReadingAloud(_:)):
+            return state.readAloud != .off
         default:
             return ready
         }

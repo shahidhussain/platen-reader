@@ -103,6 +103,32 @@ enum DebugHooks {
     }
 }
 
+/// Read aloud's scripted steps, for books and PDFs alike: "@readaloud" (the
+/// speaker; the once-only note about better voices is taken as read, so a
+/// scripted start reads at once), "@readaloud:stop", "@voice:<kokoro|apple|
+/// undecided>" (the choice for English books), "@skip:<±1>" (the media
+/// keys' next and previous). Returns false for any other step.
+extension ReaderBaseViewController {
+    func runReadAloudDebugStep(_ step: String) -> Bool {
+        if step == "@readaloud" {
+            if let source = readAloudSource {
+                AppDefaults.store.set(true, forKey: ReadAloudStarter.noteShownKey(AppleVoices.baseLanguage(source.readAloudLanguage)))
+            }
+            readAloudStarter.toggle()
+        } else if step == "@readaloud:stop" {
+            readAloudStarter.stop()
+        } else if step.hasPrefix("@voice:"), let choice = ReadAloudVoiceChoice(rawValue: String(step.dropFirst(7))) {
+            ReadAloudSettings.shared.choice = choice
+        } else if step.hasPrefix("@skip:"), let delta = Int(step.dropFirst(6)) {
+            readAloudSource?.skipReadAloud(by: delta)
+        } else {
+            return false
+        }
+        log.info("read aloud: \(String(describing: self.state.readAloud), privacy: .public)")
+        return true
+    }
+}
+
 /// Runs one scripted step (see PLATEN_STEPS above).
 extension ReaderViewController {
     func runDebugStep(_ step: String) {
@@ -162,6 +188,8 @@ extension ReaderViewController {
                                             keyCode: ["w": 13, "q": 12, "t": 17, "f": 3, "d": 2, "c": 8, "k": 40][key] ?? 0) {
                 NSApp.sendEvent(event)
             }
+        } else if runReadAloudDebugStep(step) {
+            // Read aloud's steps (ReaderBaseViewController).
         } else if step.hasPrefix("@") {
             // Through this window's responder chain, as a menu shortcut
             // would be (the app may not be frontmost during checks).

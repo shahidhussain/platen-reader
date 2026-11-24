@@ -23,6 +23,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installCloseShortcut()
     }
 
+    /// Help › Send Feedback…: an email to support (ProblemMail).
+    @MainActor @objc func sendFeedback(_ sender: Any?) {
+        ProblemMail.sendFeedback(window: NSApp.keyWindow)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let existing = existingInstance {
             // Give macOS a moment to deliver any "open these books" request
@@ -33,6 +38,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // Read aloud's natural voice can be offered for download, and
+        // Apple's voice list (slow to read) is read now, in the background.
+        KokoroDownload.prepare()
+        AppleSpeechEngine.prepareVoices()
+        // The on-device record of how the app has been running, for problem
+        // reports (DiagnosticLog; it holds no book titles or file names).
+        DiagnosticLog.shared.start()
         // If nothing was opened from Finder and no windows were restored,
         // show the welcome window with its Open button.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

@@ -186,7 +186,10 @@ class ReaderBaseViewController: UIViewController {
     func showFailure(_ error: Error) {
         spinner.stopAnimating()
         guard failureHost == nil else { return }
-        let host = UIHostingController(rootView: OpenFailureView(error: error, fallback: failureFallbackTitle))
+        let host = UIHostingController(rootView: OpenFailureView(error: error, fallback: failureFallbackTitle) { [weak self] attachBook in
+            guard let self else { return }
+            ProblemMail.reportBook(error: error, bookURL: self.url, attachBook: attachBook, from: self)
+        })
         host.view.backgroundColor = .clear
         host.view.translatesAutoresizingMaskIntoConstraints = false
         addChild(host)
@@ -224,7 +227,7 @@ class ReaderBaseViewController: UIViewController {
             // a scripted tap reads at once.)
             if let source = readAloudSource {
                 let base = AppleVoices.baseLanguage(source.readAloudLanguage)
-                AppDefaults.store.set(true, forKey: "readAloudVoiceNoteShown.\(base)")
+                AppDefaults.store.set(true, forKey: ReadAloudStarter.noteShownKey(base))
             }
             toggleReadAloud()
         } else if step.hasPrefix("@voice:"), let choice = ReadAloudVoiceChoice(rawValue: String(step.dropFirst(7))) {
@@ -328,11 +331,8 @@ class ReaderBaseViewController: UIViewController {
 
     // MARK: - Read aloud (ReaderBaseViewController+ReadAloud.swift)
 
-    /// Follows read aloud for Now Playing.
-    var readAloudWatch: AnyCancellable?
-    /// Reading aloud starts again on the page the reader moved to, once they
-    /// have settled there (`pageMovedByHand`).
-    var handMoveRestart: DispatchWorkItem?
+    /// Starts, pauses and restarts read aloud (shared with the Mac).
+    private(set) lazy var readAloudStarter = ReadAloudStarter(state: state, host: self)
 
     /// Whether this reader has the speaker button.
     var offersReadAloud: Bool { false }
@@ -340,7 +340,7 @@ class ReaderBaseViewController: UIViewController {
     /// it is ready.
     var readAloudSource: ReadAloudSource? { nil }
     func readAloudTapped() { toggleReadAloud() }
-    func stopReadingAloud() { readAloudSource?.stopReadAloud() }
+    func stopReadingAloud() { readAloudStarter.stop() }
 
     /// VoiceOver's two-finger scrub (the "back" gesture): closes the book,
     /// as Close does.

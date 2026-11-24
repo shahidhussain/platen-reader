@@ -55,6 +55,7 @@ final class ReaderWindowController: NSWindowController, NSWindowDelegate {
         Logger(subsystem: "Platen Reader", category: "reader").info("Window closed")
         #endif
         readerViewController?.savePositionNow()
+        readerViewController?.readAloudStarter.stop()
         // There is always a window: when the last book closes, the welcome
         // window comes back.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {

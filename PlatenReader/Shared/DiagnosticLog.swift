@@ -206,6 +206,15 @@ final class DiagnosticLog: @unchecked Sendable {
         if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
             return simulated + " (Simulator)"
         }
+        #if os(macOS)
+        // The Mac's model code ("Mac15,3"); uname says only "arm64".
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        if size > 0 {
+            var model = [CChar](repeating: 0, count: size)
+            if sysctlbyname("hw.model", &model, &size, nil, 0) == 0 { return String(cString: model) }
+        }
+        #endif
         var system = utsname()
         uname(&system)
         return withUnsafeBytes(of: &system.machine) { bytes in
