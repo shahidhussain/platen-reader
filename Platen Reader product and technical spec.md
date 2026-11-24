@@ -37,7 +37,7 @@ These are settled and should not be revisited without a reason.
 | Rendering engine | foliate-js (MIT) inside WKWebView | Proven pagination, fixed layout and format support; licence-compatible. |
 | Price | Free |  |
 | Telemetry | None of any kind |  |
-| Read aloud | A speaker button reads the book aloud from the current page with Apple's voices (AVSpeechSynthesizer), preferring Premium, then Enhanced, then default voices for the book's language (its `dc:language`, else the language of its text), underlining the word being read (not highlighting it) and turning pages. iOS first; the Mac follows with the same shared code | Natural reading on the device with nothing to download, no account and nothing sent. Decided 22 Nov 2026. A natural English voice (Kokoro-82M) was built and then parked the same day: see Parked below and docs/read-aloud.md. |
+| Read aloud | A speaker button reads the book aloud from the current page with Apple's voices (AVSpeechSynthesizer), preferring Premium, then Enhanced, then default voices for the book's language (its `dc:language`, else the language of its text), underlining the word being read (not highlighting it) and turning pages. iOS first; the Mac follows with the same shared code (done 24 Nov 2026: the speaker on the overlay bar, View › Read Aloud ⌘R) | Natural reading on the device with nothing to download, no account and nothing sent. Decided 22 Nov 2026. A natural English voice (Kokoro-82M) was built and then parked the same day: see Parked below and docs/read-aloud.md. |
 | Language | English at launch, all strings localisable |  |
 
 ## The happy path
@@ -66,7 +66,8 @@ The user double-clicks a book anywhere (local disk, iCloud Drive, SMB share) and
 - Corrupt files show what failed and, where possible, still open whatever sections can be read.
 - The DRM message links to a short guide on the Platen site explaining DRM and where to get DRM-free books.
 - Any book that fails to open shows an error screen with a **Report this book** button. It opens a pre-filled email to the support address, with a subject tag such as `[Platen 1.0.2 · macOS · E-1042]` and an attached diagnostics file: app version, OS and device, the parse error, EPUB version and the generator named in the book. The user sees the email before sending it. Attaching the book itself is an option, off by default. On the Mac this uses the sharing service (`NSSharingService` compose email); on iOS the system mail composer.
-- Help > Send Feedback… opens a blank email to the same address with the app version and OS in the subject tag. Nothing is sent without the user pressing Send.
+- Help > Send Feedback… opens a blank email to the same address with the app version and OS in the subject tag. Nothing is sent without the user pressing Send. On iOS it is in Settings.
+- As built (24 Nov 2026): error codes are E-1001 to E-1009 for DRM (by scheme), E-1010 KFX, E-1020 not an ebook, E-1030 damaged, E-1040/1041 PDF unreadable/locked, E-1050 the file could not be read, E-1099 anything else; never reused (`ErrorCode`). The diagnostics file also carries the app's recent log, which leaves out titles and file names; system errors appear only as domain and code, since their messages name the file. A DRM book gets the guide link and no report button. The addresses are in `AppLinks`, as placeholders until the site and mailbox exist: they should be on a domain Platen owns, with redirects and a forwarding alias, so they can change without an update.
 
 ## Reading modes and layout
 

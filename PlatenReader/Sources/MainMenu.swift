@@ -131,6 +131,11 @@ enum MainMenu {
         // interferes with typing in the search field).
         menu.addItem(item(String(localized: "Show Controls"), #selector(ReaderViewController.toggleReaderControls(_:)), "k"))
         menu.addItem(.separator())
+        // Read aloud: starts, then pauses and resumes (the title follows);
+        // ⌘. stops, as it cancels elsewhere on the Mac.
+        menu.addItem(item(String(localized: "Read Aloud"), #selector(ReaderViewController.toggleReadAloud(_:)), "r"))
+        menu.addItem(item(String(localized: "Stop Reading"), #selector(ReaderViewController.stopReadingAloud(_:)), "."))
+        menu.addItem(.separator())
         // AppKit recognises this action and keeps the title in sync.
         menu.addItem(item(String(localized: "Enter Full Screen"), #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         return menu
@@ -166,6 +171,9 @@ enum MainMenu {
     private static func helpMenu() -> NSMenu {
         let menu = NSMenu(title: String(localized: "Help"))
         menu.addItem(item(String(localized: "Show Reading Controls"), #selector(ReaderViewController.showReadingControls(_:))))
+        menu.addItem(.separator())
+        // An email to support in the reader's mail app (ProblemMail).
+        menu.addItem(item(String(localized: "Send Feedback…"), #selector(AppDelegate.sendFeedback(_:))))
         return menu
     }
 }

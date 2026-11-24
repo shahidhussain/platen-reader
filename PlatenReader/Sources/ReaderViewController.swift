@@ -39,9 +39,13 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost {
         session = BookSession(url: document.fileURL ?? URL(fileURLWithPath: ""), state: state)
         super.init(document: document, state: state)
         session.host = self
+        session.onPageMovedByHand = { [weak self] in self?.readAloudStarter.pageMovedByHand() }
     }
 
     override var commands: ReaderCommands { session }
+    // Read aloud: the speaker on the bar, reading through the session.
+    override var offersReadAloud: Bool { true }
+    override var readAloudSource: ReadAloudSource? { session }
     override var pageView: NSView { webView }
     override var isReady: Bool { session.book != nil }
     override var hasShownPage: Bool { session.hasRendered }

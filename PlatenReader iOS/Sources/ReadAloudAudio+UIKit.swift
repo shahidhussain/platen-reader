@@ -13,12 +13,7 @@ final class ReadAloudAudio {
     static let shared = ReadAloudAudio()
 
     /// What the lock screen's controls and interruptions do to the reading.
-    struct Controls {
-        var play: () -> Void
-        var pause: () -> Void
-        /// A sentence forward (1) or back (-1).
-        var skip: (Int) -> Void
-    }
+    typealias Controls = ReadAloudControls
 
     /// The book's cover on the lock screen, set by `begin`.
     private var artwork: MPMediaItemArtwork?

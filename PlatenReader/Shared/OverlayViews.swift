@@ -9,6 +9,9 @@ struct OverlayActions {
     var toggleContents: () -> Void
     var setLayout: (ReadingLayout) -> Void
     var toggleBookmark: () -> Void
+    /// The speaker button's actions, on the Mac's bar (iOS has the speaker
+    /// in its top bar); nil where the reader cannot read aloud.
+    var readAloud: ReadAloudButtonActions? = nil
     /// Called whenever the user interacts, so the overlay does not auto-hide
     /// while it is being used.
     var interacted: () -> Void
@@ -238,6 +241,9 @@ struct OverlayBar: View {
                 slider
                 nextButton
                 bookmarkButton
+                if let readAloud = actions.readAloud {
+                    ReadAloudButton(phase: state.readAloud, actions: readAloud)
+                }
                 layoutButton
                 typographyButton
             }

@@ -18,9 +18,11 @@ final class SettingsWindowController: NSWindowController {
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
             return item
         }
-        // Three tabs: how books look (Appearance), which files open here
-        // (File Types), and housekeeping (Advanced).
+        // Four tabs: how books look (Appearance), the voices that read them
+        // (Read Aloud), which files open here (File Types), and housekeeping
+        // (Advanced).
         tabs.addTabViewItem(tab(String(localized: "Appearance"), "textformat", AppearanceSettingsView()))
+        tabs.addTabViewItem(tab(String(localized: "Read Aloud"), "speaker.wave.2", ReadAloudSettingsView()))
         tabs.addTabViewItem(tab(String(localized: "File Types"), "doc.text", FileTypesSettingsView()))
         tabs.addTabViewItem(tab(String(localized: "Advanced"), "wrench.and.screwdriver", AdvancedSettingsView()))
 
@@ -280,6 +282,15 @@ private struct FileTypesSettingsView: View {
             }
             refresh()
         }
+    }
+}
+
+/// Settings › Read Aloud: the shared section (ReadAloudSettingsSection).
+private struct ReadAloudSettingsView: View {
+    var body: some View {
+        Form { ReadAloudSettingsSection() }
+            .formStyle(.grouped)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

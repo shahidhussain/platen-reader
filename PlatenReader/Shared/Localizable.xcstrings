@@ -44,10 +44,16 @@
     "%lld results" : {
 
     },
+    "Send Feedback…" : {
+
+    },
     "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
 
     },
     "1 result" : {
+
+    },
+    "A book that would not open" : {
 
     },
     "A book’s title and author are known once Platen has read it; until then, and for books only in iCloud, its file name is shown." : {
@@ -60,6 +66,9 @@
 
     },
     "About %@" : {
+
+    },
+    "About DRM-Protected Books" : {
 
     },
     "Acknowledgements" : {
@@ -84,6 +93,12 @@
 
     },
     "Asking the file system…" : {
+
+    },
+    "Attach the book to the email" : {
+
+    },
+    "Attach the Report to the Email" : {
 
     },
     "Author" : {
@@ -114,6 +129,9 @@
 
     },
     "Better Apple voices can be added in Settings › Accessibility › Read & Speak › Voices." : {
+
+    },
+    "Better Apple voices can be added in System Settings › Accessibility › Read & Speak." : {
 
     },
     "Black" : {
@@ -230,6 +248,9 @@
     "Done" : {
 
     },
+    "Download (about %@)" : {
+
+    },
     "Download Better Voice (about %@)" : {
 
     },
@@ -279,6 +300,9 @@
 
     },
     "Favourites" : {
+
+    },
+    "Feedback" : {
 
     },
     "File" : {
@@ -470,6 +494,9 @@
     "No Folders" : {
 
     },
+    "No Mail Account" : {
+
+    },
     "No Recent Books" : {
 
     },
@@ -624,6 +651,9 @@
     "Remove" : {
 
     },
+    "Remove (%@)…" : {
+
+    },
     "Remove Bookmark" : {
 
     },
@@ -643,6 +673,9 @@
 
     },
     "Remove the natural voice?" : {
+
+    },
+    "Report This Book…" : {
 
     },
     "Resume Reading" : {
@@ -681,6 +714,9 @@
     "Select All" : {
 
     },
+    "Send the report to %@, with “%@” as the subject." : {
+
+    },
     "Sepia" : {
 
     },
@@ -694,6 +730,9 @@
 
     },
     "Share Diagnostics…" : {
+
+    },
+    "Share Report…" : {
 
     },
     "Share Selection…" : {
@@ -783,6 +822,9 @@
     "The natural voice reads English books. It is a one-time download, kept on this device; nothing about you is sent. Other languages use Apple’s voices." : {
 
     },
+    "The natural voice reads English books. It is a one-time download, kept on this Mac; nothing about you is sent. Other languages use Apple’s voices." : {
+
+    },
     "The picture could not be saved to Photos." : {
 
     },
@@ -799,6 +841,9 @@
 
     },
     "This book is read with the standard %@ voice. Better Apple voices can be added in Settings › Accessibility › Read & Speak › Voices." : {
+
+    },
+    "This book is read with the standard %@ voice. Better Apple voices can be added in System Settings › Accessibility › Read & Speak." : {
 
     },
     "This cannot be undone." : {
@@ -860,7 +905,13 @@
     "View Options" : {
 
     },
+    "Voice Download" : {
+
+    },
     "Website" : {
+
+    },
+    "What happened, and where the book came from (if you know):\n\n\n\nThe attached file says which version of Platen this is, the system, the kind of device, the error and how the book was made. It holds no book titles or file names." : {
 
     },
     "Where" : {
@@ -870,6 +921,12 @@
 
     },
     "Window" : {
+
+    },
+    "Your mail app could not be given the files, so they are shown in Finder. Drag them into the email before sending it." : {
+
+    },
+    "Your mail app shows the email before it is sent." : {
 
     },
     "Zoom" : {

@@ -1,24 +1,29 @@
+import Foundation
 import SwiftUI
-import UIKit
 
-/// The natural voice's download on iOS (docs/read-aloud.md, "Hosting the
-/// voice"): from Platen's GitHub release, checked and installed by the
-/// shared `KokoroVoiceDownloader`, on every iOS the app supports. It keeps
-/// going for a while if the reader leaves the app (a background task).
+/// The natural voice's download (docs/read-aloud.md, "Hosting the voice"):
+/// from Platen's GitHub release, checked and installed by
+/// `KokoroVoiceDownloader`. On iOS it keeps going for a while if the reader
+/// leaves the app (a background task).
 @MainActor
 enum KokoroDownload {
+    /// Set by the iOS app: called as a download starts, to ask the system
+    /// for time to finish it if the reader leaves the app; what it returns
+    /// is called when the download ends.
+    static var keepRunning: (() -> () -> Void)?
+
     /// At launch: the download can be offered.
     static func prepare() {
         KokoroVoice.downloadAvailable = true
-        #if DEBUG
+        #if DEBUG && os(iOS)
         adoptCopiedPack()
         #endif
     }
 
     /// Downloads the voice, reporting progress (0 to 1); returns its folder.
     static func download(progress: @escaping @MainActor (Double) -> Void) async throws -> URL {
-        let background = UIApplication.shared.beginBackgroundTask(withName: "Natural voice download")
-        defer { if background != .invalid { UIApplication.shared.endBackgroundTask(background) } }
+        let finished = keepRunning?()
+        defer { finished?() }
         return try await KokoroVoiceDownloader().download(progress: progress)
     }
 
@@ -28,7 +33,7 @@ enum KokoroDownload {
         try? FileManager.default.removeItem(at: KokoroPack.downloadFolder)
     }
 
-    #if DEBUG
+    #if DEBUG && os(iOS)
     /// Debug builds: a voice pack folder (`build/kokoro-pack`, made by
     /// scripts/make-kokoro-pack.py) copied into the app's Documents with
     /// Finder, named "kokoro-pack", is moved to where a downloaded pack
@@ -53,43 +58,6 @@ enum KokoroDownload {
         }
     }
     #endif
-}
-
-/// The download's sheet: what is happening, how far it has got, and Cancel.
-enum KokoroDownloadUI {
-    /// Shows the sheet over `controller` and downloads; `done` is told
-    /// whether the voice is now installed (false if cancelled or failed).
-    @MainActor
-    static func present(from controller: UIViewController, done: @escaping (Bool) -> Void) {
-        let model = KokoroDownloadModel()
-        let sheet = UIHostingController(rootView: KokoroDownloadView(model: model))
-        sheet.isModalInPresentation = true
-        if let presentation = sheet.sheetPresentationController {
-            presentation.detents = [.medium()]
-            presentation.prefersGrabberVisible = false
-        }
-        model.task = Task { @MainActor in
-            do {
-                _ = try await KokoroDownload.download { model.progress = $0 }
-                sheet.dismiss(animated: true) { done(true) }
-            } catch is CancellationError {
-                sheet.dismiss(animated: true) { done(false) }
-            } catch {
-                log.error("natural voice: download failed: \(error.localizedDescription, privacy: .public)")
-                sheet.dismiss(animated: true) {
-                    let reason = (error as? KokoroVoiceDownloadError)?.errorDescription
-                        ?? String(localized: "Check your connection and try again from Settings › Read Aloud.")
-                    let alert = UIAlertController(
-                        title: String(localized: "The Better Voice Could Not Be Downloaded"),
-                        message: reason,
-                        preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { _ in done(false) })
-                    controller.present(alert, animated: true)
-                }
-            }
-        }
-        controller.present(sheet, animated: true)
-    }
 }
 
 @MainActor

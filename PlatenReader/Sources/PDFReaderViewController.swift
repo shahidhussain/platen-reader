@@ -29,7 +29,21 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         super.init(document: document, state: ReaderState())
     }
 
+    /// Read aloud, made the first time it is asked for (PDFReadAloud).
+    private var pdfReadAloud: PDFReadAloud?
+    /// Read aloud is turning the page (so it is not a turn by hand).
+    private var movingForReadAloud = false
+    /// Read aloud's underline: annotations on the pages (never saved).
+    private var readAloudAnnotations: [(page: PDFPage, annotation: PDFAnnotation)] = []
+
     override var commands: ReaderCommands { self }
+    // Read aloud: the speaker on the bar, reading through PDFReadAloud, with
+    // this reader as its page.
+    override var offersReadAloud: Bool { true }
+    override var readAloudSource: ReadAloudSource? {
+        if pdfReadAloud == nil, let model { pdfReadAloud = PDFReadAloud(model: model, host: self) }
+        return pdfReadAloud
+    }
     override var pageView: NSView { pdfView }
     override var isReady: Bool { model != nil }
     override var hasShownPage: Bool { model != nil }
@@ -244,12 +258,14 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
 
     /// PDFs are always left to right, so "left" is back and "right" forward.
     func turn(_ turn: PageTurn) {
+        if !movingForReadAloud { readAloudStarter.pageMovedByHand() }
         if turn.isForward { pdfView.goToNextPage(nil) } else { pdfView.goToPreviousPage(nil) }
     }
 
     func jump(to href: String, keepOrigin: Bool) {
         guard let model, let index = model.pageIndex(for: href), let page = pdfView.document?.page(at: index) else { return }
         model.noteJump(from: currentIndex, to: index, keepOrigin: keepOrigin)
+        readAloudStarter.pageMovedByHand()
         pdfView.go(to: page)
     }
 
@@ -260,6 +276,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
 
     func goBack() {
         guard let target = model?.takeBackTarget(), let page = pdfView.document?.page(at: target) else { return }
+        readAloudStarter.pageMovedByHand()
         pdfView.go(to: page)
     }
 
@@ -294,6 +311,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         state.currentHitID = hit.id
         guard let selection = model.hitSelections[hit.id] else { return jump(to: hit.cfi, keepOrigin: keep) }
         model.noteJump(from: currentIndex, to: model.pageIndex(for: hit.cfi) ?? 0, keepOrigin: keep)
+        readAloudStarter.pageMovedByHand()
         pdfView.highlightedSelections = Array(model.hitSelections.values)
         selection.color = .systemYellow
         pdfView.go(to: selection)
@@ -325,7 +343,18 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
                 DebugHooks.snapshotView(self.view, name: "\(bookName)-\(i)-native", suffix: "")
                 guard i < steps.count else { return }
                 let s = steps[i]
-                if s.hasPrefix("@") {
+                if self.runReadAloudDebugStep(s) {
+                    // Read aloud's steps (DebugHooks.swift).
+                } else if s == "@snappage" {
+                    // The page on screen as PDFKit draws it, annotations (read
+                    // aloud's underline) included, which a snapshot of the
+                    // view can miss: "<book>-<n>-page.png".
+                    if let page = self.pdfView.currentPage, let dir = env["PLATEN_SNAPSHOT_DIR"],
+                       let tiff = page.thumbnail(of: NSSize(width: 1200, height: 1600), for: .mediaBox).tiffRepresentation,
+                       let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(bookName)-\(i)-page.png"))
+                    }
+                } else if s.hasPrefix("@") {
                     // To this reader directly: the app may not be frontmost
                     // during checks, so the responder chain may not reach it.
                     NSApp.sendAction(Selector(String(s.dropFirst())), to: self, from: nil)
@@ -337,6 +366,65 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         step(0)
     }
     #endif
+}
+
+// MARK: - Read aloud (PDFReadAloud; the speaker is ReaderBaseViewController's)
+
+extension PDFReaderViewController: PDFReadAloudHost {
+    var readAloudStartPage: Int { visiblePages.first ?? currentIndex }
+
+    /// Turns to `index` when the voice reaches it, if it is not on screen.
+    func readAloudShow(page index: Int) {
+        guard let document = pdfView.document, let page = document.page(at: index) else { return }
+        if state.flow == .scrolled {
+            if !pdfView.visiblePages.contains(page) { pdfView.go(to: page) }
+            return
+        }
+        guard !visiblePages.contains(index) else { return }
+        movingForReadAloud = true
+        defer { movingForReadAloud = false }
+        pdfView.go(to: page)
+    }
+
+    /// A thin underline in the accent colour under each line of the words,
+    /// as an underline annotation on the page in memory (Platen never
+    /// writes PDFs, so it is never saved).
+    func readAloudUnderline(_ ranges: [(page: Int, range: NSRange)]) {
+        // The pages whose underline changes are redrawn (on the Mac, PDFView
+        // does not notice annotations added to a page on its own).
+        var changed = Set(readAloudAnnotations.map { ObjectIdentifier($0.page) })
+        var pages = readAloudAnnotations.map(\.page)
+        defer {
+            for page in pages where changed.remove(ObjectIdentifier(page)) != nil { pdfView.annotationsChanged(on: page) }
+        }
+        for (page, annotation) in readAloudAnnotations { page.removeAnnotation(annotation) }
+        readAloudAnnotations.removeAll()
+        guard let document = pdfView.document else { return }
+        for item in ranges {
+            guard let page = document.page(at: item.page), let selection = page.selection(for: item.range) else { continue }
+            for line in selection.selectionsByLine() {
+                let bounds = line.bounds(for: page)
+                guard bounds.width > 0, bounds.height > 0 else { continue }
+                let annotation = PDFAnnotation(bounds: bounds, forType: .underline, withProperties: nil)
+                annotation.color = NSColor(Color.platenAccent)
+                // The underline runs along the bottom of the bounds (the
+                // points are relative to them).
+                annotation.quadrilateralPoints = [
+                    NSPoint(x: 0, y: bounds.height), NSPoint(x: bounds.width, y: bounds.height),
+                    NSPoint(x: 0, y: 0), NSPoint(x: bounds.width, y: 0),
+                ].map { NSValue(point: $0) }
+                let border = PDFBorder()
+                border.lineWidth = 1.5
+                annotation.border = border
+                page.addAnnotation(annotation)
+                readAloudAnnotations.append((page, annotation))
+                if changed.insert(ObjectIdentifier(page)).inserted { pages.append(page) }
+            }
+        }
+        #if DEBUG
+        if !ranges.isEmpty { log.debug("read aloud: underline on \(self.readAloudAnnotations.count) line(s)") }
+        #endif
+    }
 }
 
 /// PDFView with Platen's clicks and keys: a plain click (no drag, no

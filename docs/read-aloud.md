@@ -2,8 +2,9 @@
 
 The speaker button reads the book aloud from the current page with Apple's
 voices, underlining the word being read and turning pages as it goes.
-iOS first; the Mac follows with the same shared code. What ships is in "How
-it works" below.
+On iOS and the Mac alike, with the same shared code (`ReadAloudStarter`:
+starting, pausing, the first-time question and restarting after a turn by
+hand). What ships is in "How it works" below.
 
 ## The natural voice: taken up again, without a runtime (22 Nov 2026)
 
@@ -435,11 +436,35 @@ lock-screen controls: the button's logic is the base reader's
 - Fixtures `french.epub` and `mixed-language.epub` with corpus checks; the
   matrix's `read-aloud` case (the button, playing, paused, stopped).
 
+## The Mac (24 Nov 2026)
+
+The Mac reads aloud as iOS does, from the same shared code:
+
+- The speaker on the overlay bar (after the bookmark): starts, then pauses
+  and resumes; a right-click offers Stop Reading. View › Read Aloud (⌘R)
+  does the same, its title following (Pause Reading, Resume Reading), and
+  View › Stop Reading (⌘.) stops.
+- Books through `BookSession`, PDFs through `PDFReadAloud` with the Mac's
+  `PDFReaderViewController` as its page (underline annotations, page
+  turns). Turning the page by hand restarts reading there.
+- The first-time question and the once-only note as sheets on the window;
+  the natural voice's download in a sheet (`KokoroDownloadSheet`). Its
+  download is offered at launch on any Mac with the memory for it.
+- Now Playing and the media keys (`ReadAloudAudio+AppKit`): play, pause,
+  next and previous sentence, the book's cover. One window reads at a
+  time: starting in another stops the first. Closing the window stops it.
+- Settings › Read Aloud, the same section as iOS laid out the Mac's way
+  (each voice's picker with a ▶︎ sample button beside it).
+- Debug steps on both readers: `@readaloud`, `@readaloud:stop`,
+  `@voice:<choice>`, `@skip:<±1>`; `@snappage` on PDFs.
+
 ## Still to do
 
 - Reading at the lock screen on a device (the Simulator cannot lock).
-- The Mac's speaker button and Settings.
-- PDFs on the Mac (with the Mac's speaker button); footnotes in PDFs (see
-  "PDFs").
+- Footnotes in PDFs (see "PDFs").
+- The Mac on screen, by hand: the underline in PDFs (snapshots of the view
+  miss PDFKit's annotations; `@snappage` draws the page with them), the
+  voice question and the download sheet (alerts draw blank offscreen), and
+  the media keys and Now Playing.
 - The natural voice: the App Store Connect steps above, and measuring it on
   an iPhone (speed, memory, the first sentence's wait).

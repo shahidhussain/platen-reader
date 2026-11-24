@@ -44,6 +44,10 @@ public struct EPUBPackage: Sendable, Equatable {
     /// resolved against the OPF's folder. Usually an XHTML page holding the
     /// cover picture.
     public var guideCoverPath: String?
+    /// The program that made the book, where it says (`<meta
+    /// name="generator">`, Sigil's version meta, or calibre's "book
+    /// producer" contributor), for problem reports.
+    public var generator: String?
     /// Problems that did not stop parsing.
     public var warnings: [String] = []
 
@@ -141,6 +145,12 @@ enum EPUBPackageParser {
                 if a["name"] == "cover", let id = a["content"], !id.isEmpty {
                     package.coverItemID = id
                 }
+                // <meta name="generator" content="…"/>, and Sigil's own
+                // <meta name="Sigil version" content="1.9.30"/>.
+                if let name = a["name"]?.lowercased(), let content = a["content"], !content.isEmpty, package.generator == nil {
+                    if name == "generator" { package.generator = content }
+                    if name == "sigil version" { package.generator = "Sigil \(content)" }
+                }
             case "reference":
                 if a["type"]?.lowercased() == "cover", let href = a["href"] {
                     package.guideCoverPath = PathResolver.join(base: baseFolder, href: href)
@@ -164,6 +174,9 @@ enum EPUBPackageParser {
                 }
             case "creator":
                 if !text.isEmpty { package.creators.append(text) }
+            case "contributor":
+                // calibre: <dc:contributor opf:role="bkp">calibre (7.2.0) […]
+                if a["role"] == "bkp", !text.isEmpty, package.generator == nil { package.generator = text }
             case "language":
                 if !text.isEmpty { package.languages.append(text) }
             case "meta":

@@ -13,6 +13,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // Read aloud's natural voice: whether its download can be offered,
         // and where it is if it has been downloaded (KokoroDownload).
         KokoroDownload.prepare()
+        // The download keeps going for a while if the reader leaves the app.
+        KokoroDownload.keepRunning = {
+            let task = UIApplication.shared.beginBackgroundTask(withName: "Natural voice download")
+            return { if task != .invalid { UIApplication.shared.endBackgroundTask(task) } }
+        }
         // Apple's voice list is slow to read: read it now, in the background.
         AppleSpeechEngine.prepareVoices()
         HangWatch.shared.start()
