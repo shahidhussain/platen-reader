@@ -363,6 +363,22 @@ final class FolderSpeedTests: XCTestCase {
 
 /// The folder view's sort orders (FolderSort).
 final class FolderSortTests: XCTestCase {
+    /// Random: folders still first; every book kept; the same order each
+    /// time while the seed holds (titles arriving re-sort the folder); a new
+    /// seed, a new order.
+    func testRandomIsAShuffleThatHolds() {
+        let books = (1...30).map { FolderEntry(url: URL(fileURLWithPath: "/b/Book \($0).epub"), name: "Book \($0)", kind: .book) }
+        let all = [FolderEntry(url: URL(fileURLWithPath: "/b/Z"), name: "Z", kind: .folder)] + books
+        FolderSort.randomSeed = 1
+        let first = FolderSort.random.sorted(all).map(\.name)
+        XCTAssertEqual(first.first, "Z", "folders first")
+        XCTAssertEqual(Set(first), Set(all.map(\.name)))
+        XCTAssertEqual(FolderSort.random.sorted(all.reversed()).map(\.name), first, "steady")
+        XCTAssertNotEqual(first, FolderSort.name.sorted(all).map(\.name), "shuffled")
+        FolderSort.randomSeed = 2
+        XCTAssertNotEqual(FolderSort.random.sorted(all).map(\.name), first, "a new seed, a new order")
+    }
+
     private func book(_ name: String, modified: Double, created: Double, size: Int64) -> FolderEntry {
         FolderEntry(url: URL(fileURLWithPath: "/b/\(name).epub"), name: name, kind: .book,
                     modified: Date(timeIntervalSince1970: modified), created: Date(timeIntervalSince1970: created), size: size)
