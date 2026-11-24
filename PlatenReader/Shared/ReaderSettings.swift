@@ -223,7 +223,10 @@ final class ReaderSettings: ObservableObject {
         appearance = string("appearance").flatMap(AppearanceChoice.init) ?? .automatic
         let index = AppDefaults.store.object(forKey: "fontSizeIndex") as? Int ?? Self.defaultFontSizeIndex
         fontSizeIndex = min(max(index, 0), Self.fontSizes.count - 1)
-        lineHeight = AppDefaults.store.double(forKey: "lineHeight")
+        // 1.5 until the reader chooses: most books leave line spacing to
+        // the reader's app, and "normal" (about 1.2) is tight for reading on
+        // a screen. A choice, Publisher Default (0) included, is kept.
+        lineHeight = AppDefaults.store.object(forKey: "lineHeight") == nil ? 1.5 : AppDefaults.store.double(forKey: "lineHeight")
         lineWidth = string("lineWidth").flatMap(LineWidth.init) ?? .medium
         fontFamily = string("fontFamily") ?? ""
         hyphenate = bool("hyphenate", true)

@@ -22,6 +22,13 @@ enum AppDefaults {
                 "readingModeSwitchExplainerCount": 99,
                 "pageTurnStyle": "none",
             ])
+            // PLATEN_TEST_SETTINGS="lineWidth=narrow,pageLayout=one": settings
+            // to start from (numbers as numbers), for checks of one setting.
+            for pair in (ProcessInfo.processInfo.environment["PLATEN_TEST_SETTINGS"] ?? "").split(separator: ",") {
+                let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+                guard parts.count == 2 else { continue }
+                suite.set(Double(parts[1]).map { $0 as Any } ?? parts[1], forKey: parts[0])
+            }
             return suite
         }
         #endif

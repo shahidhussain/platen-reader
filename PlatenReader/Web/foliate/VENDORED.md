@@ -44,6 +44,15 @@ If you patch a file, list it here with the reason, so updates can re-apply it.
   between pages and scrolling does not move or rewrap it. Marked
   `// Platen:`.
 
+- `mobi.js`, pictures in AZW3 books (23 Nov 2026): KF8's `replaceResources`
+  drops `srcset` and `sizes`. Converters keep the EPUB's file paths there
+  ("../images/logo-2x.png 2x"), which a KF8 book has no files for; WebKit
+  took the srcset path over `src` and the picture failed (every picture in
+  Standard Ebooks' AZW3s). Also `loadResourceBlob`'s `{ newType }`, an
+  upstream typo, is `{ type: newType }`. Checked by the corpus fixture
+  `azw3-picture.azw3`, which fails without the srcset change. Marked
+  `// Platen:`.
+
 ## How to update
 
 1. `git clone https://github.com/johnfactotum/foliate-js && cd foliate-js && git checkout <commit>`

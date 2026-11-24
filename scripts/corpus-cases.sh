@@ -49,6 +49,11 @@ check outline.pdf             "-"                                      "PDF: 6 p
 check pictures.pdf            "-"                                      "PDF: 4 pages, 2 contents entries"
 check fixed-layout-wide.epub  "-"                                      "First page visible"
 check picture-book.epub       "-"                                      "First page visible"
+# MOBI and AZW3 (KF8, here with the srcset Standard Ebooks' files carry):
+# the text shows and the picture draws.
+PICS="'pics:'+[...platen.view.renderer.getContents()].flatMap(c=>[...c.doc.querySelectorAll('img')]).map(e=>e.naturalWidth>0).join(',')+' text:'+platen.view.renderer.getContents()[0].doc.body.innerText.replace(/\\s+/g,' ').slice(0,40)"
+check mobi-picture.mobi        "$PICS"                                  "pics:true text:Chapter One The lighthouse" "pics:false"
+check azw3-picture.azw3        "$PICS"                                  "pics:true text:The Harbour The lighthouse" "pics:false"
 # Read aloud in a PDF: the running header and the page numbers left out, a
 # word hyphenated across lines joined, a sentence across pages read whole.
 check running-heads.pdf       "@readAloudPreview:"                     "read aloud: Rivers begin as rain falling on high ground. | The water gathers in small streams that join and grow. | Each stream finds its own path down the hillside, and the river ran on and on until it met the sea at last." "RIVER STUDIES"

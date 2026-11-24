@@ -21,22 +21,38 @@ struct WelcomeView: View {
     var chooseFolder: (() -> Void)?
     @State private var dropTargeted = false
 
+    /// The Mac shows the app's own icon (the Honey one); iOS keeps the book
+    /// symbol its start-up animation hands over to.
+    @ViewBuilder private var mark: some View {
+        #if os(macOS)
+        Image(nsImage: NSApp.applicationIconImage)
+            .resizable()
+            .frame(width: 112, height: 112)
+        #else
+        Image(systemName: "book")
+            .font(.system(size: 56, weight: .light))
+            .foregroundStyle(.secondary)
+        #endif
+    }
+
     var body: some View {
         let content = VStack(spacing: 18) {
             Spacer()
-            Image(systemName: "book")
-                .font(.system(size: 56, weight: .light))
-                .foregroundStyle(.secondary)
+            mark
                 .accessibilityHidden(true) // decoration: VoiceOver should start on the title
                 .reportsFrame(\.mark)
             VStack(spacing: 4) {
                 Text("Platen Reader")
                     .font(.largeTitle.weight(.semibold))
                     .reportsFrame(\.title)
+                #if os(iOS)
+                // iOS's start-up animation hands over to this line. The Mac
+                // shows the version in About Platen Reader instead.
                 Text(verbatim: AppVersion.line)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .reportsFrame(\.version)
+                #endif
             }
             Button(action: open) {
                 Text("Open Book…")
@@ -46,6 +62,7 @@ struct WelcomeView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .tint(.platenAccent) // the app's honey, not the Mac's own accent
             .keyboardShortcut(.defaultAction)
             if let chooseFolder {
                 Button(action: chooseFolder) {

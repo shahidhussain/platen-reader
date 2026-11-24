@@ -1094,7 +1094,11 @@ class KF8 {
         const newData = await event.detail.data
         const newType = await event.detail.type
         const doc = newType === MIME.SVG ? this.parser.parseFromString(newData, newType) : null
-        return [new Blob([newData], { newType }),
+        // Platen: `{ type: newType }` (upstream passed `{ newType }`, which a
+        // Blob ignores, so KF8 resources had no type; WebKit sniffs pictures
+        // anyway, so this alone was not what broke them: see `srcset` in
+        // replaceResources).
+        return [new Blob([newData], { type: newType }),
             // SVG wrappers need to be inlined
             // as browsers don't allow external resources when loading SVG as an image
             doc?.getElementsByTagNameNS('http://www.w3.org/2000/svg', 'image')?.length
@@ -1110,7 +1114,12 @@ class KF8 {
     }
     replaceResources(str) {
         const regex = new RegExp(kindleResourceRegex, 'g')
-        return replaceSeries(str, regex, this.loadResource.bind(this))
+        // Platen: `srcset` dropped. Converters keep the EPUB's file paths in
+        // it ("../images/logo-2x.png 2x"), which a KF8 book has no files
+        // for; on a Retina screen WebKit picks the 2x one over `src`, so
+        // the picture failed to load (Standard Ebooks AZW3s, every picture).
+        const noSrcset = str.replace(/\s(?:srcset|sizes)\s*=\s*("[^"]*"|'[^']*')/g, '')
+        return replaceSeries(noSrcset, regex, this.loadResource.bind(this))
     }
     // NOTE: there doesn't seem to be a way to access text randomly?
     // how to know the decompressed size of the records without decompressing?

@@ -291,7 +291,9 @@ class ReaderBaseViewController: UIViewController {
             // Nothing: a pause of one step, for something to settle.
         } else if step == "@report" {
             // The reader's state for scripts/ios-matrix.py to check against
-            // its screenshot: one line, "report: {json}".
+            // its screenshot: one line, "report: <base64 of the JSON>". In
+            // base64 because the log viewer re-escapes characters of a book's
+            // text (backslashes, some non-ASCII) and so broke the JSON.
             let report: [String: Any] = [
                 "theme": currentTheme.background, "dark": currentTheme.isDark,
                 "ambient": settings.ambientLight, "flow": state.flow.rawValue,
@@ -303,9 +305,8 @@ class ReaderBaseViewController: UIViewController {
                 "topBandNeeded": state.topBandNeeded, "bottomBandNeeded": state.bottomBandNeeded,
                 "width": view.bounds.width, "height": view.bounds.height,
             ].merging(debugReport()) { _, new in new }
-            if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]),
-               let line = String(data: data, encoding: .utf8) {
-                log.notice("report: \(line, privacy: .public)")
+            if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]) {
+                log.notice("report: \(data.base64EncodedString(), privacy: .public)")
             }
         } else if step == "@orientation" {
             // The device's orientation against the app's: different (with

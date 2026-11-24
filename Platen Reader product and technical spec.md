@@ -75,7 +75,7 @@ Reflowable books have two modes, paginated (the default) and continuous scroll; 
 **Paginated (default)**
 
 - Text is laid out in pages that turn left and right, like a book.
-- One Layout setting chooses One Page, Two Pages or Scroll (⌘1, ⌘2, ⌘3). Two Pages shows two pages side by side whenever each column can hold a comfortable line length (roughly 50 or more characters at the current font size), otherwise one, as in Apple Books; Settings and the Layout popover say so when the window is too narrow.
+- One Layout setting chooses One Page, Two Pages or Scroll (⌘1, ⌘2, ⌘3). Two Pages shows two pages side by side whenever each column can hold a comfortable line length (roughly 50 or more characters at the current font size), otherwise one, as in Apple Books; Settings and the Layout popover say so when the window is too narrow. On the Mac the two pages are set as a book's spread: a gutter of about three ems between them whatever the window's width, the line length of the Line Width setting (about 55, 65 or 75 characters), and in a wide window the text up to a fifth larger rather than small type in wide margins; what is left over goes to the outer margins. The top and bottom margins hold a whole number of lines, so the text sits centred on the page with the page numbers in the bottom margin.
 - In full screen on a typical Mac display this nearly always produces a two-page spread.
 - Page turns animate in one of three styles, chosen in Settings: Page Curl (the default; with two pages the leaf bends like paper), Slide (a short horizontal slide of 150 to 200 ms) or None. No animation when the system Reduce Motion setting is on.
 - A two-finger trackpad swipe tracks the fingers interactively: the page follows the gesture and completes or springs back on release.
@@ -199,7 +199,7 @@ Bookmarks are the only annotation feature; highlights and notes are deliberately
 
 ## Typography and themes
 
-The publisher's design is the default; the reader can override body font, size, line spacing and line width, and choose one Appearance: Automatic (following the system's light and dark appearance) or one of four themes.
+The publisher's design is the default (but for line spacing, 1.5 unless the reader chooses Publisher); the reader can override body font, size, line spacing and line width, and choose one Appearance: Automatic (following the system's light and dark appearance) or one of four themes.
 
 **Typography controls**
 
@@ -207,7 +207,7 @@ The publisher's design is the default; the reader can override body font, size, 
 | --- | --- | --- |
 | Font | Publisher default | Publisher default, or an override from a short curated list plus any installed system font |
 | Text size | A sensible default for the display (around 18 pt equivalent on a Retina laptop) | Stepped, about 12 steps; ⌘+ / ⌘− |
-| Line spacing | Publisher default | Publisher, then 1.2 to 2.0 in steps |
+| Line spacing | 1.5 | Publisher, then 1.2 to 2.0 in steps. 1.5 rather than the publisher's (23 Nov 2026): most books leave it to the reading app, and their "normal" (about 1.2) is tight on a screen |
 | Line width | Medium (about 66 characters) | Narrow, medium, wide (about 55, 66, 80 characters) |
 
 - Line width replaces margins as the control. In paginated mode it caps column width; in scroll mode it sets the centred column width.
@@ -353,6 +353,8 @@ Opening odd and broken files gracefully is the product's main quality bar; every
 | Zip problems (wrong `mimetype` position, extra data, Zip64) | Tolerated where the content is still readable |
 | Very large books (300 MB illustrated) | Lazy entry loading; no full read into memory |
 | Corrupt or truncated zip | Opens what can be read, reports the rest |
+| MOBI (MOBI 6) with a picture | Text and picture shown |
+| AZW3 (KF8) whose pictures keep the EPUB's `srcset` (as Standard Ebooks' do) | Pictures shown: the srcset's file paths, which a KF8 book does not have, are ignored |
 | PDF read aloud, with running headers, footers and page numbers | Read as a reader would: headers, footers and page numbers left out, words hyphenated across lines joined, sentences across pages read whole |
 
 **Test corpus**

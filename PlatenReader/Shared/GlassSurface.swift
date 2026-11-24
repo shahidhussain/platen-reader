@@ -4,9 +4,9 @@ import SwiftUI
 // on iOS 26 and later, the translucent material on older systems. The
 // system's glass honours Reduce Transparency and Increase Contrast by itself.
 //
-// The Mac keeps the material for now: the spec wants glass there too
-// (macOS 26 and later), but it has not yet been checked on screen there (the
-// debug snapshots draw views offscreen, where glass does not appear).
+// The Mac has glass too on macOS 26 and later (the spec), with the material
+// before. The debug snapshots draw views offscreen, where glass does not
+// appear, so it is checked by eye on screen.
 
 extension View {
     /// Puts the view on glass (or, on the Mac and before iOS 26, on the
@@ -19,14 +19,25 @@ extension View {
     func overlaySurface<S: InsettableShape>(_ shape: S, seeThrough: Bool = false) -> some View {
         // The glass API exists only in the iOS 26 SDK (Swift 6.2, Xcode 26
         // and later); older toolchains, such as CI's, build the material.
-        #if os(iOS) && compiler(>=6.2)
-        if #available(iOS 26, *) {
+        #if compiler(>=6.2)
+        if #available(iOS 26, macOS 26, *), !Self.snapshotting {
             glassEffect(.regular, in: shape)
         } else {
             materialSurface(shape, seeThrough: seeThrough)
         }
         #else
         materialSurface(shape, seeThrough: seeThrough)
+        #endif
+    }
+
+    /// Debug snapshots (PLATEN_SNAPSHOT_DIR) draw views offscreen, where
+    /// glass does not draw (nor, reliably, what is on it): they get the
+    /// material, and glass is checked by eye on screen.
+    private static var snapshotting: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["PLATEN_SNAPSHOT_DIR"] != nil
+        #else
+        false
         #endif
     }
 
