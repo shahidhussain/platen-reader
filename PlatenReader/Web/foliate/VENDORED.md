@@ -44,14 +44,14 @@ If you patch a file, list it here with the reason, so updates can re-apply it.
   between pages and scrolling does not move or rewrap it. Marked
   `// Platen:`.
 
-- `mobi.js`, pictures in MOBI and AZW3 books (23 Nov 2026): KF8's
-  `loadResourceBlob` made each resource's blob with `{ newType }`, which a
-  Blob ignores, so pictures had no type (fixed to `{ type: newType }`);
-  MOBI's `loadResource` made blobs with no type at all (now typed from the
-  picture's first bytes, `sniffImageType`); and KF8's `replaceResources`
-  now drops `srcset` and `sizes`, whose EPUB file paths a KF8 book has no
-  files for (on a Retina screen WebKit took the 2x path over `src`, so every
-  picture in Standard Ebooks' AZW3s failed). Marked `// Platen:`.
+- `mobi.js`, pictures in AZW3 books (23 Nov 2026): KF8's `replaceResources`
+  drops `srcset` and `sizes`. Converters keep the EPUB's file paths there
+  ("../images/logo-2x.png 2x"), which a KF8 book has no files for; WebKit
+  took the srcset path over `src` and the picture failed (every picture in
+  Standard Ebooks' AZW3s). Also `loadResourceBlob`'s `{ newType }`, an
+  upstream typo, is `{ type: newType }`. Checked by the corpus fixture
+  `azw3-picture.azw3`, which fails without the srcset change. Marked
+  `// Platen:`.
 
 ## How to update
 
