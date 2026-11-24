@@ -777,6 +777,17 @@ def main():
     made.append(simple("mixed-language.epub", "A Letter from Paris",
                        [("ch1.xhtml", xhtml("Chapter 1", mixed))]))
 
+    # Read aloud: paragraphs hard-wrapped in the source, as pandoc writes
+    # them (a line break every 72 characters or so, mid-sentence). The
+    # breaks are spaces to a reader, and read aloud must take whole
+    # sentences, not one per line (it paused at every line's end).
+    wrapped = ("<h1>The Train</h1>\n"
+               "<p>There was the sound of an inter-train door opening, and then\n"
+               "footsteps and an odd slithering sound coming down the hallway of the\n"
+               "train. She looked up from her book.</p>\n"
+               "<p>Nobody came\nin. Mr. Potter and Prof. J. K. Rowling sat by St. Mungo.</p>")
+    made.append(simple("hard-wrapped.epub", "The Train", [("ch1.xhtml", xhtml("Chapter 1", wrapped))]))
+
     for m in made:
         print(f"{os.path.getsize(m):>10,}  {os.path.relpath(m, ROOT)}")
 

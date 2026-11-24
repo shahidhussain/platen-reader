@@ -42,6 +42,9 @@ scripts/run-debug.sh "$PWD/Fixtures/generated/novel.epub" "platen.next();@toggle
 xcodebuild -project PlatenReader.xcodeproj -scheme "PlatenReader iOS" -configuration Debug \
   -destination "generic/platform=iOS Simulator" -derivedDataPath build/DerivedData \
   CODE_SIGNING_ALLOWED=NO build                            # iOS app
+python3 scripts/check-samples.py [--only <name>]
+# → opens every book in samples/ on the Mac; timings, errors, page checks, and
+#   snapshots in build/samples-pass/ (report.txt)
 scripts/run-ios-debug.sh Fixtures/generated/novel.epub "@tap:right;@tap:centre"
 # → opens the book in the Simulator; log lines; screenshots in build/snaps-ios/
 scripts/ios-matrix.py [--samples] [--only <name>] [--no-build]

@@ -35,6 +35,10 @@ protocol ReadAloudSource: AnyObject {
     func stopReadAloud()
     /// Skips a sentence forward (1) or back (-1).
     func skipReadAloud(by delta: Int)
+    /// The reader moved the page themselves: the page stops following the
+    /// voice (no turning back to the sentence still being spoken) until
+    /// reading starts again.
+    func holdReadAloudPage()
 }
 
 /// What read aloud is doing, for the speaker button.
@@ -221,6 +225,9 @@ final class ReadAloudController {
     /// A word is starting: the page underlines it (the sentence's place,
     /// and the word's start and length in the sentence's text).
     var markWord: ((String, Int, Int) -> Void)?
+    /// Reading reached the end without a single sentence to speak (a
+    /// scanned PDF: pictures of pages, with no text in them).
+    var onNothingToRead: (() -> Void)?
 
     private var queued: [Int: ReadAloudSentence] = [:]
     private var order: [Int] = []
@@ -270,7 +277,11 @@ final class ReadAloudController {
     func endReached() {
         awaitingBlock = false
         reachedEnd = true
-        if order.isEmpty { stop() }
+        guard order.isEmpty else { return }
+        // Nothing was ever given to the voice: there is no text to read.
+        let nothingRead = nextID == 0 && heard.isEmpty
+        stop()
+        if nothingRead { onNothingToRead?() }
     }
 
     func pause() {

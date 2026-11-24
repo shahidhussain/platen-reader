@@ -44,6 +44,12 @@ const WIDTH = 2
 const WORD_WAIT = 600
 
 let active = false
+// Whether the page follows the voice (turns to the sentence and word being
+// read). Off from the moment the reader moves the page themselves until
+// reading starts again from there: following on turned the page straight
+// back to the sentence still being spoken, and the page turn that met it
+// halfway went wrong ("End of book"; the reader saw both, 24 Nov 2026).
+let following = true
 // Where the text has got to: the section being read ahead, its document and
 // its TTS. (Not necessarily the section on screen.)
 let cursor = null
@@ -174,6 +180,7 @@ async function sendMore(fromRange) {
 
 // Begins at the first sentence on the current page.
 async function start() {
+    following = true
     active = true
     wordsComing = false
     clearHighlight()
@@ -200,8 +207,15 @@ let wordSeen = false
 // meantime, which showed as a flash of the whole sentence.
 let wordsComing = false
 
+// The reader moved the page: stop following the voice (see `following`).
+function hold() {
+    following = false
+    clearTimeout(sentenceTimer)
+    clearHighlight()
+}
+
 function mark(cfi) {
-    if (!active || !cfi) return
+    if (!active || !cfi || !following) return
     currentSentence = cfi
     wordSeen = false
     clearTimeout(sentenceTimer)
@@ -216,7 +230,7 @@ function mark(cfi) {
 // A word is starting: `start` and `length` count UTF-16 units in the
 // sentence's text as sent (its white space collapsed, as `sendMore` did).
 function word(cfi, start, length) {
-    if (!active || !cfi) return
+    if (!active || !cfi || !following) return
     wordSeen = true
     wordsComing = true
     clearTimeout(sentenceTimer)
@@ -239,7 +253,7 @@ function word(cfi, start, length) {
 
 // The sentence's chapter and page on screen; its index, document and anchor.
 async function showSentence(cfi) {
-    if (!active) return null
+    if (!active || !following) return null
     const { index, anchor } = reader.view.resolveCFI(cfi)
     let shown = onScreen()
     if (shown?.index !== index) {
@@ -341,4 +355,22 @@ function preview() {
     return `book:${Array.isArray(book) ? book[0] : book ?? ''} blocks:${langs.join(',')} first:${first ?? ''}`
 }
 
-export const readAloud = { start, more, mark, word, stop, parseBlock, preview }
+// For checks: the first `count` sentences read aloud would speak from the
+// start of the chapter on screen, joined by " | " (a hard-wrapped
+// paragraph must come out as whole sentences, not one per line).
+function sentences(count = 4) {
+    const shown = onScreen()
+    if (!shown?.doc?.body) return 'none'
+    const tts = new TTS(shown.doc, textWalker, () => {}, 'sentence')
+    const found = []
+    let ssml = tts.start()
+    for (let i = 0; i < 50 && ssml && found.length < count; i++) {
+        for (const s of parseBlock(ssml).sentences) {
+            if (s.text && /[\p{L}\p{N}]/u.test(s.text) && found.length < count) found.push(s.text)
+        }
+        ssml = tts.next()
+    }
+    return 'sentences: ' + found.join(' | ')
+}
+
+export const readAloud = { start, more, mark, word, stop, hold, parseBlock, preview, sentences }

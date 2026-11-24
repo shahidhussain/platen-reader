@@ -107,6 +107,17 @@ final class KokoroTextTests: XCTestCase {
         XCTAssertTrue(text.phonemes("hello a world").contains("ɐ wˈɜɹld"))
     }
 
+    /// A hyphen inside a word ("hello-world") joins its parts with a plain
+    /// word gap, not the long pause of a dash ("—"), which the reader heard
+    /// at every hyphenated word (24 Nov 2026). A real dash keeps its pause.
+    func testAHyphenInAWordIsNoPause() throws {
+        let text = try XCTUnwrap(KokoroText(pack: folder, british: false))
+        let joined = text.phonemes("hello-world")
+        XCTAssertFalse(joined.contains("—"), joined)
+        XCTAssertTrue(joined.contains("həlˈO wˈɜɹld"), joined)
+        XCTAssertTrue(text.phonemes("hello — world").contains("—"))
+    }
+
     /// Each word's place in the sentence, and the token its sounds start
     /// at, for the underline: punctuation is no word, and the places count
     /// UTF-16 units, as the page does.

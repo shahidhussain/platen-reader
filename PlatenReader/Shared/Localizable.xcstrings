@@ -44,9 +44,6 @@
     "%lld results" : {
 
     },
-    "Send Feedback…" : {
-
-    },
     "⌘1 one page, ⌘2 two pages, ⌘3 scroll" : {
 
     },
@@ -765,6 +762,9 @@
     "Select All" : {
 
     },
+    "Send Feedback…" : {
+
+    },
     "Send the report to %@, with “%@” as the subject." : {
 
     },
@@ -867,6 +867,9 @@
     "The book window is too narrow for two pages. Make it wider to see them side by side." : {
 
     },
+    "The download was incomplete or damaged. Please try again." : {
+
+    },
     "The file may be damaged, or not a PDF." : {
 
     },
@@ -883,6 +886,12 @@
 
     },
     "Theme" : {
+
+    },
+    "There is not enough free space. The better voice needs about %@." : {
+
+    },
+    "There’s no readable text here. Scanned books and PDFs hold pictures of their pages, not text that can be read aloud." : {
 
     },
     "These pages are already spreads, so they show one at a time." : {

@@ -53,6 +53,18 @@ If you patch a file, list it here with the reason, so updates can re-apply it.
   `azw3-picture.azw3`, which fails without the srcset change. Marked
   `// Platen:`.
 
+- `tts.js`, `getSegmenter` (24 Nov 2026): line breaks in the text are
+  turned into spaces before `Intl.Segmenter` splits sentences, since it ends
+  a sentence at every line feed (UAX #29). Books whose paragraphs are
+  hard-wrapped in the source (pandoc's EPUBs, at 72 columns) were read
+  aloud in fragments, pausing mid-sentence at each line's end. One
+  character for one, so offsets are unchanged. Checked by the corpus
+  fixture `hard-wrapped.epub`. Marked `// Platen:`. Also there:
+  `joinAbbreviations`, which joins a "sentence" ending in a title or common
+  abbreviation ("Mr.", "Prof.", "St.", "e.g.") or a lone initial ("J.") to
+  the next, since the segmenter breaks after each and read aloud paused
+  there.
+
 ## How to update
 
 1. `git clone https://github.com/johnfactotum/foliate-js && cd foliate-js && git checkout <commit>`

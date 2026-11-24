@@ -21,15 +21,47 @@ const getAlphabet = el => {
     return x ? x : el.parentElement ? getAlphabet(el.parentElement) : null
 }
 
+// Platen: Intl.Segmenter ends a sentence after any full stop followed by a
+// capital, so "Mr. Potter", "Prof. Quirrell", "St. Mungo" and "J. K.
+// Rowling" were read aloud in pieces, pausing at each (24 Nov 2026). A
+// sentence that ends in a title or common abbreviation, or in a lone
+// initial, is joined to the one after it.
+const ABBREVIATIONS = new Set(['mr', 'mrs', 'ms', 'mx', 'dr', 'prof', 'st', 'sr', 'jr', 'mt', 'ft',
+    'rev', 'fr', 'gen', 'col', 'capt', 'lt', 'sgt', 'cpl', 'gov', 'pres', 'sen', 'rep', 'hon',
+    'vs', 'etc', 'e.g', 'i.e', 'cf', 'approx', 'no', 'vol', 'ch', 'fig', 'p', 'pp'])
+const endsInAbbreviation = segment => {
+    const m = segment.trimEnd().match(/(?:^|[\s(“"'‘])([\p{L}][\p{L}.]*)\.$/u)
+    if (!m) return false
+    const word = m[1]
+    // A lone capital initial ("J."), or a known abbreviation ("Mr.", "e.g.").
+    return (word.length === 1 && word === word.toUpperCase() && word !== word.toLowerCase())
+        || ABBREVIATIONS.has(word.toLowerCase())
+}
+const joinAbbreviations = segments => {
+    const joined = []
+    for (const s of segments) {
+        const last = joined[joined.length - 1]
+        if (last && endsInAbbreviation(last.segment)) last.segment += s.segment
+        else joined.push({ index: s.index, segment: s.segment })
+    }
+    return joined
+}
+
 const getSegmenter = (lang = 'en', granularity = 'word') => {
     const segmenter = new Intl.Segmenter(lang, { granularity })
     const granularityIsWord = granularity === 'word'
     return function* (strs, makeRange) {
-        const str = strs.join('')
+        // Platen: line breaks in the source are spaces to a reader, but
+        // Intl.Segmenter (UAX #29) ends a sentence at each one, so a book
+        // whose paragraphs are hard-wrapped (pandoc's, at 72 columns) was
+        // read in fragments, pausing mid-sentence at every line's end. Each
+        // break becomes one space, so every offset stays the same.
+        const str = strs.join('').replace(/[\n\r\v\f\u0085\u2028\u2029]/g, ' ')
         let name = 0
         let strIndex = -1
         let sum = 0
-        for (const { index, segment, isWordLike } of segmenter.segment(str)) {
+        const segments = granularityIsWord ? segmenter.segment(str) : joinAbbreviations([...segmenter.segment(str)])
+        for (const { index, segment, isWordLike } of segments) {
             if (granularityIsWord && !isWordLike) continue
             while (sum <= index) sum += strs[++strIndex].length
             const startIndex = strIndex

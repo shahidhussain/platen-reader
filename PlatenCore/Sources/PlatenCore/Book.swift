@@ -75,7 +75,7 @@ public final class Book: @unchecked Sendable {
     /// Files Platen made up to repair a damaged book (served before the zip).
     let syntheticFiles: [String: Data]
     /// True if the package document had to be rebuilt from surviving files.
-    public var isRepaired: Bool { !syntheticFiles.isEmpty }
+    public var isRepaired: Bool { format == .epub && !syntheticFiles.isEmpty }
 
     public var title: String? { package?.title }
     public var authors: [String] { package?.creators ?? [] }

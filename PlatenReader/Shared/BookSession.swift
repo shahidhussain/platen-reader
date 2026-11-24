@@ -462,6 +462,7 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
             if phase == .off { self?.readAloudEnded() }
         }
         controller.requestNext = { [weak self] in self?.call("readAloudMore") }
+        controller.onNothingToRead = { [weak self] in self?.state.readAloudFoundNoText += 1 }
         controller.mark = { [weak self] name in self?.call("readAloudMark", name) }
         controller.markWord = { [weak self] name, start, length in self?.call("readAloudWord", name, start, length) }
         readAloud = controller
@@ -472,6 +473,7 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
 
     func pauseReadAloud() { readAloud?.pause() }
     func skipReadAloud(by delta: Int) { readAloud?.skip(by: delta) }
+    func holdReadAloudPage() { if readAloud != nil { call("readAloudHold") } }
     func resumeReadAloud() { readAloud?.resume() }
 
     func stopReadAloud() {

@@ -28,7 +28,17 @@ enum PDFAmbientBackground {
     /// by side) and hands it back on the main thread. `theme` is the
     /// reader's background colour.
     static func make(for pages: [PDFPage], theme: UIColor, done: @escaping (UIImage?) -> Void) {
-        let refs = pages.compactMap(\.pageRef)
+        make(for: pages.compactMap { page in page.pageRef.map { ($0, $0.getBoxRect(.cropBox)) } }, theme: theme, done: done)
+    }
+
+    /// The glow of parts of pages (each page's region in its own
+    /// coordinates), side by side: what is on screen when the reader has
+    /// zoomed in, so the glow follows the part they are looking at.
+    static func make(for parts: [(page: PDFPage, region: CGRect)], theme: UIColor, done: @escaping (UIImage?) -> Void) {
+        make(for: parts.compactMap { part in part.page.pageRef.map { ($0, part.region) } }, theme: theme, done: done)
+    }
+
+    private static func make(for refs: [(CGPDFPage, CGRect)], theme: UIColor, done: @escaping (UIImage?) -> Void) {
         guard !refs.isEmpty else { return done(nil) }
         var themeHue: CGFloat = 0, themeSaturation: CGFloat = 0, themeBrightness: CGFloat = 0, alpha: CGFloat = 0
         theme.getHue(&themeHue, saturation: &themeSaturation, brightness: &themeBrightness, alpha: &alpha)
@@ -53,15 +63,17 @@ enum PDFAmbientBackground {
         }
     }
 
-    private static func picture(of pages: [CGPDFPage], themeBrightness: CGFloat) -> UIImage? {
+    private static func picture(of pages: [(CGPDFPage, CGRect)], themeBrightness: CGFloat) -> UIImage? {
         picture(width: pageSize.width * pages.count, height: pageSize.height, paper: UIColor.white.cgColor,
                 themeBrightness: themeBrightness) { bitmap, _ in
-            for (index, page) in pages.enumerated() {
+            for (index, (page, region)) in pages.enumerated() {
                 let target = CGRect(x: index * pageSize.width, y: 0, width: pageSize.width, height: pageSize.height)
                 bitmap.saveGState()
-                // Fit the page's crop box into its cell, stretched (the
-                // picture is only colours, so proportions do not matter).
-                let box = page.getBoxRect(.cropBox)
+                // Fit the region (the crop box, or the part on screen) into
+                // its cell, stretched (the picture is only colours, so
+                // proportions do not matter), clipped to the cell.
+                bitmap.clip(to: target)
+                let box = region
                 bitmap.translateBy(x: target.minX, y: target.minY)
                 bitmap.scaleBy(x: target.width / max(box.width, 1), y: target.height / max(box.height, 1))
                 bitmap.translateBy(x: -box.minX, y: -box.minY)

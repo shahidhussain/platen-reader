@@ -130,6 +130,30 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertEqual(controller.pendingTexts, ["C.", "D.", "E.", "F."])
     }
 
+    /// A book with nothing to read from here (a scanned PDF's pages are
+    /// pictures) says so when it reaches the end; a book that was read to
+    /// its end does not.
+    func testReachingTheEndWithNothingReadIsReported() {
+        let engine = FakeEngine()
+        let controller = ReadAloudController(engine: engine, language: "en", lookahead: 2)
+        var reported = 0
+        controller.onNothingToRead = { reported += 1 }
+        controller.requestNext = {}
+        controller.start()
+        controller.receive(ReadAloudBlock(language: nil, sentences: []))
+        controller.endReached()
+        XCTAssertEqual(controller.phase, .off)
+        XCTAssertEqual(reported, 1)
+
+        let read = ReadAloudController(engine: FakeEngine(), language: "en", lookahead: 2)
+        read.onNothingToRead = { reported += 1 }
+        read.requestNext = {}
+        read.start()
+        read.receive(block(["Last line."]))
+        read.endReached()
+        XCTAssertEqual(reported, 1)
+    }
+
     func testReadingStopsAtTheEndOfTheBook() {
         let engine = FakeEngine()
         let controller = ReadAloudController(engine: engine, language: "en", lookahead: 2)

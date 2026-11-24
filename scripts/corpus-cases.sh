@@ -69,3 +69,7 @@ check drm-adept.epub          "-"                                      "drm(Plat
 # its voice (the book's own, and a passage's).
 check french.epub             "platen.readAloudPreview()"             "book:fr blocks:fr,fr,fr first:Le premier chapitre"
 check mixed-language.epub     "platen.readAloudPreview()"             "book:en blocks:en,fr,en first:A Letter from Paris"
+# Hard-wrapped paragraphs (pandoc's EPUBs) are read as whole sentences, not
+# one sentence per line of the source; titles and initials ("Mr.", "J.") do
+# not end a sentence.
+check hard-wrapped.epub       "platen.readAloudSentences(5)"          "sentences: The Train | There was the sound of an inter-train door opening, and then footsteps and an odd slithering sound coming down the hallway of the train. | She looked up from her book. | Nobody came in. | Mr. Potter and Prof. J. K. Rowling sat by St. Mungo."
