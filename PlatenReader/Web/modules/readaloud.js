@@ -246,7 +246,13 @@ function word(cfi, start, length) {
         // The sentence may run over to the next page. (Without selecting
         // it: foliate's `true` here selects the word, which then showed as
         // a lasting selection instead of the underline.)
-        if (!isOnScreen(range)) reader.view.renderer.scrollToAnchor?.(range)
+        if (!isOnScreen(range)) {
+            // A word before the page (the start of a sentence that runs onto
+            // it) is not chased back to: no underline until the voice
+            // reaches the page. A word after it turns the page on.
+            if (isBeforeScreen(range)) return clearHighlight()
+            reader.view.renderer.scrollToAnchor?.(range)
+        }
         return underline(reader.view.getCFI(shown.index, range))
     }).catch(() => {})
 }
@@ -263,7 +269,11 @@ async function showSentence(cfi) {
     }
     if (!shown?.doc || shown.index !== index) return null
     const range = anchor(shown.doc)
-    if (range && !isOnScreen(range)) reader.view.renderer.scrollToAnchor?.(range)
+    // Only a sentence with nothing of it on the page moves the page to it.
+    // A sentence partly on screen stays put: reading started from a page
+    // begins with the sentence that runs onto it from the page before, and
+    // turning back to its start undid the reader's turn (24 Nov 2026).
+    if (range && !overlapsScreen(range)) reader.view.renderer.scrollToAnchor?.(range)
     return { index, doc: shown.doc, anchor }
 }
 
@@ -283,6 +293,20 @@ function isOnScreen(range) {
     return range.compareBoundaryPoints(Range.START_TO_START, visible) >= 0
         && range.compareBoundaryPoints(Range.END_TO_END, visible) <= 0
 }
+
+// Where a range lies against the page showing: -1 before it, 1 after it,
+// 0 overlapping it; null if it is in another document.
+function placeOnScreen(range) {
+    const visible = reader.view.lastLocation?.range
+    if (!visible || visible.startContainer.ownerDocument !== range.startContainer.ownerDocument) return null
+    try {
+        if (visible.comparePoint(range.endContainer, range.endOffset) < 0) return -1
+        if (visible.comparePoint(range.startContainer, range.startOffset) > 0) return 1
+        return 0
+    } catch { return null }
+}
+const overlapsScreen = range => placeOnScreen(range) === 0
+const isBeforeScreen = range => placeOnScreen(range) === -1
 
 // The part of `sentence` from `start` for `length` characters of its text
 // with white space collapsed and trimmed, as it was sent to Swift.
