@@ -17,6 +17,10 @@ struct ReadAloudBlock: Equatable, Sendable {
     /// The block's own language, if the book marks it (`xml:lang`).
     var language: String?
     var sentences: [ReadAloudSentence]
+    /// Whether the block is one paragraph (a book's), so the lock screen's
+    /// forward and back can move a paragraph at a time. A PDF's blocks are
+    /// batches of sentences, so they move a sentence at a time there.
+    var isParagraph = true
 }
 
 /// What can be read aloud: a book (`BookSession`) or a PDF (`PDFReadAloud`).
@@ -33,7 +37,8 @@ protocol ReadAloudSource: AnyObject {
     func pauseReadAloud()
     func resumeReadAloud()
     func stopReadAloud()
-    /// Skips a sentence forward (1) or back (-1).
+    /// Skips a paragraph forward (1) or back (-1) (the lock screen's next
+    /// and previous; a sentence in a PDF, whose paragraphs are not known).
     func skipReadAloud(by delta: Int)
     /// The reader moved the page themselves: the page stops following the
     /// voice (no turning back to the sentence still being spoken) until
@@ -231,6 +236,10 @@ final class ReadAloudController {
 
     private var queued: [Int: ReadAloudSentence] = [:]
     private var order: [Int] = []
+    /// Each sentence's paragraph (a count of paragraph blocks received), for
+    /// moving a paragraph at a time; none for a PDF's sentences.
+    private var paragraphOf: [Int: Int] = [:]
+    private var paragraphCount = 0
     private var nextID = 0
     private var awaitingBlock = false
     private var reachedEnd = false
@@ -261,9 +270,11 @@ final class ReadAloudController {
     func receive(_ block: ReadAloudBlock) {
         guard phase != .off else { return }
         awaitingBlock = false
+        if block.isParagraph, !block.sentences.isEmpty { paragraphCount += 1 }
         let items = block.sentences.map { sentence -> (id: Int, text: String) in
             let id = nextID
             nextID += 1
+            if block.isParagraph { paragraphOf[id] = paragraphCount }
             queued[id] = sentence
             order.append(id)
             return (id, sentence.text)
@@ -301,6 +312,7 @@ final class ReadAloudController {
         queued.removeAll()
         order.removeAll()
         heard.removeAll()
+        paragraphOf.removeAll()
         awaitingBlock = false
         phase = .off
     }
@@ -323,6 +335,39 @@ final class ReadAloudController {
             queued[previous.id] = previous.sentence
             order.insert(previous.id, at: 0)
         }
+        readFromQueue()
+    }
+
+    /// Skips a paragraph forward (1, the lock screen's next: on from the
+    /// next paragraph) or back (-1, previous: the start of this paragraph,
+    /// or of the one before if none of this one has been heard yet). Where
+    /// paragraphs are not known (a PDF), a sentence.
+    func skipParagraph(by delta: Int) {
+        guard phase != .off else { return }
+        guard let current = order.first ?? heard.last?.id, let paragraph = paragraphOf[current] else {
+            return skip(by: delta)
+        }
+        engine.stop()
+        if delta > 0 {
+            while let first = order.first, paragraphOf[first] == paragraph {
+                order.removeFirst()
+                queued[first] = nil
+            }
+        } else {
+            let heardHere = heard.contains { paragraphOf[$0.id] == paragraph }
+            let target = heardHere ? paragraph : (heard.last.flatMap { paragraphOf[$0.id] } ?? paragraph)
+            while let last = heard.last, let p = paragraphOf[last.id], p >= target, p <= paragraph {
+                heard.removeLast()
+                queued[last.id] = last.sentence
+                order.insert(last.id, at: 0)
+            }
+        }
+        readFromQueue()
+    }
+
+    /// Reading goes on (or starts again, if paused) from the first sentence
+    /// queued, after a skip.
+    private func readFromQueue() {
         let items = order.compactMap { id in queued[id].map { (id: id, text: $0.text) } }
         guard !items.isEmpty else {
             if reachedEnd { stop() } else { phase = .starting; askForMore() }
@@ -354,7 +399,8 @@ final class ReadAloudController {
     private func finished(_ id: Int) {
         if let sentence = queued[id] {
             heard.append((id, sentence))
-            if heard.count > 10 { heard.removeFirst() }
+            // Enough to go back to the start of a long paragraph.
+            if heard.count > 80 { paragraphOf[heard.removeFirst().id] = nil }
         }
         queued[id] = nil
         order.removeAll { $0 == id }

@@ -155,9 +155,57 @@ async function nextSSML(fromRange) {
     return null
 }
 
-// Sends about BATCH sentences, or what is left of the book.
-async function sendMore(fromRange) {
+// Reading from a page begins at its first word (the reader asked, 24 Nov
+// 2026): foliate hands back the whole paragraph the page begins in, so its
+// sentences that end before the page are left out, and the one that runs
+// onto the page is cut to begin there. (Reading it from its start, on the
+// page before, turned the page back.) `pageStart` is the page's start; the
+// cut sentence's mark is the part on the page, so its words still line up.
+function fromPage(sentence, range, pageStart) {
+    if (!range || !pageStart || range.startContainer.ownerDocument !== pageStart.startContainer.ownerDocument)
+        return { sentence, range }
+    try {
+        // (`pageStart` is collapsed to the page's first point: comparePoint
+        // is -1 before it, 0 at it, 1 after it.)
+        // Ends before the page: not read.
+        if (pageStart.comparePoint(range.endContainer, range.endOffset) <= 0) return null
+        // Begins before the page: only the part on it.
+        if (pageStart.comparePoint(range.startContainer, range.startOffset) < 0) {
+            const part = range.cloneRange()
+            part.setStart(pageStart.startContainer, pageStart.startOffset)
+            const text = part.toString().replace(/\s+/g, ' ').trim()
+            if (!/[\p{L}\p{N}]/u.test(text)) return null
+            return { sentence: { ...sentence, text }, range: part }
+        }
+    } catch {}
+    return { sentence, range }
+}
+
+// Where to ask foliate to read from, for a page: the start of the block
+// (paragraph) the page begins in. foliate's `from` begins at the first
+// sentence that starts on the page, leaving out the one running onto it;
+// from the paragraph's start, `fromPage` can cut that one to the page.
+function paragraphStart(page) {
+    const doc = page.startContainer.ownerDocument
+    let node = page.startContainer
+    if (node.nodeType !== 1) node = node.parentElement
+    // (Not a div: books wrap whole chapters in one.)
+    const block = node?.closest?.('p, li, blockquote, h1, h2, h3, h4, h5, h6, dd, dt, td, th, figcaption, pre')
+    if (!block) return page
+    const range = doc.createRange()
+    range.setStart(block, 0)
+    range.collapse(true)
+    return range
+}
+
+// Sends about BATCH sentences, or what is left of the book. `page`: reading
+// starts on this page (the first call only).
+async function sendMore(page) {
     let sent = 0
+    // The page's start, for the first block only (see `fromPage`).
+    let pageStart = page ? page.cloneRange() : null
+    if (pageStart) pageStart.collapse(true)
+    let fromRange = page ? paragraphStart(page) : null
     while (active && sent < BATCH) {
         const ssml = await nextSSML(fromRange)
         fromRange = null
@@ -166,13 +214,17 @@ async function sendMore(fromRange) {
         const ranges = rangesOf(cursor.tts, block.sentences.map(s => s.mark).filter(m => m != null))
         const sentences = block.sentences
             .filter(s => s.text && /[\p{L}\p{N}]/u.test(s.text))
-            .map(s => {
-                const range = ranges.get(s.mark)
+            .map(s => pageStart ? fromPage(s, ranges.get(s.mark), pageStart) : { sentence: s, range: ranges.get(s.mark) })
+            .filter(x => x)
+            .map(({ sentence, range }) => {
                 let cfi = null
                 try { cfi = range ? reader.view.getCFI(cursor.index, range) : null } catch {}
-                return { mark: cfi, text: s.text }
+                return { mark: cfi, text: sentence.text }
             })
+        // Until something on the page is found, every block is checked
+        // against it (a page can begin after a whole paragraph has ended).
         if (!sentences.length) continue
+        pageStart = null
         post('readAloudBlock', { lang: block.lang, sentences })
         sent += sentences.length
     }
@@ -397,4 +449,27 @@ function sentences(count = 4) {
     return 'sentences: ' + found.join(' | ')
 }
 
-export const readAloud = { start, more, mark, word, stop, hold, parseBlock, preview, sentences }
+// For checks: how the first block read from the page on screen compares
+// with the page's start (each sentence: its start and end against it, and
+// what would be read of it).
+function probeStart() {
+    const shown = onScreen()
+    const page = reader.view.lastLocation?.range
+    if (!shown?.doc || !page) return 'none'
+    const tts = new TTS(shown.doc, textWalker, () => {}, 'sentence')
+    const ssml = tts.from(paragraphStart(page))
+    const block = parseBlock(ssml)
+    const ranges = rangesOf(tts, block.sentences.map(x => x.mark).filter(m => m != null))
+    const start = page.cloneRange()
+    start.collapse(true)
+    return 'probe ' + block.sentences.slice(0, 4).map(x => {
+        const r = ranges.get(x.mark)
+        if (!r) return 'no range: ' + x.text.slice(0, 20)
+        const a = start.comparePoint(r.startContainer, r.startOffset)
+        const b = start.comparePoint(r.endContainer, r.endOffset)
+        const kept = fromPage(x, r, start)
+        return `[${a},${b}] ${x.text.slice(0, 20)} -> ${kept ? kept.sentence.text.slice(0, 20) : 'dropped'}`
+    }).join(' | ')
+}
+
+export const readAloud = { start, more, mark, word, stop, hold, parseBlock, preview, sentences, probeStart }

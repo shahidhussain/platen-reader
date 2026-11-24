@@ -222,6 +222,47 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertEqual(controller.phase, .starting)
     }
 
+    /// The lock screen's next and previous move a paragraph at a time in a
+    /// book (the reader asked, 24 Nov 2026): next goes on from the next
+    /// paragraph; previous goes back to the start of this one, or to the one
+    /// before when this one has only just begun.
+    func testSkippingForwardAndBackAParagraph() {
+        let engine = FakeEngine()
+        let controller = ReadAloudController(engine: engine, language: "en", lookahead: 1)
+        controller.requestNext = {}
+        controller.start()
+        controller.receive(block(["A1.", "A2."]))
+        controller.receive(block(["B1.", "B2.", "B3."]))
+        controller.receive(block(["C1."]))
+        engine.startNext()
+        engine.finishCurrent() // "A1." heard
+        engine.startNext()     // "A2." being read
+        controller.skipParagraph(by: 1)
+        XCTAssertEqual(engine.queue.map(\.text), ["B1.", "B2.", "B3.", "C1."], "on from the next paragraph")
+        engine.startNext()
+        engine.finishCurrent() // "B1." heard
+        engine.startNext()     // "B2." being read
+        controller.skipParagraph(by: -1)
+        XCTAssertEqual(engine.queue.map(\.text), ["B1.", "B2.", "B3.", "C1."], "back to this paragraph's start")
+        engine.startNext()     // "B1." being read, nothing of B heard
+        controller.skipParagraph(by: -1)
+        XCTAssertEqual(engine.queue.map(\.text).first, "A1.", "at a paragraph's start: the one before")
+    }
+
+    /// A PDF's blocks are not paragraphs: next and previous move a sentence.
+    func testInAPDFSkippingMovesASentence() {
+        let engine = FakeEngine()
+        let controller = ReadAloudController(engine: engine, language: "en", lookahead: 1)
+        controller.requestNext = {}
+        controller.start()
+        var pdfBlock = block(["One.", "Two.", "Three."])
+        pdfBlock.isParagraph = false
+        controller.receive(pdfBlock)
+        engine.startNext()
+        controller.skipParagraph(by: 1)
+        XCTAssertEqual(engine.queue.map(\.text), ["Two.", "Three."])
+    }
+
     func testBlocksWithNothingToReadAreSkipped() {
         let engine = FakeEngine()
         let controller = ReadAloudController(engine: engine, language: "en", lookahead: 2)
