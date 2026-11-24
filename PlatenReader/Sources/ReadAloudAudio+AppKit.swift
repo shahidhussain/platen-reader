@@ -44,8 +44,11 @@ final class ReadAloudAudio {
         guard owner === self.owner else { return }
         info = (title, author, chapter, playing)
         var now: [String: Any] = [
-            MPMediaItemPropertyTitle: chapter.isEmpty ? title : chapter,
-            MPMediaItemPropertyAlbumTitle: title,
+            // The book's title, and its author under it: the chapter's
+            // name alone ("I") said little on the lock screen. The chapter
+            // is the album, which some places show.
+            MPMediaItemPropertyTitle: title,
+            MPMediaItemPropertyAlbumTitle: chapter,
             MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             // No length and no place in it: no seek bar.

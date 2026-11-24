@@ -169,6 +169,13 @@ final class ReadAloudStarter {
     /// ends with it.
     private func watchReading() {
         watch = state.$readAloud.combineLatest(state.$chapter)
+            // The phase is still .off as this starts watching (reading is
+            // asked for just after), and that first .off, delivered a moment
+            // later, was taken for the end: Now Playing and the lock screen's
+            // controls were taken down as soon as they were put up, so they
+            // never showed (the reader asked for them, 24 Nov 2026). Only an
+            // .off after reading has begun ends them.
+            .drop(while: { phase, _ in phase == .off })
             .receive(on: RunLoop.main)
             .sink { [weak self] phase, chapter in
                 guard let self else { return }
