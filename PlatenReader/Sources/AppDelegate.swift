@@ -127,10 +127,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// About Platen Reader: the system's panel, with the version (which the
     /// welcome window no longer shows) and no build number, which stays 1
     /// outside release builds and so says nothing.
-    @objc func showAbout(_ sender: Any?) {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationVersion: version, .version: ""])
-        NSApp.activate()
+    /// Platen Reader › About Platen Reader: Platen's own About window
+    /// (AboutWindowController), in place of the standard panel, so it can
+    /// carry the licence, privacy note, credits and acknowledgements.
+    @MainActor @objc func showAbout(_ sender: Any?) {
+        AboutWindowController.shared.show()
     }
 
     @objc func showSettings(_ sender: Any?) {

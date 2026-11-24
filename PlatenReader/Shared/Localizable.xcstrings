@@ -65,10 +65,16 @@
     "A record of how the app has been running (how long books took to open, moments it was slow to respond, errors), kept on this device to help with a problem report. It holds no book titles or file names, and leaves the device only if you share it." : {
 
     },
+    "About" : {
+
+    },
     "About %@" : {
 
     },
     "About DRM-Protected Books" : {
+
+    },
+    "About Platen Reader" : {
 
     },
     "Acknowledgements" : {
@@ -224,10 +230,19 @@
     "Contents, Bookmarks and Search (⌘T)" : {
 
     },
+    "Copied" : {
+
+    },
+    "Copies the version, system and device, to paste into a bug report." : {
+
+    },
     "Copy" : {
 
     },
     "Copy Image" : {
+
+    },
+    "Copy Version Info" : {
 
     },
     "Copy with Citation" : {
@@ -386,6 +401,12 @@
     "In iCloud, not on this device" : {
 
     },
+    "In the App" : {
+
+    },
+    "In the Natural Voice Download" : {
+
+    },
     "Invert Colours" : {
 
     },
@@ -447,6 +468,9 @@
 
     },
     "Looking for books…" : {
+
+    },
+    "Made by Shahid Hussain" : {
 
     },
     "Make Platen the Default" : {
@@ -609,6 +633,9 @@
     "Platen does not open password-protected PDFs. Open it in another app." : {
 
     },
+    "Platen doesn’t collect any data or track you. Nothing you read leaves your device unless you share it yourself." : {
+
+    },
     "Platen keeps only where you are in each book and your bookmarks, on this device." : {
 
     },
@@ -648,6 +675,9 @@
     "Read Aloud" : {
 
     },
+    "Read Aloud’s natural voice is powered by Kokoro, an open-weight text-to-speech model created by hexgrad and released under the Apache 2.0 licence. All speech is generated on your device." : {
+
+    },
     "Read with Apple Voice" : {
 
     },
@@ -661,6 +691,9 @@
 
     },
     "Recent Books" : {
+
+    },
+    "Released under the Mozilla Public License 2.0" : {
 
     },
     "Remove" : {
@@ -688,6 +721,9 @@
 
     },
     "Remove Voice Download (%@)" : {
+
+    },
+    "Report an Issue" : {
 
     },
     "Report This Book…" : {
@@ -793,6 +829,9 @@
 
     },
     "Sort By" : {
+
+    },
+    "Source Code" : {
 
     },
     "Speed" : {
@@ -910,6 +949,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Version %@"
+          }
+        }
+      }
+    },
+    "Version %@ (%@)" : {
+      "comment" : "About: the app's version, then its build number in brackets, such as “Version 0.8.51 (1)”.",
+      "localizations" : {
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Version %1$@ (%2$@)"
           }
         }
       }

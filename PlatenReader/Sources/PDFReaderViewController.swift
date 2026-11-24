@@ -357,7 +357,16 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
                 } else if s.hasPrefix("@") {
                     // To this reader directly: the app may not be frontmost
                     // during checks, so the responder chain may not reach it.
-                    NSApp.sendAction(Selector(String(s.dropFirst())), to: self, from: nil)
+                    // Only an action this reader has: a book-only step
+                    // ("@settings:1", "@snapwindows") sent here was passed
+                    // on as an unknown selector and crashed the run (24 Nov
+                    // 2026), so it is now logged and skipped.
+                    let action = Selector(String(s.dropFirst()))
+                    if self.responds(to: action) {
+                        NSApp.sendAction(action, to: self, from: nil)
+                    } else {
+                        log.notice("step not understood by the PDF reader: \(s, privacy: .public)")
+                    }
                 }
                 log.info("step: \(s, privacy: .public) page \(self.currentIndex + 1)")
                 step(i + 1)

@@ -14,6 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # THIRD_PARTY_LICENSES.md and the apps' Acknowledgements are made from
+      # Licenses/components.json; this fails if they were not regenerated.
+      - name: Third-party notices up to date
+        run: python3 scripts/make-acknowledgements.py --check
+
       - name: Core unit and timing tests
         run: swift test --package-path PlatenCore
 

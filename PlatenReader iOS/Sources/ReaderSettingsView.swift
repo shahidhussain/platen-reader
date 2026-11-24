@@ -64,8 +64,22 @@ struct ReaderSettingsView: View {
                     Text("A record of how the app has been running (how long books took to open, moments it was slow to respond, errors), kept on this device to help with a problem report. It holds no book titles or file names, and leaves the device only if you share it.")
                 }
                 Section {
-                    LabeledContent("Platen Reader", value: AppVersion.line)
-                    NavigationLink("Acknowledgements") { AcknowledgementsView() }
+                    // About Platen Reader: a page of its own (the shared
+                    // AboutView), where the iOS Settings app puts "About".
+                    // Acknowledgements are reached from there.
+                    NavigationLink {
+                        ScrollView {
+                            AboutView(icon: Image("AboutIcon"),
+                                      copyToClipboard: { UIPasteboard.general.string = $0 })
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 24)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .navigationTitle(Text("About"))
+                        .navigationBarTitleDisplayMode(.inline)
+                    } label: {
+                        LabeledContent("About Platen Reader", value: AboutInfo.version)
+                    }
                     // Opens the website in the reader's browser; the app
                     // itself loads nothing (spec: no network).
                     Link(destination: AppLinks.website) {
@@ -139,29 +153,3 @@ private struct DiagnosticsFile: Transferable {
     }
 }
 
-/// The licences of the code and data Platen uses that others wrote: the
-/// text files in Acknowledgements/, one page each.
-private struct AcknowledgementsView: View {
-    private var files: [URL] {
-        (Bundle.main.urls(forResourcesWithExtension: "txt", subdirectory: nil) ?? [])
-            .filter { Self.names.contains($0.deletingPathExtension().lastPathComponent) }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-    }
-    private static let names: Set<String> = ["MisakiSwift and Misaki (Apache-2.0)", "foliate-js", "Kokoro natural voice"]
-
-    var body: some View {
-        List(files, id: \.self) { file in
-            NavigationLink(file.deletingPathExtension().lastPathComponent) {
-                ScrollView {
-                    Text((try? String(contentsOf: file, encoding: .utf8)) ?? "")
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                        .padding()
-                }
-                .navigationTitle(file.deletingPathExtension().lastPathComponent)
-                .navigationBarTitleDisplayMode(.inline)
-            }
-        }
-        .navigationTitle("Acknowledgements")
-    }
-}

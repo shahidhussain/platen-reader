@@ -201,7 +201,9 @@ final class DiagnosticLog: @unchecked Sendable {
         return "\(app), \(system) \(osVersion), \(modelCode)"
     }
 
-    private static var modelCode: String {
+    /// The kind of device: its model code ("iPhone17,2", "Mac15,6"), never
+    /// the name its owner gave it.
+    static var modelCode: String {
         // In the Simulator the model is the Mac's; it says which device is simulated.
         if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
             return simulated + " (Simulator)"
