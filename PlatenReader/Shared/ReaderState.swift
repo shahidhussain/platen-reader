@@ -60,6 +60,10 @@ final class ReaderState: ObservableObject {
     @Published var language: String?
     /// Read aloud: what it is doing (the speaker button follows it).
     @Published var readAloud: ReadAloudPhase = .off
+    /// Counts the times read aloud ended without a sentence to speak (a
+    /// scanned PDF, pictures only), so the reader is told why it stopped
+    /// (`ReadAloudStarter`).
+    @Published var readAloudFoundNoText = 0
     @Published var isFixedLayout = false
     /// A PDF (shown by PDFKit) rather than a book: the text controls (font,
     /// size, spacing, line width) do not apply.

@@ -34,6 +34,8 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     private var model: PDFReaderModel?
     /// Read aloud, made the first time the speaker is tapped (PDFReadAloud).
     private var pdfReadAloud: PDFReadAloud?
+    /// The glow's wait for a zoom or move to settle (`ambientAfterZoom`).
+    private var ambientZoomWait: DispatchWorkItem?
     /// Read aloud is turning the page (so it is not a turn by hand).
     private var movingForReadAloud = false
     /// Read aloud's underline: annotations on the pages (never saved).
@@ -97,7 +99,13 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             self.pdfView.layoutIfNeeded()
             // PDFKit draws the new page a moment later; wait for it, so the
             // picture of the new page (for a curl) is not blank.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { done(self.currentIndex != before) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                // PDFKit can drop the page to its own, smaller fit as it
+                // turns (a swipe let go part-way turns underneath and back,
+                // and the page came back slightly zoomed out): fill again.
+                self.refitIfShrunk()
+                done(self.currentIndex != before)
+            }
         })
 
     init(url: URL) {
@@ -437,7 +445,12 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         if pinch.state == .began { setPDFScrolling(true) }
         guard pinch.state == .ended || pinch.state == .changed, let fit = fitScale, fit > 0 else { return }
         readerZoom = max(1, pdfView.scaleFactor / fit)
-        if pinch.state == .ended { updatePDFScrolling() }
+        if pinch.state == .ended {
+            updatePDFScrolling()
+            ambientAfterZoom() // the glow follows, once the zoom settles
+        } else {
+            ambientZoomWait?.cancel() // not while the fingers are still moving
+        }
     }
 
     /// PDFKit's own scroll views, inside the PDF view (new ones after each
@@ -514,6 +527,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             pdfView.scaleFactor = fit * factor // as a pinch would
             readerZoom = CGFloat(factor)
             reportPage()
+            ambientAfterZoom()
         } else if step == "@fit" {
             zoomToFit()
         } else if step == "@readAloudPreview:" {
@@ -522,6 +536,25 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             if let document = pdfView.document {
                 log.notice("step result: read aloud: \(PDFReadAloud.preview(of: document), privacy: .public)")
             }
+        } else if step.hasPrefix("@swipeback:") {
+            // A swipe let go part of the way across, which springs back to
+            // the same page ("@swipeback:left").
+            let towardsLeft = step.hasSuffix("left")
+            let request: PageTurn = towardsLeft ? .right : .left
+            let distance = pdfView.bounds.width * 0.15 * (towardsLeft ? -1 : 1)
+            pageTurner.beginSwipe(request, leafMovesLeft: towardsLeft)
+            for i in 1...10 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.03 * Double(i)) { [weak self] in
+                    self?.pageTurner.moveSwipe(translation: distance * Double(i) / 10)
+                    if i == 10 { self?.pageTurner.endSwipe(velocity: 0, cancelled: false) }
+                }
+            }
+        } else if step == "@ambient" {
+            // What the glow is made from now.
+            log.notice("step result: ambient \(self.ambientKey ?? "", privacy: .public)")
+        } else if step == "@scale" {
+            // The PDF's scale against the fit for the pages on show.
+            log.notice("step result: scale \(self.pdfView.scaleFactor, format: .fixed(precision: 4)) fit \(self.fitScale ?? 0, format: .fixed(precision: 4)) pages \(self.visiblePages.map(String.init).joined(separator: ","), privacy: .public)")
         } else if step.hasPrefix("@swipe:") {
             // A finger drawn across the page: left brings the next page.
             let towardsLeft = step.hasSuffix("left")
@@ -600,17 +633,36 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         return true
     }
 
+    /// PDFKit can drop the page to its own, slightly smaller fit while a
+    /// swipe moves it (turning underneath and back when the swipe is let go
+    /// part-way, or at the first or last page): the page came back slightly
+    /// zoomed out (the reader saw it in landscape, 24 Nov 2026). Fills the
+    /// screen again if so; a zoom the reader chose is above the fit, so it
+    /// is kept.
+    private func refitIfShrunk() {
+        if let fit = fitScale, pdfView.scaleFactor < fit * 0.995 { fillScreen() }
+    }
+
+    /// The same, once PDFKit has finished moving.
+    private func refitSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.refitIfShrunk() }
+    }
+
     private func configurePageTurner() {
         // A turn past the first or last page says so, rather than just not
         // moving. (Swipes ask for .left or .right, not .next or .prev, so
         // the direction is read from isForward.)
         pageTurner.onEdge = { [weak self] request in
+            self?.refitSoon()
             self?.chrome.showNotice(request.isForward ? String(localized: "End of document")
                                                       : String(localized: "Start of document"))
         }
         // Slides and swipes fade the glow behind the pages in step with them.
         pageTurner.slideProgress = { [weak self] progress in self?.ambient.slide(to: progress) }
-        pageTurner.slideEnded = { [weak self] turned in self?.ambient.endSlide(turned: turned) }
+        pageTurner.slideEnded = { [weak self] turned in
+            self?.ambient.endSlide(turned: turned)
+            self?.refitSoon()
+        }
         // Only the page curls (or the spread, in landscape), not the
         // background around it; its back is paper, whatever the theme.
         pageTurner.curlRegion = { [weak self] in self?.pageRegion }
@@ -847,7 +899,12 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
             return nil
         }
         scrollObservation = firstScrollView(in: pdfView)?.observe(\.contentOffset, options: []) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.placeRibbon() }
+            MainActor.assumeIsolated {
+                self?.placeRibbon()
+                // Zooming and moving about change what is on screen: the
+                // glow follows once they stop.
+                self?.ambientAfterZoom()
+            }
         }
     }
 
@@ -952,7 +1009,31 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     /// The ambient background for the pages on screen, faded in over the
     /// last one. Remade only when the pages or the theme change.
-    private func updateAmbient() {
+    /// The parts of the pages on screen while the reader is zoomed in (each
+    /// page and the region of it showing, in the page's own coordinates);
+    /// nil when the pages are shown whole.
+    private var zoomedParts: [(page: PDFPage, region: CGRect)]? {
+        guard let fit = fitScale, pdfView.scaleFactor > fit * 1.01, let document = pdfView.document else { return nil }
+        let parts = visiblePages.compactMap { index -> (page: PDFPage, region: CGRect)? in
+            guard let page = document.page(at: index) else { return nil }
+            let shown = pdfView.convert(pdfView.bounds, to: page).intersection(page.bounds(for: pdfView.displayBox))
+            return shown.isNull || shown.isEmpty ? nil : (page, shown)
+        }
+        return parts.isEmpty ? nil : parts
+    }
+
+    /// The glow follows a zoom (spec: it reflects what is on screen): left
+    /// as it is while the reader pinches or moves about, then, once the
+    /// view has been still for a moment, made from the part now on screen
+    /// and faded in from the old one.
+    private func ambientAfterZoom() {
+        ambientZoomWait?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.updateAmbient(fade: true) }
+        ambientZoomWait = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    private func updateAmbient(fade: Bool = false) {
         // New pages or a new glow: do the controls need bands?
         scheduleBandCheck()
         // Off (Aa > Ambient Light): the theme's plain colour shows through.
@@ -963,10 +1044,27 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         guard glow, let document = pdfView.document else { return }
         let indexes = visiblePages
         let theme = currentTheme.uiBackground
-        let key = ambientKey(indexes, theme)
+        // Zoomed in: the glow of the part on screen (its region, to the
+        // nearest few points, is part of the key).
+        let zoomed = zoomedParts
+        let regions = zoomed.map { parts in
+            parts.map { p in "\(Int(p.region.minX / 8)),\(Int(p.region.minY / 8)),\(Int(p.region.width / 8)),\(Int(p.region.height / 8))" }
+                .joined(separator: ";")
+        }
+        let key = ambientKey(indexes, theme) + (regions.map { " zoom " + $0 } ?? "")
         guard key != ambientKey, !indexes.isEmpty else { return }
         ambientKey = key
-        if let ready = ambientCache[key] {
+        if let zoomed {
+            PDFAmbientBackground.make(for: zoomed, theme: theme) { [weak self] image in
+                guard let self, self.ambientKey == key, let image else { return }
+                self.ambient.show(image, fade: UIAccessibility.isReduceMotionEnabled ? 0 : 0.5)
+            }
+            return
+        }
+        if let ready = ambientCache[key], fade {
+            // Zoomed back out: the whole pages' glow, faded in.
+            ambient.show(ready, fade: UIAccessibility.isReduceMotionEnabled ? 0 : 0.5)
+        } else if let ready = ambientCache[key] {
             if pageTurner.isCurling && !UIAccessibility.isReduceMotionEnabled {
                 // A curl: only the page curls, while the glow behind it
                 // stays. It fades from the old page's to the new over the

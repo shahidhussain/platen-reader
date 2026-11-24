@@ -64,9 +64,25 @@ final class ReadAloudStarter {
     /// have settled there (`pageMovedByHand`).
     private var handMoveRestart: DispatchWorkItem?
 
+    /// Watches for reading that found no text, to say so.
+    private var noTextWatch: AnyCancellable?
+
     init(state: ReaderState, host: ReadAloudHost) {
         self.state = state
         self.host = host
+        noTextWatch = state.$readAloudFoundNoText
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.sayThereIsNoText() }
+    }
+
+    /// Reading stopped at once because there is no text from here on (a
+    /// scanned PDF: pictures of pages): says so, rather than just stopping.
+    private func sayThereIsNoText() {
+        log.info("read aloud: no text to read")
+        host?.readAloudAsk(message: String(localized: "There’s no readable text here. Scanned books and PDFs hold pictures of their pages, not text that can be read aloud."),
+                           buttons: [ReadAloudPromptButton(title: String(localized: "OK")) {}],
+                           cancellable: false)
     }
 
     private var settings: ReadAloudSettings { .shared }
@@ -88,6 +104,9 @@ final class ReadAloudStarter {
     /// are on; if it was paused, it stops, so the speaker starts there.
     func pageMovedByHand() {
         guard state.readAloud != .off else { return }
+        // At once: the page no longer follows the voice, so the sentence
+        // still being read does not turn it back while the reader settles.
+        source?.holdReadAloudPage()
         handMoveRestart?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.restartHere() }
         handMoveRestart = work

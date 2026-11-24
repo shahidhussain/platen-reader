@@ -37,6 +37,9 @@ final class PDFReadAloud: ReadAloudSource {
     /// Bumped by every start and stop, so text read for an earlier start is
     /// dropped.
     private var generation = 0
+    /// Whether the page follows the voice; off once the reader moves the
+    /// page themselves, until the next start (`holdReadAloudPage`).
+    private var following = true
 
     init(model: PDFReaderModel, host: PDFReadAloudHost) {
         state = model.state
@@ -60,6 +63,7 @@ final class PDFReadAloud: ReadAloudSource {
     func startReadAloud(engine: SpeechEngine) {
         stopReadAloud()
         generation += 1
+        following = true
         sentences.removeAll()
         let controller = ReadAloudController(engine: engine, language: readAloudLanguage)
         controller.onPhase = { [weak self] phase in
@@ -67,6 +71,7 @@ final class PDFReadAloud: ReadAloudSource {
             if phase == .off { self?.ended() }
         }
         controller.requestNext = { [weak self] in self?.readMore() }
+        controller.onNothingToRead = { [weak self] in self?.state.readAloudFoundNoText += 1 }
         controller.mark = { [weak self] mark in self?.sentenceStarted(mark) }
         controller.markWord = { [weak self] mark, start, length in self?.wordStarted(mark, start: start, length: length) }
         self.controller = controller
@@ -78,6 +83,13 @@ final class PDFReadAloud: ReadAloudSource {
 
     func pauseReadAloud() { controller?.pause() }
     func skipReadAloud(by delta: Int) { controller?.skip(by: delta) }
+
+    /// The reader moved the page: no turning back to the sentence still
+    /// being read (until reading starts again from their page).
+    func holdReadAloudPage() {
+        following = false
+        host?.readAloudUnderline([])
+    }
     func resumeReadAloud() { controller?.resume() }
     func stopReadAloud() { controller?.stop() }
 
@@ -111,7 +123,7 @@ final class PDFReadAloud: ReadAloudSource {
     /// A sentence is starting: its page is shown. (The underline waits for
     /// its first word.)
     private func sentenceStarted(_ mark: String) {
-        guard let sentence = sentences[mark] else { return }
+        guard following, let sentence = sentences[mark] else { return }
         if let first = PDFReadAloudText.ranges(in: sentence.runs, start: sentence.start, length: 1).first {
             host?.readAloudShow(page: first.page)
         }
@@ -121,7 +133,7 @@ final class PDFReadAloud: ReadAloudSource {
 
     /// A word is starting: it is underlined, on whichever page it is.
     private func wordStarted(_ mark: String, start: Int, length: Int) {
-        guard let sentence = sentences[mark] else { return }
+        guard following, let sentence = sentences[mark] else { return }
         let ranges = PDFReadAloudText.ranges(in: sentence.runs, start: sentence.start + start, length: length)
         guard let first = ranges.first else { return }
         host?.readAloudShow(page: first.page)

@@ -60,6 +60,17 @@ final class ReadAloudStarterTests: XCTestCase {
         XCTAssertEqual(host.downloads, 1)
     }
 
+    /// While reading, moving the page stops the page following the voice
+    /// at once (it used to turn straight back to the sentence being read),
+    /// before reading starts again from the new page.
+    func testMovingThePageWhileReadingHoldsThePageAtOnce() {
+        let (state, source, host) = make()
+        let starter = ReadAloudStarter(state: state, host: host)
+        state.readAloud = .playing
+        starter.pageMovedByHand()
+        XCTAssertEqual(source.calls, ["hold"])
+    }
+
     func testMovingThePageWhileOffDoesNothing() {
         let (state, source, host) = make()
         let starter = ReadAloudStarter(state: state, host: host)
@@ -78,9 +89,24 @@ final class ReadAloudStarterTests: XCTestCase {
         let waited = expectation(description: "past the restart delay")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { waited.fulfill() }
         wait(for: [waited], timeout: 2)
-        // Paused: it stops (so the speaker starts again on the new page),
-        // rather than reading from there.
-        XCTAssertEqual(source.calls, ["stop"])
+        // The page stops following the voice at once; then, paused, it
+        // stops (so the speaker starts again on the new page), rather than
+        // reading from there.
+        XCTAssertEqual(source.calls, ["hold", "stop"])
+    }
+
+    /// Reading that ends with nothing to say (a scanned PDF) is explained,
+    /// rather than just stopping.
+    func testReadingThatFindsNoTextSaysSo() {
+        let (state, _, host) = make()
+        let starter = ReadAloudStarter(state: state, host: host)
+        state.readAloudFoundNoText += 1
+        let waited = expectation(description: "the message")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { waited.fulfill() }
+        wait(for: [waited], timeout: 2)
+        XCTAssertEqual(host.questions.count, 1)
+        XCTAssertTrue(host.questions.first?.message.contains("no readable text") == true)
+        withExtendedLifetime(starter) {}
     }
 
     private func make() -> (ReaderState, FakeSource, FakeHost) {
@@ -101,6 +127,7 @@ private final class FakeSource: ReadAloudSource {
     func resumeReadAloud() { calls.append("resume") }
     func stopReadAloud() { calls.append("stop") }
     func skipReadAloud(by delta: Int) { calls.append("skip \(delta)") }
+    func holdReadAloudPage() { calls.append("hold") }
 }
 
 @MainActor

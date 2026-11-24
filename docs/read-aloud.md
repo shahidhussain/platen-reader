@@ -458,6 +458,24 @@ The Mac reads aloud as iOS does, from the same shared code:
 - Debug steps on both readers: `@readaloud`, `@readaloud:stop`,
   `@voice:<choice>`, `@skip:<±1>`; `@snappage` on PDFs.
 
+## Sentences, hyphens and books with no text (24 Nov 2026)
+
+- Hard-wrapped books. `Intl.Segmenter` ends a sentence at every line feed,
+  so books whose paragraphs are wrapped in the source (pandoc's EPUBs, such
+  as the reader's Harry Potter and the Methods of Rationality) were read in
+  fragments, pausing mid-sentence at each line's end. foliate's `tts.js` now
+  treats line breaks as spaces (VENDORED.md). Fixture `hard-wrapped.epub`.
+- Titles and initials. The segmenter also ended a sentence after "Mr.",
+  "Prof.", "St." and every initial ("J. K. Rowling"); a sentence ending in
+  one of those is now joined to the next.
+- Hyphens. Apple's tagger splits "inter-train" at the hyphen, and Misaki
+  gave the hyphen a dash's pause ("—"). A hyphen inside a word is now a
+  plain word gap (`EnglishG2P.isHyphenInWord`); a real dash keeps its pause.
+- No text. A book with nothing to read from the page on (a scanned PDF)
+  says so ("There's no readable text here…") instead of just stopping.
+- `platen.readAloudSentences(n)` lists the first sentences read aloud would
+  speak from the chapter on screen, for checks.
+
 ## Still to do
 
 - Reading at the lock screen on a device (the Simulator cannot lock).

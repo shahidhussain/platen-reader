@@ -328,6 +328,20 @@ final class EnglishG2P {
     }
   }
   
+  /// Platen: whether the token at `index` is a hyphen inside a word: "-"
+  /// (or the Unicode hyphen) touching a letter or digit on each side, with
+  /// no space either side.
+  static func isHyphenInWord(at index: Int, in tokens: [MToken]) -> Bool {
+    let token = tokens[index]
+    guard token.text == "-" || token.text == "\u{2010}", token.whitespace.isEmpty,
+          index > 0, index + 1 < tokens.count else { return false }
+    let before = tokens[index - 1], after = tokens[index + 1]
+    guard before.whitespace.isEmpty,
+          let last = before.text.last, last.isLetter || last.isNumber,
+          let first = after.text.first, first.isLetter || first.isNumber else { return false }
+    return true
+  }
+
   func retokenize(_ tokens: [MToken]) -> [Any] {
     var words: [Any] = []
     var currency: String? = nil
@@ -358,6 +372,14 @@ final class EnglishG2P {
         } else if token.tag == .otherWord, Lexicon.currencies[token.text] != nil {
           currency = token.text
           token.phonemes = ""
+          token.`_`.rating = 4
+        } else if EnglishG2P.isHyphenInWord(at: i, in: tokens) {
+          // Platen: a hyphen joining two parts of a word ("inter-train",
+          // "no-one") is a plain gap between them, not a dash's pause
+          // ("—", which Kokoro holds for a long beat: the reader heard it
+          // at every hyphenated word, 24 Nov 2026). Apple's tagger splits
+          // such words at the hyphen, as spaCy does for Misaki.
+          token.phonemes = " "
           token.`_`.rating = 4
         } else if token.tag == .dash || (token.tag == .punctuation && token.text == "–") {
           token.phonemes = "—"

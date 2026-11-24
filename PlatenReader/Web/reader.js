@@ -410,7 +410,9 @@ window.platen = {
     readAloudMark: name => readAloud.mark(name),
     readAloudWord: (name, start, length) => readAloud.word(name, start, length),
     readAloudStop: () => readAloud.stop(),
+    readAloudHold: () => readAloud.hold(),
     readAloudPreview: () => readAloud.preview(),
+    readAloudSentences: count => readAloud.sentences(count),
     measureText,
     setControlsVisible: on => document.getElementById('page-numbers')?.classList.toggle('under-controls', !!on),
     // For debugging and automated checks (scripts/run-debug.sh steps).
