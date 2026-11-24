@@ -66,8 +66,14 @@ enum BookFileType: String, CaseIterable, Identifiable, Sendable {
 /// How the folder view orders its books (folders always come first, by
 /// name).
 enum FolderSort: String, CaseIterable, Identifiable, Sendable {
-    case name, title, author, modified, created, size
+    case name, title, author, modified, created, size, random
     var id: String { rawValue }
+
+    /// The shuffle Random uses: books get a steady place from it, so the
+    /// order holds while the folder is browsed (and as its titles and covers
+    /// arrive), and changes when the app starts again or Random is chosen
+    /// anew (`BookTypeFilter.sort`).
+    nonisolated(unsafe) static var randomSeed = UInt64.random(in: .min ... .max)
 
     var label: String {
         switch self {
@@ -80,11 +86,13 @@ enum FolderSort: String, CaseIterable, Identifiable, Sendable {
         case .modified: return String(localized: "Date Modified")
         case .created: return String(localized: "Date Created")
         case .size: return String(localized: "Size")
+        case .random: return String(localized: "Random")
         }
     }
 
     /// Names, titles and authors A to Z; dates newest first; sizes largest
-    /// first. Ties by file name. Titles and authors come from `info` (what
+    /// first; Random in a shuffled order that stays put (`randomSeed`). Ties
+    /// by file name. Titles and authors come from `info` (what
     /// has been read of each book so far): a book with no title known sorts
     /// by its file name, and one with no author known goes after those
     /// with one. Authors sort as the book gives them (usually first name
@@ -96,8 +104,19 @@ enum FolderSort: String, CaseIterable, Identifiable, Sendable {
             let order = x.localizedStandardCompare(y)
             return order == .orderedSame ? nil : order == .orderedAscending
         }
+        let seed = Self.randomSeed
+        func shuffled(_ e: FolderEntry) -> Int {
+            var hasher = Hasher()
+            hasher.combine(seed)
+            hasher.combine(e.url.path)
+            return hasher.finalize()
+        }
         return entries.sorted { a, b in
             if a.kind != b.kind { return a.kind == .folder }
+            if a.kind == .book, self == .random {
+                let x = shuffled(a), y = shuffled(b)
+                if x != y { return x < y }
+            }
             if a.kind == .book, self != .name {
                 switch self {
                 case .title:
@@ -165,7 +184,13 @@ final class BookTypeFilter: ObservableObject {
     static let shared = BookTypeFilter(defaults: AppDefaults.store)
 
     @Published private(set) var hidden: Set<BookFileType>
-    @Published var sort: FolderSort { didSet { defaults.set(sort.rawValue, forKey: "folderSort") } }
+    @Published var sort: FolderSort {
+        didSet {
+            defaults.set(sort.rawValue, forKey: "folderSort")
+            // Choosing Random again (from another order) shuffles anew.
+            if sort == .random, oldValue != .random { FolderSort.randomSeed = .random(in: .min ... .max) }
+        }
+    }
     @Published var coverLabel: CoverLabel { didSet { defaults.set(coverLabel.rawValue, forKey: "folderCoverLabel") } }
     /// Covers across, when the reader has pinched (nil: the default for the
     /// screen).
