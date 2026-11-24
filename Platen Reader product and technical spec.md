@@ -353,6 +353,8 @@ Opening odd and broken files gracefully is the product's main quality bar; every
 | Zip problems (wrong `mimetype` position, extra data, Zip64) | Tolerated where the content is still readable |
 | Very large books (300 MB illustrated) | Lazy entry loading; no full read into memory |
 | Corrupt or truncated zip | Opens what can be read, reports the rest |
+| MOBI (MOBI 6) with a picture | Text and picture shown |
+| AZW3 (KF8) whose pictures keep the EPUB's `srcset` (as Standard Ebooks' do) | Pictures shown: the srcset's file paths, which a KF8 book does not have, are ignored |
 | PDF read aloud, with running headers, footers and page numbers | Read as a reader would: headers, footers and page numbers left out, words hyphenated across lines joined, sentences across pages read whole |
 
 **Test corpus**

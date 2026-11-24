@@ -5,18 +5,6 @@ const unescapeHTML = str => {
     return textarea.value
 }
 
-// Platen: a picture's type from its first bytes (PNG, JPEG, GIF, BMP), for
-// MOBI records, which do not say.
-const sniffImageType = raw => {
-    const b = raw instanceof ArrayBuffer ? new Uint8Array(raw, 0, Math.min(4, raw.byteLength))
-        : new Uint8Array(raw.buffer, raw.byteOffset, Math.min(4, raw.byteLength))
-    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
-    if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg'
-    if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif'
-    if (b[0] === 0x42 && b[1] === 0x4d) return 'image/bmp'
-    return ''
-}
-
 const MIME = {
     XML: 'application/xml',
     XHTML: 'application/xhtml+xml',
@@ -802,9 +790,7 @@ class MOBI6 {
     async loadResource(index) {
         if (this.#resourceCache.has(index)) return this.#resourceCache.get(index)
         const raw = await this.mobi.loadResource(index)
-        // Platen: typed from the picture's first bytes; WebKit will not draw
-        // a picture from a blob with no type.
-        const url = URL.createObjectURL(new Blob([raw], { type: sniffImageType(raw) }))
+        const url = URL.createObjectURL(new Blob([raw]))
         this.#resourceCache.set(index, url)
         return url
     }
@@ -1109,8 +1095,9 @@ class KF8 {
         const newType = await event.detail.type
         const doc = newType === MIME.SVG ? this.parser.parseFromString(newData, newType) : null
         // Platen: `{ type: newType }` (upstream passed `{ newType }`, which a
-        // Blob ignores, so every KF8 picture was a blob with no type, and
-        // WebKit would not draw it: AZW3 covers and plates came out blank).
+        // Blob ignores, so KF8 resources had no type; WebKit sniffs pictures
+        // anyway, so this alone was not what broke them: see `srcset` in
+        // replaceResources).
         return [new Blob([newData], { type: newType }),
             // SVG wrappers need to be inlined
             // as browsers don't allow external resources when loading SVG as an image

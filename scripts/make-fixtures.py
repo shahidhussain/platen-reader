@@ -250,6 +250,138 @@ def simple_pdf(path, title, chapters, pages_per_chapter=2, doc_id="9F86D081884C7
     open(path, "wb").write(bytes(out))
 
 
+# ---------------------------------------------------------------------------
+# MOBI and AZW3 (KF8), written by hand to what foliate-js's mobi.js reads.
+# Kindle files are Palm databases: a header, a list of record offsets, then
+# the records. Record 0 holds the PalmDOC header, the MOBI header (version 6
+# for MOBI, 8 for AZW3) and an EXTH block (title, author); then come the
+# book's text records (here uncompressed) and, for KF8, the indexes that say
+# how the text is cut into pages; pictures are records of their own.
+
+def _mobi_varlen(value):
+    """A forward variable-length number: seven bits a byte, most significant
+    first, the last byte marked by its top bit (as mobi.js's getVarLen)."""
+    groups = [value & 0x7F]
+    value >>= 7
+    while value:
+        groups.insert(0, value & 0x7F)
+        value >>= 7
+    groups[-1] |= 0x80
+    return bytes(groups)
+
+
+def _palm_database(name, records):
+    """The Palm database: name, type BOOK, creator MOBI, the record offsets,
+    two bytes of padding, then the records."""
+    header = bytearray(78)
+    header[0:len(name[:31])] = name[:31].encode("ascii", "replace")
+    header[60:68] = b"BOOKMOBI"
+    struct.pack_into(">H", header, 76, len(records))
+    offset = 78 + 8 * len(records) + 2
+    table = bytearray()
+    for i, record in enumerate(records):
+        table += struct.pack(">IB3s", offset, 0, (2 * i).to_bytes(3, "big"))
+        offset += len(record)
+    return bytes(header + table + b"\0\0" + b"".join(records))
+
+
+def _record0(title, author, version, text_length, text_records, first_resource, kf8=None):
+    """Record 0: PalmDOC header, MOBI header (248 bytes from its magic), EXTH,
+    then the title. No index is 0xFFFFFFFF."""
+    none = 0xFFFFFFFF
+    head = bytearray(16 + 248)
+    struct.pack_into(">HHIHHHH", head, 0, 1, 0, text_length, text_records, 4096, 0, 0)  # uncompressed, no DRM
+    head[16:20] = b"MOBI"
+    struct.pack_into(">IIII", head, 20, 248, 2, 65001, 0x0B00C0DE)  # length, type book, UTF-8, uid
+    struct.pack_into(">I", head, 36, version)
+    for offset in range(40, 264, 4):
+        if offset not in (84, 88, 92, 108, 128, 240):
+            struct.pack_into(">I", head, offset, none)
+    struct.pack_into(">I", head, 92, 9)  # English
+    struct.pack_into(">I", head, 108, first_resource)
+    struct.pack_into(">I", head, 128, 0x40)  # has EXTH
+    struct.pack_into(">I", head, 240, 0)  # no trailing entries
+    if kf8:
+        struct.pack_into(">II", head, 192, kf8["fdst"], 1)
+        struct.pack_into(">II", head, 248, kf8["frag"], kf8["skel"])
+    exth_records = [(100, author.encode()), (503, title.encode())]
+    body = b"".join(struct.pack(">II", kind, len(data) + 8) + data for kind, data in exth_records)
+    exth = b"EXTH" + struct.pack(">II", 12 + len(body), len(exth_records)) + body
+    exth += b"\0" * (-len(exth) % 4)
+    struct.pack_into(">II", head, 84, len(head) + len(exth), len(title.encode()))
+    record = bytes(head) + exth + title.encode()
+    return record + b"\0" * (-len(record) % 4)
+
+
+def _text_records(text):
+    return [text[i:i + 4096] for i in range(0, len(text), 4096)] or [b""]
+
+
+def mobi6(path, title, author, html, pictures):
+    """A MOBI 6 book: HTML text (pictures as <img recindex="0000N">), the
+    pictures as records after the text."""
+    texts = _text_records(html)
+    first_resource = 1 + len(texts)
+    record0 = _record0(title, author, 6, len(html), len(texts), first_resource)
+    open(path, "wb").write(_palm_database(title, [record0] + texts + list(pictures)))
+
+
+def _indx(entries, tags, cncx_records=0):
+    """An index: its header record (with the TAGX tag table) and one data
+    record of entries. `tags` are (tag, values per entry, mask); every
+    entry has every tag once, so its control byte is the masks' sum (each
+    mask's lowest bit set). An entry is (name, [values for each tag])."""
+    header = bytearray(192)
+    header[0:4] = b"INDX"
+    struct.pack_into(">II", header, 4, 192, 0)
+    struct.pack_into(">IIIII", header, 20, 0, 1, 65001, 0xFFFFFFFF, len(entries))  # idxt, records, UTF-8, language, total
+    struct.pack_into(">I", header, 52, cncx_records)
+    tagx = b"".join(bytes([tag, count, mask, 0]) for tag, count, mask in tags) + bytes([0, 0, 0, 1])
+    header += b"TAGX" + struct.pack(">II", 12 + len(tagx), 1) + tagx
+    control = sum(mask & -mask for _, _, mask in tags)
+    data = bytearray(192)
+    data[0:4] = b"INDX"
+    offsets = []
+    for name, values in entries:
+        offsets.append(len(data))
+        data += bytes([len(name)]) + name.encode() + bytes([control])
+        for value in values:
+            data += _mobi_varlen(value)
+    data += b"\0" * (-len(data) % 4)
+    idxt = len(data)
+    data += b"IDXT" + b"".join(struct.pack(">H", o) for o in offsets)
+    data += b"\0" * (-len(data) % 4)
+    struct.pack_into(">II", data, 4, 192, 1)
+    struct.pack_into(">II", data, 20, idxt, len(entries))
+    return [bytes(header), bytes(data)]
+
+
+def azw3(path, title, author, skeleton, fragment, pictures):
+    """An AZW3 (KF8) book of one page: `skeleton` is its XHTML with the body
+    empty, `fragment` the body's content, inserted before </body> (KF8 keeps
+    a page as a skeleton and fragments, which the reader puts back
+    together); pictures are kindle:embed:000N resources."""
+    insert = skeleton.index(b"</body>")
+    text = skeleton + fragment
+    texts = _text_records(text)
+    t = len(texts)
+    selector = b"P-//*[@aid='0']"
+    frag = _indx([(f"{insert:010d}", [0, 0, 0, 0, len(fragment)])],
+                 [(2, 1, 0x01), (3, 1, 0x02), (4, 1, 0x04), (6, 2, 0x08)], cncx_records=1)
+    cncx = _mobi_varlen(len(selector)) + selector
+    cncx += b"\0" * (-len(cncx) % 4)
+    skel = _indx([("SKEL0000000000", [1, 0, len(skeleton)])], [(1, 1, 0x03), (6, 2, 0x0C)])
+    # FDST: where each flow is in the text; one flow, all of it. (The table
+    # starts at 12, right after the count.)
+    fdst = b"FDST" + struct.pack(">II", 12, 1) + struct.pack(">II", 0, len(text))
+    # Records (counted from 0): 0, text 1..t, frag index t+1 (header),
+    # t+2 (data), t+3 (CNCX), skeleton index t+4 and t+5, FDST t+6, pictures.
+    record0 = _record0(title, author, 8, len(text), t, t + 7,
+                       kf8={"fdst": t + 6, "frag": t + 1, "skel": t + 4})
+    records = [record0] + texts + frag + [cncx] + skel + [fdst] + list(pictures)
+    open(path, "wb").write(_palm_database(title, records))
+
+
 def text_pdf(path, title, pages, doc_id="5D41402ABC4B2A76B9719D911017C592"):
     """A PDF of text pages as a printed book has them: each page is
     (header, body lines, footer), the header at the top, the footer at the
@@ -519,6 +651,30 @@ def main():
 
     # A picture book with square pages: Two Pages shows two side by side in
     # landscape (they were taken for spreads, and shown one at a time).
+    # MOBI and AZW3 with a picture (foliate's mobi.js; VENDORED.md, 23 Nov
+    # 2026). The picture must draw: MOBI pictures had no type (WebKit would
+    # not draw them); AZW3 pictures had none either (a typo), and carried
+    # the EPUB's srcset, whose files a KF8 book does not have, so a Retina
+    # screen fetched those instead.
+    plate = png(120, 80, (180, 60, 40))
+    words = " ".join(["The lighthouse keeper climbed the stairs at dusk."] * 4)
+    html = ('<html><head><title>Lamp</title></head><body>'
+            '<h1>Chapter One</h1><p><img recindex="00001" alt="A plate"/></p>'
+            f'<p>{words}</p><mbp:pagebreak/><h1>Chapter Two</h1><p>{words}</p></body></html>').encode()
+    p = os.path.join(OUT, "mobi-picture.mobi")
+    mobi6(p, "The Lamp Room", "Mo Bee", html, [plate])
+    made.append(p)
+    skeleton = ('<?xml version="1.0" encoding="utf-8"?>'
+                '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Harbour</title></head>'
+                '<body aid="0"></body></html>').encode()
+    fragment = ('<div aid="1"><h1>The Harbour</h1>'
+                '<p><img src="kindle:embed:0001?mime=image/png" '
+                'srcset="../images/harbour-2x.png 2x, ../images/harbour.png 1x" alt="A harbour"/></p>'
+                f'<p>{words}</p></div>').encode()
+    p = os.path.join(OUT, "azw3-picture.azw3")
+    azw3(p, "The Harbour Wall", "Kay Eff", skeleton, fragment, [plate])
+    made.append(p)
+
     # A PDF laid out as a printed book: a running header, "Page N" footers,
     # a word hyphenated across lines and a sentence running onto the next
     # page (read aloud leaves out the header and footers, joins the rest).
