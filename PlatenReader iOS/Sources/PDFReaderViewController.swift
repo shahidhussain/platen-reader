@@ -773,7 +773,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// Where the ribbon goes, in this view's coordinates: over the top edge
     /// of the bookmarked page (in a spread, the right-hand page if both are,
     /// or neither yet), a little in from its right corner, starting just
-    /// above the edge as if it came from the binding. Kept on screen when
+    /// at the edge. Kept on screen when
     /// the page is zoomed or scrolled past.
     private func ribbonFrame() -> CGRect? {
         let visible = visiblePages
@@ -783,7 +783,10 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         let size = BookmarkRibbonView.size
         let safe = view.bounds.inset(by: view.safeAreaInsets)
         let x = min(pageRect.maxX - 18 - size.width, safe.maxX - 12 - size.width)
-        var y = max(pageRect.minY - 4, 0)
+        // From the page's top edge, not above it: a curl turns only the
+        // page, so a ribbon reaching above it showed its top before the
+        // rest of it curled in (device testing, 25 Nov 2026).
+        var y = max(pageRect.minY, 0)
         if state.flow == .scrolled { y = max(y, safe.minY) }
         return CGRect(x: x, y: y, width: size.width, height: size.height)
     }
@@ -1007,13 +1010,28 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// made a moment later, so it is kept out of sight until the page has
     /// landed and then fades in, as it does after any open; drawn into the
     /// picture, it would have jumped in at the hand-over.
-    override func pressPicture(_ done: @escaping (UIImage?) -> Void) {
+    override func pressPicture(_ done: @escaping (UIImage?, UIImage?) -> Void) {
         ambient.alpha = 0
         // Taken a couple of frames after the page is shown, once PDFKit has
-        // fitted it (at once, the page was still half-size).
+        // fitted it (at once, the page was still half-size). With Ambient
+        // Light, the glow (made in the background as the page is shown) is
+        // waited for, briefly, so the press can bring it in with the page.
+        let glowing = !ambient.isHidden
+        let started = CACurrentMediaTime()
+        func take() {
+            guard ambient.image == nil, glowing, CACurrentMediaTime() - started < 0.4 else {
+                let glow = glowing ? ambient.image : nil
+                return done(drawPagesOnScreen(clearAround: glow != nil), glow)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+                guard self != nil else { return done(nil, nil) }
+                take()
+            }
+        }
         DispatchQueue.main.async {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                done(self?.drawPagesOnScreen())
+                guard self != nil else { return done(nil, nil) }
+                take()
             }
         }
     }
@@ -1022,11 +1040,12 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// them, on the theme's colour (inverted, with Invert Colours, as the
     /// page area is). Not a picture of PDFKit's views: those draw the room
     /// round the pages solid black.
-    private func drawPagesOnScreen() -> UIImage? {
+    /// `clearAround`: see-through round the pages, over the glow.
+    private func drawPagesOnScreen(clearAround: Bool = false) -> UIImage? {
         let bounds = view.bounds
         guard bounds.width > 0, let document = pdfView.document else { return nil }
         let format = UIGraphicsImageRendererFormat.preferred()
-        format.opaque = true
+        format.opaque = !clearAround
         let box = pdfView.displayBox
         let pages: [(PDFPage, CGRect)] = visiblePages.compactMap { index in
             guard let page = document.page(at: index) else { return nil }
@@ -1037,8 +1056,10 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         let around = inverted ? (pageArea.backgroundColor ?? currentTheme.uiBackground) : currentTheme.uiBackground
         return UIGraphicsImageRenderer(bounds: bounds, format: format).image { context in
             let cg = context.cgContext
-            around.setFill()
-            UIRectFill(bounds)
+            if !clearAround {
+                around.setFill()
+                UIRectFill(bounds)
+            }
             for (page, rect) in pages {
                 UIColor.white.setFill()
                 UIRectFill(rect)
@@ -1061,9 +1082,12 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     }
 
     override func endPress() {
+        let glowShown = pressShowedGlow
         super.endPress()
         guard ambient.alpha < 1 else { return }
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.35) { self.ambient.alpha = 1 }
+        // Already on screen in the press: simply there. Else faded in.
+        let fade = glowShown || UIAccessibility.isReduceMotionEnabled ? 0 : 0.35
+        UIView.animate(withDuration: fade) { self.ambient.alpha = 1 }
     }
 
     // MARK: - Theme

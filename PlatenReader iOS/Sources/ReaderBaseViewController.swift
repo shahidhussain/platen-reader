@@ -206,8 +206,13 @@ class ReaderBaseViewController: UIViewController {
     private var pressHost: UIViewController?
     private var pressSkipper: PressSkipRecogniser?
 
-    /// A picture of the page area as it is now, for the press (subclasses).
-    func pressPicture(_ done: @escaping (UIImage?) -> Void) { done(nil) }
+    /// A picture of the page area as it is now, for the press, and the
+    /// ambient glow behind it if there is one (subclasses). Where the page
+    /// is see-through over the glow, so is the picture.
+    func pressPicture(_ done: @escaping (_ page: UIImage?, _ glow: UIImage?) -> Void) { done(nil, nil) }
+    /// Whether the press showed the glow, which is then already on screen
+    /// as it hands over (else the reader fades it in after).
+    private(set) var pressShowedGlow = false
 
     /// The first page is drawn, under the cover: press it into place, or
     /// just take the cover away.
@@ -221,10 +226,10 @@ class ReaderBaseViewController: UIViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             if self?.pressHost == nil { self?.endPress() }
         }
-        pressPicture { [weak self] image in
+        pressPicture { [weak self] image, glow in
             guard let self, self.pressCover != nil else { return }
             guard let image, let cgImage = image.cgImage else { return self.endPress() }
-            let play: () -> Void = { [weak self] in self?.playPress(cgImage, scale: image.scale) }
+            let play: () -> Void = { [weak self] in self?.playPress(cgImage, scale: image.scale, glow: glow?.cgImage) }
             if let wait = self.pressWaitsFor {
                 self.pressWaitsFor = nil
                 wait(play)
@@ -234,14 +239,14 @@ class ReaderBaseViewController: UIViewController {
         }
     }
 
-    private func playPress(_ image: CGImage, scale: CGFloat) {
+    private func playPress(_ image: CGImage, scale: CGFloat, glow: CGImage?) {
         guard let cover = pressCover, pressHost == nil else { return }
         var frozen: Double?
         #if DEBUG
         frozen = ProcessInfo.processInfo.environment["PLATEN_PRESS_FREEZE"].flatMap(Double.init)
         #endif
         let press = PlatenPressView(image: image, scale: scale,
-                                    background: Color(uiColor: currentTheme.uiBackground),
+                                    background: Color(uiColor: currentTheme.uiBackground), glow: glow,
                                     occasion: pressOccasion, start: .random(),
                                     reduceMotion: UIAccessibility.isReduceMotionEnabled,
                                     frozenAt: frozen) { [weak self] in self?.endPress() }
@@ -255,6 +260,7 @@ class ReaderBaseViewController: UIViewController {
         cover.superview?.insertSubview(host.view, aboveSubview: cover)
         host.didMove(toParent: self)
         pressHost = host
+        pressShowedGlow = glow != nil
         // Over when its time is up (SwiftUI's own word that an animation
         // has ended did not always come).
         let length = UIAccessibility.isReduceMotionEnabled ? PlatenMotion.Press.reducedDuration : pressOccasion.duration
@@ -376,6 +382,12 @@ class ReaderBaseViewController: UIViewController {
         } else if step.hasPrefix("@theme:"), let choice = AppearanceChoice(rawValue: String(step.dropFirst(7))) {
             // "@theme:sepia": the page theme, as the Aa popover would set it.
             settings.appearance = choice
+        } else if step == "@bookmark" {
+            // "@bookmark": the Bookmark button (add, or remove).
+            commands.toggleBookmark()
+        } else if step.hasPrefix("@pageturn:"), let style = PageTurnStyle(rawValue: String(step.dropFirst(10))) {
+            // "@pageturn:curl|slide|none": Settings › Page Turn.
+            settings.pageTurnStyle = style
         } else if step.hasPrefix("@ambient:") {
             // "@ambient:on" / "@ambient:off": Aa > Ambient Light.
             settings.ambientLight = step.hasSuffix(":on")

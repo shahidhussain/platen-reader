@@ -43,8 +43,12 @@ final class PlatenPressTests: XCTestCase {
         XCTAssertEqual(faded.opacity, 1)
         XCTAssertLessThan(faded.scale, 1)
 
+        XCTAssertLessThan(faded.glow, 1)
+        XCTAssertEqual(PressPose(progress: 0, start: start).glow, 0, "the page's colour at first")
+
         let near = PressPose(progress: press.scaleAndBlurEnd, start: start)
         XCTAssertEqual(near.scale, 1)
+        XCTAssertEqual(near.glow, 1, "the glow is all there once the page is full size")
         XCTAssertEqual(near.blur, 0)
         XCTAssertNotEqual(near.turn, 0)
 

@@ -26,7 +26,7 @@ import UIKit
 ///   were tapped), `@turn:<left|right|next|prev>` (a page turn, curled if
 ///   that is the setting), `@doubleturn:<…>` (two turns 0.15 s apart, the second
 ///   while the first is drawn), `@snapshot` (a snapshot of the web view), `@theme:<light|sepia|dark|black>`, `@orientation` (logs the device's
-///   and the app's orientation), `@ambient:<on|off>`,
+///   and the app's orientation), `@bookmark`, `@pageturn:<curl|slide|none>`, `@ambient:<on|off>`,
 ///   `@layout:<one|two|scroll>`, `@rotate:<landscape|portrait>`,
 ///   `@controls:<show|hide>`, `@shot:<name>` (saves the window as
 ///   tmp/shots/<name>.png in the app's container), `@wait` (nothing),

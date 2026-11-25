@@ -316,26 +316,49 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// it), so it is kept out of sight until the page has landed and then
     /// fades in; drawn into the picture, it would have jumped in at the
     /// hand-over.
-    override func pressPicture(_ done: @escaping (UIImage?) -> Void) {
+    override func pressPicture(_ done: @escaping (UIImage?, UIImage?) -> Void) {
+        // With Ambient Light, the glow is made first (as a page turn makes
+        // it), so the press can bring it in with the page; it stays out of
+        // sight until the page has landed.
         ambient.alpha = 0
-        pageSnapshot(nil) { [weak self] image in
-            guard let self, let image, let cgImage = image.cgImage else { return done(image) }
-            // WebKit's picture can have an opaque black strip where the
-            // status bar would be (the Simulator, 25 Nov 2026), which is not
-            // on screen: painted over in the page's colour, so nothing jumps
-            // at the hand-over.
-            let strip = CGFloat(Self.blackRowsAtTop(of: cgImage)) / image.scale
-            let theme = self.currentTheme.uiBackground
-            let bounds = CGRect(origin: .zero, size: image.size)
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = image.scale
-            format.opaque = true
-            done(UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
-                theme.setFill()
-                UIRectFill(bounds)
-                image.draw(in: bounds)
-                if strip > 0 { UIRectFill(CGRect(x: 0, y: 0, width: bounds.width, height: strip)) }
-            })
+        let glowing = usesAmbientLight
+        let take = { [weak self] in
+            guard let self else { return done(nil, nil) }
+            let glow = glowing ? self.ambient.image : nil
+            self.pageSnapshot(nil) { [weak self] image in
+                guard let self, let image, let cgImage = image.cgImage else { return done(image, glow) }
+                // WebKit's picture can have an opaque black strip where the
+                // status bar would be (the Simulator, 25 Nov 2026), which is
+                // not on screen: cleared, so the page's colour or the glow
+                // shows there, as on screen.
+                let strip = CGFloat(Self.blackRowsAtTop(of: cgImage)) / image.scale
+                let theme = self.currentTheme.uiBackground
+                let bounds = CGRect(origin: .zero, size: image.size)
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = image.scale
+                // See-through where the page is (over the glow), else on
+                // the page's colour.
+                format.opaque = glow == nil
+                done(UIGraphicsImageRenderer(bounds: bounds, format: format).image { context in
+                    if glow == nil {
+                        theme.setFill()
+                        UIRectFill(bounds)
+                    }
+                    image.draw(in: bounds)
+                    if strip > 0 {
+                        let top = CGRect(x: 0, y: 0, width: bounds.width, height: strip)
+                        if glow == nil { UIRectFill(top) } else { context.cgContext.clear(top) }
+                    }
+                }, glow)
+            }
+        }
+        // A page that is one picture (a cover) is shown natively a moment
+        // after the page itself: waited for, briefly, as a page turn does,
+        // so the press and its glow are of the page as it will stay (made
+        // at once, the glow was grey round a red cover).
+        settleLonePicture { [weak self] in
+            guard let self else { return done(nil, nil) }
+            if glowing { self.makeGlowNow(take) } else { take() }
         }
     }
 
@@ -366,9 +389,12 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     }
 
     override func endPress() {
+        let glowShown = pressShowedGlow
         super.endPress()
         guard ambient.alpha < 1 else { return }
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.35) { self.ambient.alpha = 1 }
+        // Already on screen in the press: simply there. Else faded in.
+        let fade = glowShown || UIAccessibility.isReduceMotionEnabled ? 0 : 0.35
+        UIView.animate(withDuration: fade) { self.ambient.alpha = 1 }
     }
 
     func sessionShowPicture(_ picture: ReaderMessage.Picture) {

@@ -148,6 +148,10 @@ struct PressPose: Equatable {
     var tilt: Double
     var shadowRadius: Double
     var shadowOpacity: Double
+    /// How far the background has turned from the page's colour to the
+    /// ambient glow (iOS), which is all there by the time the page reaches
+    /// full size, so page and glow arrive together.
+    var glow: Double = 1
 
     /// At rest on the glass: exactly the page as the reader shows it.
     static let landed = PressPose(opacity: 1, scale: 1, blur: 0, turn: 0, tilt: 0,
@@ -169,11 +173,13 @@ struct PressPose: Equatable {
             // A plain fade from the page's colour.
             self = .landed
             opacity = min(max(progress, 0), 1)
+            glow = opacity
             return
         }
         opacity = part(press.opacityEnds)
         let near = part(press.scaleAndBlurEnd)
         scale = blend(press.startScale, 1, near)
+        glow = near
         blur = blend(press.startBlur, 0, near)
         turn = blend(start.turn, 0, part(press.flatTurnEnds))
         let landing = part(press.tiltAndShadowEnd)
@@ -204,6 +210,11 @@ struct PlatenPressView: View {
     let scale: CGFloat
     /// The page's colour (the theme), which it fades in from.
     let background: Color
+    /// The ambient glow behind the page (iOS, Ambient Light), which the
+    /// background turns into as the page comes down; nil for none. The
+    /// page's picture is see-through where the live page is, so the glow
+    /// shows through it, as it will after the hand-over.
+    var glow: CGImage? = nil
     let occasion: PressOccasion
     let start: PressStart
     let reduceMotion: Bool
@@ -216,6 +227,11 @@ struct PlatenPressView: View {
     var body: some View {
         ZStack {
             background
+            if let glow {
+                Image(decorative: glow, scale: 1)
+                    .resizable()
+                    .modifier(GlowFade(progress: frozenAt ?? progress, start: start, reduceMotion: reduceMotion))
+            }
             Image(decorative: image, scale: scale)
                 .resizable()
                 .modifier(PressEffect(progress: frozenAt ?? progress, start: start, reduceMotion: reduceMotion))
@@ -259,5 +275,21 @@ private struct PressEffect: ViewModifier, Animatable {
                     y: pose.shadowRadius / 3)
             .blur(radius: pose.blur)
             .opacity(pose.opacity)
+    }
+}
+
+/// The glow behind the page, coming in as the page comes down.
+private struct GlowFade: ViewModifier, Animatable {
+    var progress: Double
+    let start: PressStart
+    let reduceMotion: Bool
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content.opacity(PressPose(progress: progress, start: start, reduceMotion: reduceMotion).glow)
     }
 }
