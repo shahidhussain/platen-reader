@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import PlatenCore
 import SwiftUI
@@ -243,6 +244,17 @@ class ReaderBaseViewController: UIViewController {
         } else if step == "@outputchanged" {
             // As when Bluetooth headphones come or go (the natural voice).
             KokoroSpeechEngine.latest?.simulateOutputChange()
+        } else if step == "@interrupt" {
+            // As when another app starts playing: iOS stops our audio and
+            // says the session was interrupted.
+            KokoroSpeechEngine.latest?.simulateInterruption()
+            NotificationCenter.default.post(name: AVAudioSession.interruptionNotification,
+                                            object: AVAudioSession.sharedInstance(),
+                                            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        } else if step == "@audiostate" {
+            // Whether read aloud's audio is running, and its state.
+            let running = KokoroSpeechEngine.latest.map { $0.audioIsRunning ? "running" : "stopped" } ?? "no natural voice"
+            log.info("step result: audio \(running, privacy: .public), reading \(String(describing: self.state.readAloud), privacy: .public)")
         } else if step.hasPrefix("@skip:"), let delta = Int(step.dropFirst(6)) {
             // "@skip:1" / "@skip:-1": the lock screen's next and previous.
             readAloudSource?.skipReadAloud(by: delta)
