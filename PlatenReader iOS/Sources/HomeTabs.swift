@@ -220,6 +220,14 @@ struct HomeTabBar: View {
 /// with a time limit), yes, or no.
 enum Reach: Equatable {
     case checking, available, unavailable
+    /// Still being checked after a moment (`checkReach`): a share or cloud
+    /// that is not answering straight away, perhaps coming back after the
+    /// device went offline or changed networks. Shown as "Reconnecting…"
+    /// with a spinner (the reader asked, 25 Nov 2026); a quick answer, as
+    /// from a folder on the device, never shows it.
+    case reconnecting
+    /// Being checked, quickly or not.
+    var isChecking: Bool { self == .checking || self == .reconnecting }
     /// A book kept only in iCloud: it opens (downloading first) while online.
     case inCloud
 }
@@ -255,6 +263,7 @@ struct BookShelfView: View {
     @ObservedObject private var options = BookTypeFilter.shared
     @ObservedObject private var network = NetworkStatus.shared
     @ObservedObject private var favourites = RecentList.favorites
+    @ObservedObject private var offline = OfflineCopies.shared
     /// Counts each book's hearts (marked as a favourite), to start its
     /// heartbeat.
     @State private var heartbeats: [RecentItem.ID: Int] = [:]
@@ -336,9 +345,19 @@ struct BookShelfView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 Task { await refresh() }
             }
+            // Offline, back online, or another network: books kept away
+            // from the device are checked again (reconnecting meanwhile).
+            .onReceive(network.$changes.dropFirst().debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in
+                recheckAway(recents.items, in: $reach)
+                Task { await refresh() }
+            }
             .alert(Text("This book can’t be opened"), isPresented: Binding(
                 get: { cannotOpen != nil }, set: { if !$0 { cannotOpen = nil } }
             ), presenting: cannotOpen) { item in
+                Button("Try Again") {
+                    reach[item.id] = .reconnecting
+                    Task { await checkThenOpen(item, sayIfNot: false) }
+                }
                 Button(removeLabel, role: .destructive) { recents.remove(item) }
                 Button("OK", role: .cancel) {}
             } message: { item in
@@ -361,7 +380,11 @@ struct BookShelfView: View {
     /// iCloud, or moved, deleted or not answering.
     private func badge(for item: RecentItem) -> BookTile.Badge? {
         if opening == item.id { return .downloading }
+        // A favourite kept on this device opens whatever its place says.
+        if offline.copyURL(forBookAt: item.path) != nil, reach[item.id] != .available { return nil }
         switch reach[item.id] {
+        case .reconnecting:
+            return .reconnecting
         case .unavailable:
             return .unavailable(item.storageKind == .network ? String(localized: "Not connected")
                                                              : String(localized: "Not available"))
@@ -375,17 +398,37 @@ struct BookShelfView: View {
     private func open(_ item: RecentItem) {
         guard !options.justPinched else { return } // the end of a pinch, not a tap
         guard opening == nil else { return } // one at a time
+        let known = reach[item.id]
+        // Known to be out of reach: said at once (no wait for a check that
+        // will fail), unless a copy is kept on this device.
+        if known == .unavailable || (known == .inCloud && !network.isOnline) {
+            if let copy = offline.copyURL(forBookAt: item.path) { return actions.openBook(copy) }
+            cannotOpen = item
+            return
+        }
+        // Reconnecting: the copy kept on this device, if there is one, at
+        // once; otherwise it opens if the check comes back in time, and if
+        // not it is greyed, without a message (it said it was reconnecting).
+        if known?.isChecking == true, let copy = offline.copyURL(forBookAt: item.path) { return actions.openBook(copy) }
         opening = item.id
-        Task {
-            let answer = await recents.reachability(of: item, timeout: 10)
-            opening = nil
-            reach[item.id] = Reach(answer)
-            switch answer {
-            case .yes(let url):
-                actions.openBook(url)
-            case .inCloud(let url) where network.isOnline:
-                actions.openBook(url) // the reader downloads it
-            case .inCloud, .no, .noAnswer:
+        Task { await checkThenOpen(item, sayIfNot: known == .available) }
+    }
+
+    /// Checks the book (a share may have gone), then opens it, or its copy
+    /// on this device; if neither, it is greyed and, if `sayIfNot`, said.
+    private func checkThenOpen(_ item: RecentItem, sayIfNot: Bool) async {
+        let answer = await recents.reachability(of: item, timeout: 10)
+        opening = nil
+        reach[item.id] = Reach(answer)
+        switch answer {
+        case .yes(let url):
+            actions.openBook(url)
+        case .inCloud(let url) where network.isOnline:
+            actions.openBook(url) // the reader downloads it
+        case .inCloud, .no, .noAnswer:
+            if let copy = offline.copyURL(forBookAt: item.path) {
+                actions.openBook(copy)
+            } else if sayIfNot {
                 cannotOpen = item
             }
         }
@@ -404,8 +447,13 @@ struct BookShelfView: View {
 /// service still waking): it stays as being checked and is asked again, up
 /// to three times in all, a few seconds apart; only a clear no greys it.
 @MainActor
-private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: Binding<[RecentItem.ID: Reach]>) async {
+func checkReach(_ items: [RecentItem], in list: RecentList, into reach: Binding<[RecentItem.ID: Reach]>) async {
     for item in items where reach.wrappedValue[item.id] == nil { reach.wrappedValue[item.id] = .checking }
+    // Those still not answered after a moment show as reconnecting.
+    Task {
+        try? await Task.sleep(for: .seconds(0.6))
+        for item in items where reach.wrappedValue[item.id] == .checking { reach.wrappedValue[item.id] = .reconnecting }
+    }
     var pending = items
     var counts: [String: Int] = [:]
     let started = Date()
@@ -417,6 +465,8 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
             for item in pending {
                 group.addTask { @MainActor in
                     let answer = await list.reachability(of: item)
+                    // Asked to check again meanwhile (another network):
+                    // that check's answer stands.
                     if case .noAnswer = answer {
                         if attempt == 3 { reach.wrappedValue[item.id] = .unavailable }
                         return item
@@ -434,12 +484,20 @@ private func checkReach(_ items: [RecentItem], in list: RecentList, into reach: 
     }
     // For the diagnostics file: how the checks went (no names).
     let states = items.map { reach.wrappedValue[$0.id] ?? .checking }
+        .map { $0 == .reconnecting ? .checking : $0 }
     let summary = "\(states.filter { $0 == .available }.count) here, \(states.filter { $0 == .inCloud }.count) in iCloud, "
         + "\(states.filter { $0 == .unavailable }.count) not available; no answer: \(counts["no answer 1"] ?? 0), "
         + "then \(counts["no answer 2"] ?? 0), \(counts["no answer 3"] ?? 0)"
     log.info("home: \(items.count) items checked in \(Int(Date().timeIntervalSince(started) * 1000)) ms: \(summary, privacy: .public)")
 }
 
+/// The connection changed (offline, back online, another network): items
+/// kept away from this device show as being checked again, rather than as
+/// they were on the old connection.
+@MainActor
+func recheckAway(_ items: [RecentItem], in reach: Binding<[RecentItem.ID: Reach]>) {
+    for item in items where item.storageKind != .device { reach.wrappedValue[item.id] = nil }
+}
 
 // MARK: - Home: the reader's folders
 
@@ -470,6 +528,7 @@ struct RecentFoldersView: View {
     @State private var showingSettings = false
     @ObservedObject private var favourites = RecentList.favorites
     @ObservedObject private var sectionOrder = HomeSectionOrder.shared
+    @ObservedObject private var network = NetworkStatus.shared
 
     /// The Favourites section shows once there is a favourite.
     private var showsFavourites: Bool { !favourites.items.isEmpty }
@@ -538,9 +597,16 @@ struct RecentFoldersView: View {
                 reach = [:]
                 Task { await checkReach(recents.items, in: recents, into: $reach) }
             }
+            // Offline, back online, or another network: folders kept away
+            // from the device are checked again (reconnecting meanwhile).
+            .onReceive(network.$changes.dropFirst().debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in
+                recheckAway(recents.items, in: $reach)
+                Task { await checkReach(recents.items, in: recents, into: $reach) }
+            }
             .alert(Text("This folder can’t be opened"), isPresented: Binding(
                 get: { cannotOpen != nil }, set: { if !$0 { cannotOpen = nil } }
             ), presenting: cannotOpen) { item in
+                Button("Try Again") { checkThenOpen(item, sayIfNot: false) }
                 Button("Remove from List", role: .destructive) { recents.remove(item) }
                 Button("OK", role: .cancel) {}
             } message: { _ in
@@ -613,7 +679,14 @@ struct RecentFoldersView: View {
         let gone = state == .unavailable
         let kind = item.storageKind
         return HStack(spacing: 12) {
-            FolderRowPicture(item: item, gone: gone)
+            // Reconnecting: the spinner stands where the folder's covers
+            // are, the part of the row the eye goes to.
+            if state == .reconnecting {
+                ProgressView()
+                    .frame(width: 44, height: 44)
+            } else {
+                FolderRowPicture(item: item, gone: gone)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
                     .foregroundStyle(gone ? .secondary : .primary)
@@ -630,12 +703,14 @@ struct RecentFoldersView: View {
                     Text(kind == .network ? "Not connected" : "Not available")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                } else if state == .reconnecting {
+                    Text("Reconnecting…")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 8)
-            if state == .checking {
-                ProgressView().controlSize(.small)
-            } else if !editMode.isEditing { // the drag handle stands there instead
+            if !editMode.isEditing { // the drag handle stands there instead
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
@@ -645,14 +720,29 @@ struct RecentFoldersView: View {
         .contentShape(Rectangle())
     }
 
-    /// Opens a folder once it answers (checked again, in case it has been
-    /// connected since); a share that does not answer is said to be so.
+    /// Opens a folder.
+    /// - Not available (greyed): says so at once, with Try Again, rather
+    ///   than checking again first: the wait, then the message, read as the
+    ///   tap doing nothing (the reader saw it, 25 Nov 2026).
+    /// - Reconnecting: opens if it answers in time; if not, it is greyed,
+    ///   with no message (it said it was reconnecting).
+    /// - Available: checked again (a share may have gone since), then
+    ///   opened, or said to be out of reach.
     private func open(_ item: RecentItem) {
-        reach[item.id] = .checking
+        let known = reach[item.id] ?? .checking
+        if known == .unavailable {
+            cannotOpen = item
+            return
+        }
+        checkThenOpen(item, sayIfNot: known == .available)
+    }
+
+    private func checkThenOpen(_ item: RecentItem, sayIfNot: Bool) {
+        reach[item.id] = .reconnecting
         Task {
             guard let url = await recents.reachability(of: item, timeout: 10).url else {
                 reach[item.id] = .unavailable
-                cannotOpen = item
+                if sayIfNot { cannotOpen = item }
                 return
             }
             reach[item.id] = .available

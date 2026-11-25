@@ -418,6 +418,13 @@ final class RecentList: ObservableObject {
     /// not on this device is `inCloud` (it can be opened, and downloaded,
     /// only while online). Off the main thread.
     nonisolated static func check(_ item: RecentItem) -> Reached {
+        #if DEBUG
+        // PLATEN_SLOW_CHECKS=<seconds>: every check waits that long first, as
+        // for a share that is not answering (to see "Reconnecting…").
+        if let wait = ProcessInfo.processInfo.environment["PLATEN_SLOW_CHECKS"].flatMap(Double.init) {
+            Thread.sleep(forTimeInterval: wait)
+        }
+        #endif
         guard let url = resolve(item, mounting: false) else { return .no }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }

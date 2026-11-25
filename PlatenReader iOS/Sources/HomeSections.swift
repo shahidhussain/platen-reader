@@ -59,27 +59,45 @@ final class HomeSectionOrder: ObservableObject {
 struct FavouritesStrip: View {
     @ObservedObject private var favourites = RecentList.favorites
     @ObservedObject private var network = NetworkStatus.shared
+    @ObservedObject private var offline = OfflineCopies.shared
     let actions: HomeActions
     /// The book tapped, while it is checked before opening.
     @State private var opening: RecentItem.ID?
     @State private var cannotOpen: RecentItem?
+    @State private var reach: [RecentItem.ID: Reach] = [:]
 
     static let count = 3
+
+    private var shown: [RecentItem] { Array(favourites.items.prefix(Self.count)) }
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: Self.count),
                   alignment: .leading, spacing: 14) {
-            ForEach(favourites.items.prefix(Self.count)) { item in
+            ForEach(shown) { item in
                 Button { open(item) } label: {
                     BookTile(title: item.displayName, author: item.author, imageFile: favourites.coverURL(for: item),
-                             badge: opening == item.id ? .downloading : nil)
+                             badge: badge(for: item))
                 }
                 .buttonStyle(.plain)
             }
         }
+        // As in the Favourites tab: each is checked, and again when the
+        // app comes back or the connection changes.
+        .task(id: shown.map(\.id)) { await checkReach(shown, in: favourites, into: $reach) }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await checkReach(shown, in: favourites, into: $reach) }
+        }
+        .onReceive(network.$changes.dropFirst().debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in
+            recheckAway(shown, in: $reach)
+            Task { await checkReach(shown, in: favourites, into: $reach) }
+        }
         .alert(Text("This book can’t be opened"), isPresented: Binding(
             get: { cannotOpen != nil }, set: { if !$0 { cannotOpen = nil } }
         ), presenting: cannotOpen) { item in
+            Button("Try Again") {
+                reach[item.id] = .reconnecting
+                Task { await checkThenOpen(item, sayIfNot: false) }
+            }
             Button("Remove from Favourites", role: .destructive) { favourites.remove(item) }
             Button("OK", role: .cancel) {}
         } message: { _ in
@@ -87,21 +105,49 @@ struct FavouritesStrip: View {
         }
     }
 
-    /// As in the Favourites tab: the book is checked (a share may not
-    /// answer), then opened; a book only in iCloud opens (downloading) while
-    /// online.
+    /// As in the Favourites tab (BookShelfView.badge).
+    private func badge(for item: RecentItem) -> BookTile.Badge? {
+        if opening == item.id { return .downloading }
+        if offline.copyURL(for: item) != nil, reach[item.id] != .available { return nil }
+        switch reach[item.id] {
+        case .reconnecting: return .reconnecting
+        case .unavailable:
+            return .unavailable(item.storageKind == .network ? String(localized: "Not connected")
+                                                             : String(localized: "Not available"))
+        case .inCloud: return network.isOnline ? .inCloud : .unavailable(String(localized: "Offline"))
+        case .checking, .available, nil: return nil
+        }
+    }
+
+    /// As in the Favourites tab (BookShelfView.open): out of reach is said
+    /// at once; the copy on this device opens when the book's place does
+    /// not answer.
     private func open(_ item: RecentItem) {
         guard opening == nil else { return }
+        let known = reach[item.id]
+        if known == .unavailable || (known == .inCloud && !network.isOnline) {
+            if let copy = offline.copyURL(for: item) { return actions.openBook(copy) }
+            cannotOpen = item
+            return
+        }
+        if known?.isChecking == true, let copy = offline.copyURL(for: item) { return actions.openBook(copy) }
         opening = item.id
-        Task {
-            let answer = await favourites.reachability(of: item, timeout: 10)
-            opening = nil
-            switch answer {
-            case .yes(let url):
-                actions.openBook(url)
-            case .inCloud(let url) where network.isOnline:
-                actions.openBook(url)
-            case .inCloud, .no, .noAnswer:
+        Task { await checkThenOpen(item, sayIfNot: known == .available) }
+    }
+
+    private func checkThenOpen(_ item: RecentItem, sayIfNot: Bool) async {
+        let answer = await favourites.reachability(of: item, timeout: 10)
+        opening = nil
+        reach[item.id] = Reach(answer)
+        switch answer {
+        case .yes(let url):
+            actions.openBook(url)
+        case .inCloud(let url) where network.isOnline:
+            actions.openBook(url)
+        case .inCloud, .no, .noAnswer:
+            if let copy = offline.copyURL(for: item) {
+                actions.openBook(copy)
+            } else if sayIfNot {
                 cannotOpen = item
             }
         }
