@@ -65,6 +65,9 @@ foliate-view::part(filter) {
     pointer-events: auto;
     cursor: default;
     color: var(--platen-fg);
+    /* A button centres what it holds: the ribbon hangs from its top. */
+    display: flex;
+    align-items: flex-start;
 }
 .corner .ribbon {
     display: block;

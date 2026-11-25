@@ -238,7 +238,11 @@ function refreshRibbons() {
         const corner = (marked, top, cfi, beside = false) => {
             const el = document.createElement('button')
             el.className = 'corner' + (marked ? ' marked' : '')
-            const left = beside ? page.right + 10 : page.right - 36
+            // Paginated: 16 pixels in from the right-hand edge of the screen,
+            // or, in a spread, of the page's own half (the corner's ribbon
+            // is 18 pixels in from its left and 20 wide).
+            const edge = pages.length > 1 && page.right < innerWidth / 2 ? innerWidth / 2 : innerWidth
+            const left = beside ? page.right + 10 : scrolled ? page.right - 36 : edge - 54
             el.style.left = `${Math.round(left)}px`
             el.style.top = `${Math.round(top)}px`
             el.style.setProperty('--ribbon-height', `${ribbonHeight}px`)
@@ -259,9 +263,17 @@ function refreshRibbons() {
                 layDown(el.querySelector('.ribbon'), pages.length > 1 && page.right < innerWidth / 2)
             }
         }
-        // Just below the title bar; on iOS, just above the text, below the
-        // Dynamic Island (the corner is 38 pixels high).
-        const topEdge = reader.settings?.verticalMargin ? Math.max(28, reader.settings.verticalMargin - 42) : 28
+        // Paginated, the ribbon hangs from the top of the screen at its
+        // right-hand corner (on iOS; it may sit under the status bar's
+        // battery when the controls are up), as a PDF's hangs from its
+        // page's top edge: a place tied to the page, not to the text
+        // (device testing, 25 Nov 2026). On the Mac, just below the title
+        // bar, whose strip at the top of the window takes clicks to move
+        // the window. In Scroll layout the corner for adding sits just
+        // below the title bar or, on iOS, just above the text.
+        const touch = !!reader.settings?.touch
+        const topEdge = !scrolled ? (touch ? 0 : 28)
+            : reader.settings?.verticalMargin ? Math.max(28, reader.settings.verticalMargin - 42) : 28
         // As long as the room above the text allows, up to 30 pixels.
         const textTop = parseFloat(reader.view.renderer.getAttribute?.('margin')) || 60
         const ribbonHeight = scrolled ? 30 : Math.max(16, Math.min(30, textTop - topEdge - 8))
