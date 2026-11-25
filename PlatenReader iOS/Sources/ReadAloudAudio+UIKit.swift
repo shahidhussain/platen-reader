@@ -24,6 +24,9 @@ final class ReadAloudAudio {
     /// Paused by a call (not by the reader): resumed when the call ends, if
     /// iOS says it should.
     private var pausedByInterruption = false
+    /// iOS took the audio session away (another app's audio, a call): it
+    /// is made active again when reading goes on, as iOS asks.
+    private var sessionTaken = false
 
     /// Reading begins: the session becomes active and Now Playing shows the
     /// book.
@@ -59,6 +62,14 @@ final class ReadAloudAudio {
 
     /// Now Playing kept up to date (the chapter changes as reading goes on).
     func update(title: String, author: String, chapter: String, playing: Bool) {
+        if playing, sessionTaken {
+            // Reading goes on after another app's audio or a call (by the
+            // speaker, the lock screen, or iOS saying to resume).
+            sessionTaken = false
+            do { try AVAudioSession.sharedInstance().setActive(true) } catch {
+                log.error("Read aloud: audio session after an interruption: \(error.localizedDescription, privacy: .public)")
+            }
+        }
         var info: [String: Any] = [
             // The book's title, and its author under it: the chapter's
             // name alone ("I") said little on the lock screen. The chapter
@@ -84,6 +95,7 @@ final class ReadAloudAudio {
         controls = nil
         artwork = nil
         pausedByInterruption = false
+        sessionTaken = false
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
         for (command, target) in commandTargets { command.removeTarget(target) }
@@ -123,7 +135,9 @@ final class ReadAloudAudio {
     private func watch(_ session: AVAudioSession) {
         guard observers.isEmpty else { return }
         let center = NotificationCenter.default
-        // A call or an alarm: pause; afterwards, go on if iOS says to.
+        // Another app's audio (music, a podcast, a video), a call or an
+        // alarm: pause, as audiobook apps do; afterwards, go on only if iOS
+        // says to (after a call; not when another app simply played).
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: session,
                                             queue: .main) { [weak self] note in
             let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
@@ -133,9 +147,12 @@ final class ReadAloudAudio {
                 guard let self else { return }
                 switch type {
                 case .began:
+                    log.info("read aloud: paused, as other audio took over")
+                    self.sessionTaken = true
                     self.pausedByInterruption = true
                     self.controls?.pause()
                 case .ended:
+                    log.info("read aloud: the other audio ended (\(options.contains(.shouldResume) ? "going on" : "staying paused", privacy: .public))")
                     if self.pausedByInterruption, options.contains(.shouldResume) { self.controls?.play() }
                     self.pausedByInterruption = false
                 default: break

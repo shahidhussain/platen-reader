@@ -155,6 +155,12 @@ final class KokoroSpeechEngine: SpeechEngine {
     func simulateOutputChange() {
         NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: audio)
     }
+    /// As iOS does when another app's audio or a call takes over: the
+    /// audio stops (the reading is then paused by the interruption's
+    /// notification).
+    func simulateInterruption() { audio.stop() }
+    /// Whether the audio is running, for the "@audiostate" debug step.
+    var audioIsRunning: Bool { audio.isRunning }
     #endif
 
     /// Asks iOS for its English word-class data (verbs, nouns…), which
@@ -299,7 +305,13 @@ final class KokoroSpeechEngine: SpeechEngine {
             pump()
             return
         }
-        startAudioIfNeeded()
+        // Not while paused: starting the audio takes the sound back from
+        // whatever paused the reading. Another app's music or a call pauses
+        // reading (ReadAloudAudio on iOS), but the next sentences are still
+        // being made, and each one used to start the audio again, so the
+        // other app was cut off (the reader heard it, 24 Nov 2026). `resume`
+        // starts it.
+        if !paused { startAudioIfNeeded() }
         // The sentence starts where the last one ends or, if the player has
         // run dry, now; its words are reached that many samples later.
         let start = max(queuedEnd, playerSample() ?? 0)
@@ -354,8 +366,10 @@ final class KokoroSpeechEngine: SpeechEngine {
             wordsAhead += item.words.filter { $0.sample >= skip }.map { (item.id, start + $0.sample, $0.range) }
             play(item.samples[skip...], id: item.id)
         }
-        startAudioIfNeeded()
-        if !paused { player.play() }
+        if !paused {
+            startAudioIfNeeded()
+            player.play()
+        }
         watchWords()
         log.info("natural voice: the audio output changed; reading on from the word being read")
     }
