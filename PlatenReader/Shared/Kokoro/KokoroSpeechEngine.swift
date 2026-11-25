@@ -273,14 +273,15 @@ final class KokoroSpeechEngine: SpeechEngine {
             }
             guard let kokoroText = texts[british] else { return ([], []) }
             let started = Date()
-            var samples: [Float] = []
-            var words: [(sample: Int, range: NSRange)] = []
-            for piece in kokoroText.pieces(text) {
+            // Each piece spoken, then joined without the long silence
+            // Kokoro leaves at each piece's ends (`KokoroPiece.join`).
+            let parts = kokoroText.pieces(text).map { piece in
                 let made = model.synthesize(tokens: piece.tokens, style: voicePack.style(forTokens: piece.tokens.count), speed: speed)
-                words += piece.wordStarts(durations: made.durations, samplesPerFrame: KokoroModel.samplesPerFrame)
-                    .map { (samples.count + $0.sample, $0.range) }
-                samples += made.samples
+                return (samples: made.samples,
+                        words: piece.wordStarts(durations: made.durations, samplesPerFrame: KokoroModel.samplesPerFrame),
+                        endsAtPause: piece.endsAtPause)
             }
+            let (samples, words) = KokoroPiece.join(parts)
             // For the diagnostics file: how fast speech is made on this device.
             let seconds = Double(samples.count) / KokoroModel.sampleRate
             let took = Date().timeIntervalSince(started)
