@@ -14,7 +14,9 @@ struct HomeActions {
 /// there.
 @MainActor
 final class HomeNavigation: ObservableObject {
-    enum Tab: Int, Hashable, CaseIterable { case home, books, favourites }
+    /// In the order they are shown: Home, Favourites, Recent Books (the
+    /// reader's order, 24 Nov 2026).
+    enum Tab: Int, Hashable, CaseIterable { case home, favourites, books }
     // Each change is logged, so a busy moment in the diagnostics file shows
     // which part of Home it came in (no names: just the tab and the depth).
     @Published var tab: Tab = .home {
@@ -52,9 +54,9 @@ enum FolderAccess {
 /// - **Home:** the reader's folders (the ones they chose), as a list (a
 ///   folder opens inside the tab), and the first few favourites, in the
 ///   order the reader puts them (HomeSections.swift). Settings is the gear.
-/// - **Recent Books:** books opened lately, from anywhere, newest first.
 /// - **Favourites:** books the reader marked as favourites (a cover's
 ///   long-press menu), "what I am reading now".
+/// - **Recent Books:** books opened lately, from anywhere, newest first.
 struct HomeTabs: View {
     @ObservedObject var navigation: HomeNavigation
     let actions: HomeActions
@@ -183,8 +185,8 @@ struct HomeTabBar: View {
     var body: some View {
         HStack(spacing: 4) {
             item(.home, "Home", "house")
-            item(.books, "Recent Books", "clock")
             item(.favourites, "Favourites", "heart")
+            item(.books, "Recent Books", "clock")
         }
         .padding(4)
         .overlaySurface(Capsule())

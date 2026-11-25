@@ -317,6 +317,14 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
             host?.sessionPageText(text, speak: speak)
 
         case .readAloudBlock(let block):
+            #if DEBUG
+            // Testing only (book text never goes in the diagnostics): where
+            // reading begins, after a start or a turn by hand.
+            if readAloudFirstBlock, let first = block.sentences.first {
+                log.notice("step result: reads from: \(String(first.text.prefix(60)), privacy: .public)")
+            }
+            readAloudFirstBlock = false
+            #endif
             readAloud?.receive(block)
 
         case .readAloudEnd:
@@ -358,6 +366,10 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
     /// slider, a chapter, Back), not read aloud: reading aloud starts again
     /// from there (iOS; the app sets it).
     var onPageMovedByHand: (() -> Void)?
+    #if DEBUG
+    /// The next block is the first of a reading (logged, for checks).
+    private var readAloudFirstBlock = false
+    #endif
 
     func turn(_ turn: PageTurn) {
         guard isOpenInPage else { return }
@@ -456,6 +468,9 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
     /// with `engine`.
     func startReadAloud(engine: SpeechEngine) {
         stopReadAloud()
+        #if DEBUG
+        readAloudFirstBlock = true
+        #endif
         let controller = ReadAloudController(engine: engine, language: readAloudLanguage)
         controller.onPhase = { [weak self] phase in
             self?.state.readAloud = phase
@@ -472,7 +487,7 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
     }
 
     func pauseReadAloud() { readAloud?.pause() }
-    func skipReadAloud(by delta: Int) { readAloud?.skip(by: delta) }
+    func skipReadAloud(by delta: Int) { readAloud?.skipParagraph(by: delta) }
     func holdReadAloudPage() { if readAloud != nil { call("readAloudHold") } }
     func resumeReadAloud() { readAloud?.resume() }
 

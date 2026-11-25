@@ -413,6 +413,7 @@ window.platen = {
     readAloudHold: () => readAloud.hold(),
     readAloudPreview: () => readAloud.preview(),
     readAloudSentences: count => readAloud.sentences(count),
+    readAloudProbeStart: () => readAloud.probeStart(),
     measureText,
     setControlsVisible: on => document.getElementById('page-numbers')?.classList.toggle('under-controls', !!on),
     // For debugging and automated checks (scripts/run-debug.sh steps).

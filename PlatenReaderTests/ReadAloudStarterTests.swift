@@ -71,6 +71,31 @@ final class ReadAloudStarterTests: XCTestCase {
         XCTAssertEqual(source.calls, ["hold"])
     }
 
+    /// Now Playing (the lock screen's controls and cover) stays up while
+    /// reading starts: the reading state is still "off" for a moment as it
+    /// begins, and taking that for the end took the controls straight down
+    /// again, so they never showed (the reader asked for them, 24 Nov 2026).
+    func testNowPlayingIsNotEndedAsReadingBegins() {
+        ReadAloudSettings.shared.choice = .apple
+        let (state, source, host) = make()
+        AppDefaults.store.set(true, forKey: ReadAloudStarter.noteShownKey(AppleVoices.baseLanguage(source.readAloudLanguage)))
+        let starter = ReadAloudStarter(state: state, host: host)
+        starter.toggle()
+        state.readAloud = .starting
+        state.readAloud = .playing
+        let waited = expectation(description: "updates delivered")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { waited.fulfill() }
+        wait(for: [waited], timeout: 2)
+        XCTAssertEqual(host.audio.first, "begin")
+        XCTAssertFalse(host.audio.contains("end"), "\(host.audio)")
+        // Stopping does end it.
+        state.readAloud = .off
+        let ended = expectation(description: "end delivered")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { ended.fulfill() }
+        wait(for: [ended], timeout: 2)
+        XCTAssertEqual(host.audio.last, "end")
+    }
+
     func testMovingThePageWhileOffDoesNothing() {
         let (state, source, host) = make()
         let starter = ReadAloudStarter(state: state, host: host)
@@ -143,7 +168,8 @@ private final class FakeHost: ReadAloudHost {
         questions.append((message, buttons, cancellable))
     }
     func readAloudDownloadVoice(done: @escaping (Bool) -> Void) { downloads += 1 }
-    func readAloudAudioBegin(controls: ReadAloudControls) {}
-    func readAloudAudioUpdate(chapter: String, playing: Bool) {}
-    func readAloudAudioEnd() {}
+    var audio: [String] = []
+    func readAloudAudioBegin(controls: ReadAloudControls) { audio.append("begin") }
+    func readAloudAudioUpdate(chapter: String, playing: Bool) { audio.append(playing ? "playing" : "paused") }
+    func readAloudAudioEnd() { audio.append("end") }
 }

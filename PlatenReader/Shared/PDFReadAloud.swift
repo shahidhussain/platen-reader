@@ -82,7 +82,7 @@ final class PDFReadAloud: ReadAloudSource {
     }
 
     func pauseReadAloud() { controller?.pause() }
-    func skipReadAloud(by delta: Int) { controller?.skip(by: delta) }
+    func skipReadAloud(by delta: Int) { controller?.skipParagraph(by: delta) }
 
     /// The reader moved the page: no turning back to the sentence still
     /// being read (until reading starts again from their page).
@@ -113,7 +113,7 @@ final class PDFReadAloud: ReadAloudSource {
                 self.sentences[mark] = (sentence.start, batch.runs(for: sentence))
                 return ReadAloudSentence(mark: mark, text: sentence.text)
             }
-            controller.receive(ReadAloudBlock(language: nil, sentences: marked))
+            controller.receive(ReadAloudBlock(language: nil, sentences: marked, isParagraph: false))
             if batch.atEnd { controller.endReached() }
         }
     }

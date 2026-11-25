@@ -1,3 +1,4 @@
+import PlatenCore
 import UIKit
 
 /// Read aloud in a book or a PDF (iOS; docs/read-aloud.md). The speaker
@@ -23,8 +24,21 @@ extension ReaderBaseViewController: ReadAloudHost {
     }
 
     func readAloudAudioBegin(controls: ReadAloudControls) {
+        let cover = readAloudCover
         ReadAloudAudio.shared.begin(title: state.title, author: state.author, chapter: state.chapter,
-                                    cover: readAloudCover, controls: controls)
+                                    cover: cover, controls: controls)
+        // No copy in Recent Books (a book opened from elsewhere, or its
+        // cover not made yet): read it from the book, in the background (a
+        // book's cover picture, or a PDF's first page).
+        guard cover == nil else { return }
+        let url = self.url
+        DispatchQueue.global(qos: .utility).async {
+            let jpeg = BookCover.extract(from: url, maxPixelSize: 600).jpeg
+            DispatchQueue.main.async {
+                guard let jpeg, let image = UIImage(data: jpeg) else { return }
+                ReadAloudAudio.shared.setCover(image)
+            }
+        }
     }
 
     func readAloudAudioUpdate(chapter: String, playing: Bool) {

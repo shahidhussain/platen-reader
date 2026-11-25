@@ -473,6 +473,15 @@ The Mac reads aloud as iOS does, from the same shared code:
   plain word gap (`EnglishG2P.isHyphenInWord`); a real dash keeps its pause.
 - No text. A book with nothing to read from the page on (a scanned PDF)
   says so ("There's no readable text here…") instead of just stopping.
+- Starting from a page (the speaker, or a turn by hand while reading)
+  begins at the page's first word, even mid-sentence: foliate's `from`
+  skipped the sentence running onto the page, and reading it from its start
+  had turned the page back. Reading asks for the paragraph the page begins
+  in and cuts it to the page (`paragraphStart`, `fromPage` in readaloud.js).
+  `platen.readAloudProbeStart()` shows how the first block meets the page.
+- The lock screen's next and previous (and the Mac's media keys) move a
+  paragraph at a time in a book (a sentence in a PDF, whose paragraphs are
+  not known): `ReadAloudController.skipParagraph`.
 - `platen.readAloudSentences(n)` lists the first sentences read aloud would
   speak from the chapter on screen, for checks.
 

@@ -38,15 +38,33 @@ final class ReadAloudAudio {
             log.error("Read aloud: audio session: \(error.localizedDescription, privacy: .public)")
         }
         watch(session)
+        // The app takes the lock screen's and headphones' controls (the
+        // remote commands below); said to UIKit too, for older routes.
+        UIApplication.shared.beginReceivingRemoteControlEvents()
         installCommands()
         update(title: title, author: author, chapter: chapter, playing: true)
+        log.info("read aloud: Now Playing shown (\(cover == nil ? "no cover" : "with cover", privacy: .public))")
+    }
+
+    /// The book's cover, once read from the book itself (when Recent Books
+    /// had no copy of it to hand).
+    func setCover(_ image: UIImage) {
+        guard controls != nil else { return }
+        artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        info[MPMediaItemPropertyArtwork] = artwork
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        log.info("read aloud: Now Playing cover read from the book")
     }
 
     /// Now Playing kept up to date (the chapter changes as reading goes on).
     func update(title: String, author: String, chapter: String, playing: Bool) {
         var info: [String: Any] = [
-            MPMediaItemPropertyTitle: chapter.isEmpty ? title : chapter,
-            MPMediaItemPropertyAlbumTitle: title,
+            // The book's title, and its author under it: the chapter's
+            // name alone ("I") said little on the lock screen. The chapter
+            // is the album, which some places show.
+            MPMediaItemPropertyTitle: title,
+            MPMediaItemPropertyAlbumTitle: chapter,
             MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             // No length and no place in it: the lock screen shows no seek
@@ -62,6 +80,7 @@ final class ReadAloudAudio {
     /// Reading has stopped: Now Playing and the controls go, and other
     /// apps' audio may resume.
     func end() {
+        log.info("read aloud: Now Playing ended")
         controls = nil
         artwork = nil
         pausedByInterruption = false
@@ -69,6 +88,7 @@ final class ReadAloudAudio {
         observers.removeAll()
         for (command, target) in commandTargets { command.removeTarget(target) }
         commandTargets.removeAll()
+        UIApplication.shared.endReceivingRemoteControlEvents()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
