@@ -19,7 +19,9 @@ check() {
     if echo "$out" | grep -aqF -- "$expect" && { [ -z "$forbid" ] || ! echo "$out" | grep -aqF -- "$forbid"; }; then
         echo "PASS  $file"
     else
-        echo "FAIL  $file (expected “$expect”${forbid:+, without “$forbid”})"
+        # Braces round the names: the curly quote after one was read as
+        # part of the name by bash on CI, which stopped the whole run.
+        echo "FAIL  ${file} (expected “${expect}”${forbid:+, without “${forbid}”})"
         echo "$out" | sed 's/^/      /' | tail -5
         FAILED=1
     fi
