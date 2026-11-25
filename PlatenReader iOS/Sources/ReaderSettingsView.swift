@@ -42,6 +42,7 @@ struct ReaderSettingsView: View {
                     }
                 }
                 ReadAloudSettingsSection()
+                OfflineSettingsSection()
                 Section {
                     Button("Clear Reading Positions and Bookmarks…", role: .destructive) { confirmClear = true }
                 } footer: {
@@ -111,6 +112,29 @@ struct ReaderSettingsView: View {
             }
             .sheet(isPresented: $composingFeedback) {
                 FeedbackMailView().ignoresSafeArea()
+            }
+        }
+    }
+}
+
+/// Keep Favourites on This Device (OfflineCopies): on unless turned off,
+/// with what the copies take up.
+private struct OfflineSettingsSection: View {
+    @ObservedObject private var offline = OfflineCopies.shared
+    @ObservedObject private var favourites = RecentList.favorites
+
+    var body: some View {
+        Section {
+            Toggle(isOn: Binding(get: { offline.isEnabled }, set: { offline.isEnabled = $0 })) {
+                Text("Keep Favourites on This Device")
+                Text("Favourites in iCloud Drive, on a network share or a drive are copied here, so they can be read offline or away from the share. Removing a book from Favourites deletes its copy.")
+            }
+        } header: {
+            Text("Offline")
+        } footer: {
+            if offline.isEnabled, !offline.copied.isEmpty {
+                let size = ByteCountFormatter.string(fromByteCount: offline.bytes, countStyle: .file)
+                Text("Favourites kept on this device: \(offline.copied.count) (\(size)).")
             }
         }
     }
