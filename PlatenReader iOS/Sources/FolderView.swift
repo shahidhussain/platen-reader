@@ -433,7 +433,7 @@ struct BookTile: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(5)
-                    .background(.red, in: Circle())
+                    .background(Color.platenAccent, in: Circle())
                     .shadow(color: .black.opacity(0.25), radius: 1.5, y: 0.5)
                     .padding(5)
                     .transition(.scale.combined(with: .opacity))

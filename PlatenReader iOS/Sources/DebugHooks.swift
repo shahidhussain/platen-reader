@@ -14,6 +14,9 @@ import UIKit
 /// - `PLATEN_FOLDER_PATH=<path>` chooses the folder the home screen shows
 ///   as covers, as "Choose Folder…" would (a folder inside the app's
 ///   container, for the same reason).
+/// - `PLATEN_PRESS_FREEZE=<0…1>` holds the platen press (PlatenPress.swift)
+///   still at that point and leaves it up, to look at its poses
+///   (run-ios-debug.sh passes it on).
 /// - `PLATEN_SLOW_CHECKS=<seconds>` makes every check of a listed folder or
 ///   book wait that long first, as a share that is not answering would
 ///   (the home screen's "Reconnecting…", then greyed if over the 6 s limit).
@@ -28,7 +31,7 @@ import UIKit
 ///   were tapped), `@turn:<left|right|next|prev>` (a page turn, curled if
 ///   that is the setting), `@doubleturn:<…>` (two turns 0.15 s apart, the second
 ///   while the first is drawn), `@snapshot` (a snapshot of the web view), `@theme:<light|sepia|dark|black>`, `@orientation` (logs the device's
-///   and the app's orientation), `@ambient:<on|off>`,
+///   and the app's orientation), `@bookmark`, `@pageturn:<curl|slide|none>`, `@ambient:<on|off>`,
 ///   `@layout:<one|two|scroll>`, `@rotate:<landscape|portrait>`,
 ///   `@controls:<show|hide>`, `@shot:<name>` (saves the window as
 ///   tmp/shots/<name>.png in the app's container), `@wait` (nothing),

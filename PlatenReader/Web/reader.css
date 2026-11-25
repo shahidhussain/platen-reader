@@ -42,19 +42,22 @@ foliate-view::part(filter) {
     background: transparent !important;
 }
 
-/* Bookmark corners and ribbons, drawn above the book (see reader.js). The
-   container lets clicks through; each corner takes them. */
-#ribbons {
+/* Bookmark corners and ribbons, drawn above the book (see bookmarks.js). The
+   container lets clicks through; each corner takes them. A ribbon hangs from
+   its top-left corner: 20 by 30 at most, shorter when the room above the
+   text is (--ribbon-height), so it never lies over the text. */
+#ribbons, #ribbons-leaving {
     position: fixed;
     inset: 0;
     pointer-events: none;
     z-index: 10;
 }
 #ribbons[hidden] { display: none; }
-#ribbons .corner {
+#ribbons-leaving .corner { pointer-events: none; }
+#ribbons .corner, #ribbons-leaving .corner {
     position: absolute;
     width: 40px;
-    height: 38px;
+    height: calc(var(--ribbon-height, 30px) + 8px);
     padding: 0 0 0 18px;
     margin: 0;
     border: 0;
@@ -62,39 +65,42 @@ foliate-view::part(filter) {
     pointer-events: auto;
     cursor: default;
     color: var(--platen-fg);
+    /* A button centres what it holds: the ribbon hangs from its top. */
+    display: flex;
+    align-items: flex-start;
 }
-#ribbons .corner svg {
+.corner .ribbon {
     display: block;
+    width: calc(var(--ribbon-height, 30px) * 2 / 3);
+    height: var(--ribbon-height, 30px);
+    transform-origin: 50% 0;
+    backface-visibility: hidden;
+}
+.corner .ribbon svg, .corner .ribbon img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    -webkit-user-drag: none;
+    user-select: none;
+}
+/* The unmarked corner: only the ribbon's outline, faintly, on hover. */
+.corner:not(.marked) .ribbon svg {
     opacity: 0;
     transition: opacity 120ms;
     overflow: visible;
-}
-#ribbons .corner .cloth {
     fill: none;
     stroke: currentColor;
     stroke-width: 1;
 }
-#ribbons .corner .edge { display: none; }
 /* A faint outline on hover makes the feature discoverable. (Touch screens
    have no hover; on iOS the overlay's Bookmark button does that job.) */
-#ribbons .corner:hover svg { opacity: .35; }
-#ribbons .corner.marked svg {
-    opacity: 1;
-    filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .3));
-}
-#ribbons .corner.marked .cloth {
-    fill: url(#platen-ribbon);
-    stroke: none;
-}
-#ribbons .corner.marked .edge {
-    display: inline;
-    fill: none;
-    stroke: rgba(80, 8, 4, .5);
-    stroke-width: 1;
-    stroke-linejoin: round;
+#ribbons .corner:not(.marked):hover .ribbon svg { opacity: .35; }
+/* A very soft shadow on the page beneath it: it sits on the paper. */
+.corner.marked .ribbon img {
+    filter: drop-shadow(0 .5px .6px rgba(0, 0, 0, .28)) drop-shadow(0 1.5px 2.5px rgba(0, 0, 0, .12));
 }
 @media (prefers-reduced-motion: reduce) {
-    #ribbons .corner svg { transition: none; }
+    .corner .ribbon svg { transition: none; }
 }
 
 /* Page numbers, centred below each page (laid out by reader.js). */

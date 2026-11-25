@@ -73,7 +73,7 @@ struct Heartbeat {
 }
 
 extension View {
-    /// A red heart that beats twice over the view and fades, each time
+    /// An orange heart (the app's one accent) that beats twice over the view and fades, each time
     /// `trigger` goes up (a book marked as a favourite).
     func heartbeat(_ trigger: Int) -> some View {
         modifier(HeartbeatOverlay(trigger: trigger))
@@ -88,14 +88,14 @@ private struct HeartbeatOverlay: ViewModifier {
         content.overlay {
             Image(systemName: "heart.fill")
                 .font(.system(size: 44))
-                .foregroundStyle(.red)
+                .foregroundStyle(Color.platenAccent)
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
                 .keyframeAnimator(initialValue: Heartbeat(), trigger: trigger) { heart, beat in
                     heart
                         .scaleEffect(beat.scale)
                         .background {
                             Circle()
-                                .stroke(Color.red, lineWidth: 2)
+                                .stroke(Color.platenAccent, lineWidth: 2)
                                 .frame(width: 56, height: 56)
                                 .scaleEffect(beat.ring)
                                 .opacity(beat.ringOpacity)

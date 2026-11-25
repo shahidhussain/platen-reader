@@ -105,6 +105,15 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
 
     // MARK: - Opening
 
+    /// The press's picture: the pages as PDFKit draws them.
+    override func pressPicture(_ done: @escaping (CGImage?) -> Void) {
+        pdfView.layoutSubtreeIfNeeded()
+        guard pdfView.bounds.width > 0,
+              let rep = pdfView.bitmapImageRepForCachingDisplay(in: pdfView.bounds) else { return done(nil) }
+        pdfView.cacheDisplay(in: pdfView.bounds, to: rep)
+        done(rep.cgImage)
+    }
+
     private func load() {
         guard let url = document.fileURL else { return }
         let started = CFAbsoluteTimeGetCurrent()
@@ -135,6 +144,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
                         self.pdfView.isHidden = false
                         self.spinner.stopAnimation(nil)
                         self.reportPage()
+                        self.firstPageShown()
                         let elapsed = (CFAbsoluteTimeGetCurrent() - started) * 1000
                         log.info("PDF: \(model.pageCount) pages, \(self.state.toc.count) contents entries")
                         log.info("First page visible after \(elapsed, format: .fixed(precision: 0)) ms")

@@ -57,20 +57,24 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         // Going straight into a book, the start-up animation stays up with
         // the book's progress until the first page is on screen.
-        let followBook = { [weak splash, weak home] in
+        // Going back to a book by itself (not one the reader just opened),
+        // its first page is pressed into place a little more quickly
+        // (PlatenPress.swift).
+        let followBook = { [weak splash, weak home] (resuming: Bool) in
             home?.onReaderCreated = { reader in
-                splash?.follow(reader.state)
+                if resuming { reader.pressOccasion = .resume }
+                splash?.follow(reader)
                 home?.onReaderCreated = nil
             }
         }
         if launchedWithBook || debugBook {
-            followBook()
+            followBook(false)
         } else if let windowBook {
             log.info("window: reopening its own book")
             LastOpenBook.resolve(windowBook, timeout: 3) { [weak splash, weak home] url in
                 guard let home else { return }
                 if let url {
-                    followBook()
+                    followBook(true)
                     home.openBook(at: url)
                 } else {
                     splash?.finishSoon()
@@ -86,7 +90,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 guard let home else { return }
                 // A book opened from another app meanwhile wins.
                 if let url, self?.openedSinceLaunch != true {
-                    followBook()
+                    followBook(true)
                     home.openBook(at: url)
                 } else {
                     splash?.finishSoon()

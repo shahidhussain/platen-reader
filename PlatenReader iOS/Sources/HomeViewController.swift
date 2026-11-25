@@ -190,6 +190,11 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate {
             self.view.window?.windowScene?.title = RecentList.books.item(at: url)?.displayName
                 ?? url.deletingPathExtension().lastPathComponent
             reader.modalPresentationStyle = .fullScreen
+            // The reader fades in, in the page's colour, rather than sliding
+            // up: the book's arrival is the press of its first page
+            // (PlatenPress.swift), the one motion, not a slide and then a
+            // press.
+            reader.modalTransitionStyle = .crossDissolve
             self.reader = reader
             self.onReaderCreated?(reader)
             self.present(reader, animated: animated) { [weak self] in

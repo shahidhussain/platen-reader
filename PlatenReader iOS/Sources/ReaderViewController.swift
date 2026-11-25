@@ -310,6 +310,93 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         }
     }
 
+    /// The press's picture: the page on the theme's colour. The glow is
+    /// made a moment after the first page is drawn (a picture of the page
+    /// taken at once can come back unfinished, which made a dark band in
+    /// it), so it is kept out of sight until the page has landed and then
+    /// fades in; drawn into the picture, it would have jumped in at the
+    /// hand-over.
+    override func pressPicture(_ done: @escaping (UIImage?, UIImage?) -> Void) {
+        // With Ambient Light, the glow is made first (as a page turn makes
+        // it), so the press can bring it in with the page; it stays out of
+        // sight until the page has landed.
+        ambient.alpha = 0
+        let glowing = usesAmbientLight
+        let take = { [weak self] in
+            guard let self else { return done(nil, nil) }
+            let glow = glowing ? self.ambient.image : nil
+            self.pageSnapshot(nil) { [weak self] image in
+                guard let self, let image, let cgImage = image.cgImage else { return done(image, glow) }
+                // WebKit's picture can have an opaque black strip where the
+                // status bar would be (the Simulator, 25 Nov 2026), which is
+                // not on screen: cleared, so the page's colour or the glow
+                // shows there, as on screen.
+                let strip = CGFloat(Self.blackRowsAtTop(of: cgImage)) / image.scale
+                let theme = self.currentTheme.uiBackground
+                let bounds = CGRect(origin: .zero, size: image.size)
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = image.scale
+                // See-through where the page is (over the glow), else on
+                // the page's colour.
+                format.opaque = glow == nil
+                done(UIGraphicsImageRenderer(bounds: bounds, format: format).image { context in
+                    if glow == nil {
+                        theme.setFill()
+                        UIRectFill(bounds)
+                    }
+                    image.draw(in: bounds)
+                    if strip > 0 {
+                        let top = CGRect(x: 0, y: 0, width: bounds.width, height: strip)
+                        if glow == nil { UIRectFill(top) } else { context.cgContext.clear(top) }
+                    }
+                }, glow)
+            }
+        }
+        // A page that is one picture (a cover) is shown natively a moment
+        // after the page itself: waited for, briefly, as a page turn does,
+        // so the press and its glow are of the page as it will stay (made
+        // at once, the glow was grey round a red cover).
+        settleLonePicture { [weak self] in
+            guard let self else { return done(nil, nil) }
+            if glowing { self.makeGlowNow(take) } else { take() }
+        }
+    }
+
+    /// How many rows at the top of a picture are opaque black all the way
+    /// across (none, if that is a quarter of it or more: then it is the
+    /// page itself).
+    private static func blackRowsAtTop(of image: CGImage) -> Int {
+        let height = image.height
+        var pixels = [UInt8](repeating: 0, count: height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            // Squeezed to one pixel across: a row is black only if all of it is.
+            guard let context = CGContext(data: buffer.baseAddress, width: 1, height: height, bitsPerComponent: 8,
+                                          bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: height))
+            return true
+        }
+        guard drawn else { return 0 }
+        var rows = 0
+        // Row 0 of the buffer is the top of the picture.
+        while rows < height / 4 {
+            let i = rows * 4
+            guard pixels[i + 3] > 250, pixels[i] < 4, pixels[i + 1] < 4, pixels[i + 2] < 4 else { break }
+            rows += 1
+        }
+        return rows < height / 4 ? rows : 0
+    }
+
+    override func endPress() {
+        let glowShown = pressShowedGlow
+        super.endPress()
+        guard ambient.alpha < 1 else { return }
+        // Already on screen in the press: simply there. Else faded in.
+        let fade = glowShown || UIAccessibility.isReduceMotionEnabled ? 0 : 0.35
+        UIView.animate(withDuration: fade) { self.ambient.alpha = 1 }
+    }
+
     func sessionShowPicture(_ picture: ReaderMessage.Picture) {
         guard let image = UIImage(data: picture.data) else { return }
         // A picture, not text: drop any selection WebKit's own long press
@@ -604,6 +691,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         // until the first turn (seen reopening a Sepia book, 22 Nov 2026).
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.updateAmbient() }
         spinner.stopAnimating()
+        firstPageShown()
         #if DEBUG
         runDebugStepsIfAny()
         #endif
@@ -638,6 +726,9 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// Not sent on iOS (taps are recognised natively); handled so a click
     /// from the page is never silently lost.
     func sessionClicked(_ zone: ClickZone) { handleTap(zone: zone) }
+
+    /// A light tap as the new bookmark's ribbon comes to rest.
+    func sessionBookmarkAdded() { BookmarkRibbonView.tapAsItLands() }
 
     func sessionAnnounce(_ text: String) {
         UIAccessibility.post(notification: .announcement, argument: text)

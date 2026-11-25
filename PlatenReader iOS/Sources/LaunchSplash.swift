@@ -41,6 +41,11 @@ final class LaunchSplash {
     private var gone = false
     /// True while a book is opening under the splash (`follow`).
     private var following = false
+    /// The reader's press, waiting for the splash to go.
+    private var pressWaiting: (() -> Void)?
+    /// Ready to go, but the press's picture is still being taken: the
+    /// splash waits for it (a moment at most).
+    private var waitingForPress = false
     /// The text lines on the book's pages (`writeOnPages`).
     private var lineLayers: [CAShapeLayer] = []
 
@@ -274,9 +279,17 @@ final class LaunchSplash {
     }
 
     /// A book is opening: show its progress, and go when its first page is
-    /// on screen (but not before the animation has played).
-    func follow(_ state: ReaderState) {
+    /// on screen (but not before the animation has played). The page is
+    /// then pressed into place as the splash goes (PlatenPress.swift): the
+    /// reader waits for the splash, and the splash steps aside quickly.
+    func follow(_ reader: ReaderBaseViewController) {
+        let state = reader.state
         following = true
+        reader.pressWaitsFor = { [weak self] play in
+            guard let self, !self.gone else { return play() }
+            self.pressWaiting = play
+            if self.waitingForPress { self.finish() }
+        }
         let progress = UIHostingController(rootView: OpeningProgressView(state: state))
         progress.view.backgroundColor = .clear
         progress.view.translatesAutoresizingMaskIntoConstraints = false
@@ -307,6 +320,13 @@ final class LaunchSplash {
 
     func finish() {
         guard !gone else { return }
+        if following, pressWaiting == nil, !waitingForPress {
+            // The page is ready, its picture a moment away: wait for it,
+            // briefly (it may not come, if the picture cannot be taken).
+            waitingForPress = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.finish() }
+            return
+        }
         gone = true
         let view = root.view!
         // Touches stay with the splash until it has gone (it is under a
@@ -314,6 +334,20 @@ final class LaunchSplash {
         // underneath changed the tab, but the page did not follow.
         let reduce = UIAccessibility.isReduceMotionEnabled
         if !following, !reduce, glideToWelcome() { return }
+        if let press = pressWaiting {
+            // The page is pressed into place as the splash goes: the splash
+            // fades quickly, all at once, as the press begins beneath it
+            // (the press starts from the page's colour and fades in).
+            pressWaiting = nil
+            press()
+            UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseOut]) {
+                view.alpha = 0
+            } completion: { _ in
+                self.window?.isHidden = true
+                self.window = nil
+            }
+            return
+        }
         // In two steps: the mark and words go first (growing a little), then
         // the plain background, revealing what is underneath. Fading all at
         // once showed the splash's title over the home screen's own, a

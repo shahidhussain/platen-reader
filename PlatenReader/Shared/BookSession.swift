@@ -39,6 +39,9 @@ protocol BookSessionHost: AnyObject {
     func sessionPageText(_ text: String, speak: Bool)
     /// Something to tell VoiceOver users ("Bookmark added").
     func sessionAnnounce(_ text: String)
+    /// A bookmark was added: its ribbon is being laid onto the page (iOS
+    /// taps lightly as it lands).
+    func sessionBookmarkAdded()
     func sessionOpenExternalLink(_ url: URL)
 }
 
@@ -46,6 +49,7 @@ protocol BookSessionHost: AnyObject {
 extension BookSessionHost {
     func adjust(_ settings: inout WebSettings) {}
     func sessionDidLoadBook() {}
+    func sessionBookmarkAdded() {}
     func sessionDidRelocate() {}
     func sessionDidJump() {}
     func sessionDidChangeFlow() {}
@@ -270,6 +274,7 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
             host?.sessionDidRenderFirstPage()
 
         case .opened:
+            sendRibbonMotionToPage()
             sendBookmarksToPage()
             host?.sessionDidOpen()
 
@@ -291,6 +296,7 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
             guard var record, record.addBookmark(draft) else { break }
             saveBookmarks(record)
             host?.sessionAnnounce(String(localized: "Bookmark added"))
+            host?.sessionBookmarkAdded()
 
         case .removeBookmark(let cfi):
             removeBookmark(cfi: cfi)
@@ -561,6 +567,12 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
         state.bookmarks = record.bookmarks
         PositionStore.shared.saveNow(record) // bookmarks are saved at once
         sendBookmarksToPage()
+    }
+
+    /// The ribbon's motions (PlatenMotion.Ribbon), so their numbers are
+    /// kept with the press's.
+    private func sendRibbonMotionToPage() {
+        call("setRibbonMotion", PlatenMotion.Ribbon.payload)
     }
 
     private func sendBookmarksToPage() {

@@ -16,6 +16,8 @@ import os
 ///   "@resize:<w>x<h>" resizes the window and logs the re-layout time,
 ///   "@theme:<light|sepia|dark|black>" sets the page theme. Each step also writes "<book>-<n>-native.png" of the native views
 ///   (sidebar, overlay), which web snapshots do not include.
+/// - PLATEN_PRESS_FREEZE=<0…1>: the platen press (PlatenPress.swift) holds
+///   still at that point and stays up, to look at its poses.
 enum DebugHooks {
     /// When an "@resize:" step changed the window size; the next page
     /// position report (sent once the text is laid out again) logs the time.
