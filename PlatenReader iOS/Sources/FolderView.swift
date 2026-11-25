@@ -334,6 +334,10 @@ struct BookTile: View {
         /// In iCloud only (tapping downloads it), and while it downloads
         /// (or, in Recent Books, while it is checked before opening).
         case inCloud, downloading
+        /// Recent Books and Favourites: its place is not answering straight
+        /// away (a share or cloud coming back after the device went offline
+        /// or changed networks): a spinner and "Reconnecting…".
+        case reconnecting
         /// Recent Books and Favourites: its file cannot be reached now
         /// (moved, deleted, on a drive or share that is not connected, or
         /// only in iCloud while offline), with a word saying which.
@@ -411,7 +415,7 @@ struct BookTile: View {
         .saturation(badge?.isUnavailable == true ? 0 : 1)
         .opacity(badge?.isUnavailable == true ? 0.45 : 1)
         .overlay(alignment: .bottom) {
-            if case .unavailable(let reason) = badge {
+            if let reason = caption(for: badge) {
                 Text(reason)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white)
@@ -441,11 +445,21 @@ struct BookTile: View {
             switch badge {
             case .inCloud:
                 mark(Image(systemName: "icloud.and.arrow.down"))
-            case .downloading:
+            case .downloading, .reconnecting:
                 mark(ProgressView().tint(.white))
             case .unavailable, nil:
                 EmptyView()
             }
+        }
+    }
+
+    /// The words on the cover: why it cannot be opened, or that it is
+    /// reconnecting.
+    private func caption(for badge: Badge?) -> String? {
+        switch badge {
+        case .unavailable(let reason): return reason
+        case .reconnecting: return String(localized: "Reconnecting…")
+        default: return nil
         }
     }
 
@@ -465,6 +479,7 @@ struct BookTile: View {
         switch badge {
         case .inCloud: parts.append(String(localized: "In iCloud"))
         case .downloading: parts.append(String(localized: "Downloading"))
+        case .reconnecting: parts.append(String(localized: "Reconnecting…"))
         case .unavailable(let reason): parts.append(reason)
         case nil: break
         }

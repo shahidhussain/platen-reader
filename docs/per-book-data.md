@@ -50,6 +50,16 @@ At the reader's request (15 Nov 2026), the iOS home screen keeps short lists for
 
 Each entry has an `id`, a `bookmark` (the system's reference to the file or folder, which keeps permission to read it and is how it is found again), its `name`, the `path` it was at (to recognise it when opened again, and to show which folder it is in; never used to open it), `lastOpened`, and for books the `title` and `author` and whether a copy of the cover is kept (`hasCover`, a small JPEG in `covers/`, so the list shows it even when the book cannot be reached). At most 60 recent books and folders are kept, newest first (favourites are not trimmed). A long press on an item removes it, with its cover copy; nothing else about the book is touched.
 
+## Offline copies of favourites (iOS)
+
+At the reader's request (25 Nov 2026), a favourite kept somewhere other than this device (iCloud Drive or another cloud, a network share, a drive) is copied to the device, so it can be read offline or away from the share:
+
+```
+~/Library/Application Support/Platen Reader/offline/<favourite id>/<file name>
+```
+
+The copy is made when the book is marked as a favourite (or the next time its place answers), and made again when the original changes. Books already on the device are not copied. Removing a book from Favourites deletes its copy at once, so the only books copied are the current favourites; marking it again copies it afresh from its place. Settings › Offline › Keep Favourites on This Device (on by default) turns this off and deletes every copy. A favourite opens from its own place whenever that answers, and from the copy only when it does not; reading positions and bookmarks follow the book's contents, so both open at the same place. Opening a copy does not add it to Recent Books. The copies are excluded from iCloud backup, as they can be made again.
+
 ## Diagnostics (iOS)
 
 At the reader's request (22 Nov 2026), the iOS app keeps a record of how it has been running, to share from Settings > Share Diagnostics… when reporting a problem:

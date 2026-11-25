@@ -14,6 +14,11 @@ import UIKit
 /// - `PLATEN_FOLDER_PATH=<path>` chooses the folder the home screen shows
 ///   as covers, as "Choose Folder…" would (a folder inside the app's
 ///   container, for the same reason).
+/// - `PLATEN_SLOW_CHECKS=<seconds>` makes every check of a listed folder or
+///   book wait that long first, as a share that is not answering would
+///   (the home screen's "Reconnecting…", then greyed if over the 6 s limit).
+/// - `PLATEN_COPY_ALL_FAVOURITES=1` keeps a copy of every favourite on the
+///   device, as if each were on a share (OfflineCopies).
 /// - `PLATEN_KEEP_CONTROLS=1` keeps the controls up once shown (no 4 s
 ///   timeout), so popovers can be opened by hand in the Simulator.
 /// - `PLATEN_LOG_PAGE_FIT=1` logs where a PDF's pages sit on screen and at

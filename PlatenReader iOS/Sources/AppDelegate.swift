@@ -20,6 +20,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         // Apple's voice list is slow to read: read it now, in the background.
         AppleSpeechEngine.prepareVoices()
+        // Favourites kept elsewhere are copied to the device (and copies
+        // of books no longer favourites deleted), from now on.
+        OfflineCopies.shared.start()
+        NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil,
+                                               queue: .main) { _ in
+            MainActor.assumeIsolated { OfflineCopies.shared.sync() }
+        }
         HangWatch.shared.start()
         // The default text size follows Dynamic Type (spec, "Layout"): about
         // 20 points at the standard size, like Apple Books, scaled with the
