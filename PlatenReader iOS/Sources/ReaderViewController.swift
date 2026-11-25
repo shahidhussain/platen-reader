@@ -310,6 +310,67 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         }
     }
 
+    /// The press's picture: the page on the theme's colour. The glow is
+    /// made a moment after the first page is drawn (a picture of the page
+    /// taken at once can come back unfinished, which made a dark band in
+    /// it), so it is kept out of sight until the page has landed and then
+    /// fades in; drawn into the picture, it would have jumped in at the
+    /// hand-over.
+    override func pressPicture(_ done: @escaping (UIImage?) -> Void) {
+        ambient.alpha = 0
+        pageSnapshot(nil) { [weak self] image in
+            guard let self, let image, let cgImage = image.cgImage else { return done(image) }
+            // WebKit's picture can have an opaque black strip where the
+            // status bar would be (the Simulator, 25 Nov 2026), which is not
+            // on screen: painted over in the page's colour, so nothing jumps
+            // at the hand-over.
+            let strip = CGFloat(Self.blackRowsAtTop(of: cgImage)) / image.scale
+            let theme = self.currentTheme.uiBackground
+            let bounds = CGRect(origin: .zero, size: image.size)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = image.scale
+            format.opaque = true
+            done(UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
+                theme.setFill()
+                UIRectFill(bounds)
+                image.draw(in: bounds)
+                if strip > 0 { UIRectFill(CGRect(x: 0, y: 0, width: bounds.width, height: strip)) }
+            })
+        }
+    }
+
+    /// How many rows at the top of a picture are opaque black all the way
+    /// across (none, if that is a quarter of it or more: then it is the
+    /// page itself).
+    private static func blackRowsAtTop(of image: CGImage) -> Int {
+        let height = image.height
+        var pixels = [UInt8](repeating: 0, count: height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            // Squeezed to one pixel across: a row is black only if all of it is.
+            guard let context = CGContext(data: buffer.baseAddress, width: 1, height: height, bitsPerComponent: 8,
+                                          bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: height))
+            return true
+        }
+        guard drawn else { return 0 }
+        var rows = 0
+        // Row 0 of the buffer is the top of the picture.
+        while rows < height / 4 {
+            let i = rows * 4
+            guard pixels[i + 3] > 250, pixels[i] < 4, pixels[i + 1] < 4, pixels[i + 2] < 4 else { break }
+            rows += 1
+        }
+        return rows < height / 4 ? rows : 0
+    }
+
+    override func endPress() {
+        super.endPress()
+        guard ambient.alpha < 1 else { return }
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.35) { self.ambient.alpha = 1 }
+    }
+
     func sessionShowPicture(_ picture: ReaderMessage.Picture) {
         guard let image = UIImage(data: picture.data) else { return }
         // A picture, not text: drop any selection WebKit's own long press
@@ -604,6 +665,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         // until the first turn (seen reopening a Sepia book, 22 Nov 2026).
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.updateAmbient() }
         spinner.stopAnimating()
+        firstPageShown()
         #if DEBUG
         runDebugStepsIfAny()
         #endif
@@ -638,6 +700,9 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// Not sent on iOS (taps are recognised natively); handled so a click
     /// from the page is never silently lost.
     func sessionClicked(_ zone: ClickZone) { handleTap(zone: zone) }
+
+    /// A light tap as the new bookmark's ribbon comes to rest.
+    func sessionBookmarkAdded() { BookmarkRibbonView.tapAsItLands() }
 
     func sessionAnnounce(_ text: String) {
         UIAccessibility.post(notification: .announcement, argument: text)

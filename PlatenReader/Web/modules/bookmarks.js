@@ -13,26 +13,99 @@ import { post } from './bridge.js'
 
 let bookmarks = []   // [{ cfi }], from Swift
 
-// The saved bookmarks, from Swift.
+// The saved bookmarks, from Swift. A bookmark that has just been added is
+// laid onto its page, and one just removed lifts off it (see `ribbonMotion`);
+// turning onto a bookmarked page shows its ribbon simply there.
 function setBookmarkList(list) {
+    const before = new Set(bookmarks.map(b => b.cfi))
     bookmarks = list ?? []
+    const after = new Set(bookmarks.map(b => b.cfi))
+    for (const cfi of after) if (!before.has(cfi)) arriving.add(cfi)
+    for (const cfi of before) if (!after.has(cfi)) liftOff(cfi)
     scheduleRibbons()
 }
 
 const ribbons = document.createElement('div')
 ribbons.id = 'ribbons'
 document.body.append(ribbons)
+// Ribbons lifting off: kept apart, so a redraw of the others leaves them be.
+const leaving = document.createElement('div')
+leaving.id = 'ribbons-leaving'
+document.body.append(leaving)
 
-// A ribbon of cloth: a gradient across it (darker at the edges, as if
-// rounded), a fine darker edge down the sides and along the notched end,
-// and the top left open, as if it came from the binding. Unmarked corners
-// show only the faint outline of its shape (on hover, on the Mac).
-const ribbonSVG = `<svg viewBox="0 0 22 30" width="22" height="30" aria-hidden="true">
-    <defs><linearGradient id="platen-ribbon" x1="0" x2="1" y1="0" y2="0">
-        <stop offset="0" stop-color="#a92219"/><stop offset=".45" stop-color="#df4a3e"/>
-        <stop offset="1" stop-color="#b8281f"/></linearGradient></defs>
-    <path class="cloth" d="M1 0h20v29l-10-6.5-10 6.5z"/>
-    <path class="edge" d="M1.5 0v28l9.5-6.2 9.5 6.2V0"/></svg>`
+// The ribbon is a drawn picture of orange grosgrain with stitched edges and
+// a swallowtail notch (design/ribbon/make-ribbon.swift), in light and dark.
+// Unmarked corners show only the faint outline of its shape (on hover, on
+// the Mac), which makes the feature discoverable.
+const ribbonOutline = `<svg viewBox="0 0 20 30" aria-hidden="true" preserveAspectRatio="none">
+    <path d="M.5 0v29.5l9.5-6.4 9.5 6.4V0"/></svg>`
+const ribbonPicture = dark => {
+    const name = dark ? 'dark' : 'light'
+    return `<img alt="" draggable="false" src="ribbon/ribbon-${name}@2x.png"
+        srcset="ribbon/ribbon-${name}@2x.png 2x, ribbon/ribbon-${name}@3x.png 3x">`
+}
+
+// The ribbon's motions, in seconds and degrees: Swift sends them from
+// PlatenMotion.Ribbon (PlatenPress.swift), where all the decorative motion's
+// numbers are kept. These are the same values, until it does.
+let ribbonMotion = { layDuration: .2, layStartFold: 80, layStartSwing: 15, settleSwing: 1.5,
+                     settleDuration: .15, liftDuration: .15, reducedDuration: .15 }
+function setRibbonMotion(motion) { ribbonMotion = { ...ribbonMotion, ...motion } }
+
+// Bookmarks just added, whose ribbons are still to be laid down.
+const arriving = new Set()
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// Laying a ribbon onto its page: hinged at the page's top edge, it folds
+// down from nearly end-on (held up towards the reader) to lie flat, coming
+// in from the page's outer side, angled off vertical, and straightening as
+// it lands. It slows to a stop as it meets the page (cloth does not
+// stretch: no overshoot, no bounce), then swings a degree or two from the
+// top edge, dying away. With Reduce Motion, a fade.
+function layDown(el, outerIsLeft) {
+    const m = ribbonMotion
+    if (reduceMotion()) {
+        el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: m.reducedDuration * 1000, easing: 'linear' })
+        return
+    }
+    const swing = outerIsLeft ? 1 : -1 // the bottom swings in from the outer side
+    const total = m.layDuration + m.settleDuration
+    const landed = m.layDuration / total
+    const pose = (fold, turn) => `perspective(160px) rotateX(${fold}deg) rotate(${turn}deg)`
+    el.animate([
+        { offset: 0, transform: pose(m.layStartFold, swing * m.layStartSwing), easing: 'cubic-bezier(.15,.6,.3,1)' },
+        { offset: landed, transform: pose(0, 0), easing: 'ease-out' },
+        { offset: landed + (1 - landed) * .35, transform: pose(0, -swing * m.settleSwing), easing: 'ease-in-out' },
+        { offset: landed + (1 - landed) * .7, transform: pose(0, swing * m.settleSwing * .35), easing: 'ease-in-out' },
+        { offset: 1, transform: pose(0, 0) },
+    ], { duration: total * 1000 })
+}
+
+// Taking a ribbon off: the same fold in reverse, lifting off the page and
+// folding up over the top edge, out of sight. No swing.
+function liftOff(cfi) {
+    const el = ribbons.querySelector(`.corner.marked[data-cfi="${CSS.escape(cfi)}"]`)
+    if (!el) return
+    const ghost = el.cloneNode(true)
+    ghost.style.pointerEvents = 'none'
+    leaving.append(ghost)
+    const m = ribbonMotion
+    const frames = reduceMotion()
+        ? [{ opacity: 1 }, { opacity: 0 }]
+        : [{ transform: 'perspective(160px) rotateX(0deg)', opacity: 1 },
+           { transform: 'perspective(160px) rotateX(88deg)', opacity: 0 }]
+    const lift = ghost.querySelector('.ribbon').animate(frames, {
+        duration: (reduceMotion() ? m.reducedDuration : m.liftDuration) * 1000, easing: 'ease-in', fill: 'forwards' })
+    lift.onfinish = lift.oncancel = () => ghost.remove()
+}
+
+// Any input during a ribbon's motion ends it at once, where it would end.
+function finishRibbonMotion() {
+    for (const el of [...ribbons.querySelectorAll('.ribbon'), ...leaving.querySelectorAll('.ribbon')])
+        for (const animation of el.getAnimations()) animation.finish()
+}
+for (const type of ['pointerdown', 'keydown', 'wheel'])
+    addEventListener(type, finishRibbonMotion, { capture: true, passive: true })
 
 // The pages on screen, each with its bounds (window coordinates), the CFI
 // and text of its first word, and its chapter and printed page.
@@ -158,15 +231,19 @@ function refreshRibbons() {
         if (reader.isFixedLayout) marks.splice(0, marks.length, ...bookmarks
             .filter(b => b.cfi === page.cfi).map(b => ({ b, rect: { section: true } })))
 
-        // Paginated: one corner per page, at its top right. Scroll mode: the
-        // corner for adding sits at the top; existing ribbons sit level with
-        // their line.
-        const corner = (marked, top, cfi) => {
+        // Paginated: one corner per page, at its top right, hanging from
+        // the top within the top margin, never down over the text. Scroll
+        // mode: the corner for adding sits at the top; existing ribbons sit
+        // level with their line, in the margin beside it when there is room.
+        const corner = (marked, top, cfi, beside = false) => {
             const el = document.createElement('button')
             el.className = 'corner' + (marked ? ' marked' : '')
-            el.style.left = `${Math.round(page.right - 36)}px`
+            const left = beside ? page.right + 10 : page.right - 36
+            el.style.left = `${Math.round(left)}px`
             el.style.top = `${Math.round(top)}px`
-            el.innerHTML = ribbonSVG
+            el.style.setProperty('--ribbon-height', `${ribbonHeight}px`)
+            el.innerHTML = `<span class="ribbon">${marked ? ribbonPicture(reader.settings?.theme?.dark) : ribbonOutline}</span>`
+            if (cfi) el.dataset.cfi = cfi
             el.setAttribute('aria-label', marked ? 'Remove Bookmark' : 'Bookmark This Page')
             el.tabIndex = -1 // reachable via ⌘D and the menu instead
             el.addEventListener('click', e => {
@@ -175,20 +252,35 @@ function refreshRibbons() {
                 else post('addBookmark', bookmarkPayload(page))
             })
             ribbons.append(el)
+            if (marked && arriving.has(cfi)) {
+                arriving.delete(cfi)
+                // The outer side of the page: the left on the left-hand page
+                // of a spread, else the right.
+                layDown(el.querySelector('.ribbon'), pages.length > 1 && page.right < innerWidth / 2)
+            }
         }
         // Just below the title bar; on iOS, just above the text, below the
         // Dynamic Island (the corner is 38 pixels high).
         const topEdge = reader.settings?.verticalMargin ? Math.max(28, reader.settings.verticalMargin - 42) : 28
+        // As long as the room above the text allows, up to 30 pixels.
+        const textTop = parseFloat(reader.view.renderer.getAttribute?.('margin')) || 60
+        const ribbonHeight = scrolled ? 30 : Math.max(16, Math.min(30, textTop - topEdge - 8))
         if (marks.length) {
             anyMarked ||= page === leadingPage(pages)
-            for (const { b, rect } of marks)
-                corner(true, scrolled && !rect.section ? Math.max(topEdge, rect.top - 4) : topEdge, b.cfi)
+            const roomBeside = innerWidth - page.right >= 30
+            for (const { b, rect } of marks) {
+                const level = scrolled && !rect.section
+                corner(true, level ? Math.max(topEdge, rect.top - 4) : topEdge, b.cfi, level && roomBeside)
+            }
         }
         if (!marks.length || scrolled) {
             if (!(scrolled && marks.some(({ rect }) => Math.abs(Math.max(topEdge, rect.top - 4) - topEdge) < 30)))
                 corner(false, topEdge, null)
         }
     }
+    // A bookmark added for a page not on screen is not laid down later:
+    // turning onto a bookmarked page shows its ribbon simply there.
+    arriving.clear()
     if (anyMarked !== lastBookmarkedState) {
         lastBookmarkedState = anyMarked
         post('pageBookmarked', { bookmarked: anyMarked })
@@ -214,4 +306,4 @@ function toggleBookmark() {
     else post('addBookmark', bookmarkPayload(page))
 }
 
-export { pagesOnScreen, ribbons, scheduleRibbons, setBookmarkList, toggleBookmark }
+export { pagesOnScreen, ribbons, scheduleRibbons, setBookmarkList, setRibbonMotion, toggleBookmark }

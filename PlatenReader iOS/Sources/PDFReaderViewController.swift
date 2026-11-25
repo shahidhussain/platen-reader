@@ -280,6 +280,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                         self.restoring = false
                         self.pdfView.isHidden = false
                         self.reportPage()
+                        self.firstPageShown()
                         #if DEBUG
                         self.runDebugStepsIfAny()
                         #endif
@@ -764,6 +765,8 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         // Only on a bookmarked page. (No faint outline while the controls
         // are up: their Bookmark button does that job.)
         ribbon.isHidden = model == nil || !state.isPageBookmarked
+        ribbon.isDark = currentTheme.isDark
+        if ribbon.isHidden { ribbon.finishMotion() }
         placeRibbon()
     }
 
@@ -954,8 +957,15 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     }
 
     func toggleBookmark() {
+        let wasMarked = state.isPageBookmarked
+        if wasMarked { ribbon.liftOff() } // a copy folds away as it hides
         model?.toggleBookmark(visible: visiblePages)
         updateRibbon()
+        if state.isPageBookmarked, !wasMarked {
+            // Laid onto the page, from its outer side: the left of the
+            // left-hand page of a spread.
+            ribbon.layDown(outerIsLeft: visiblePages.count > 1 && ribbon.frame.midX < view.bounds.midX)
+        }
         if state.isPageBookmarked {
             UIAccessibility.post(notification: .announcement, argument: String(localized: "Bookmark added"))
         }
@@ -990,6 +1000,71 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     }
 
     override func savePositionNow() { model?.saveNow() }
+
+    // MARK: - The press
+
+    /// The press's picture: the pages on the theme's colour. The glow is
+    /// made a moment later, so it is kept out of sight until the page has
+    /// landed and then fades in, as it does after any open; drawn into the
+    /// picture, it would have jumped in at the hand-over.
+    override func pressPicture(_ done: @escaping (UIImage?) -> Void) {
+        ambient.alpha = 0
+        // Taken a couple of frames after the page is shown, once PDFKit has
+        // fitted it (at once, the page was still half-size).
+        DispatchQueue.main.async {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                done(self?.drawPagesOnScreen())
+            }
+        }
+    }
+
+    /// The pages on screen, drawn from the PDF itself where PDFKit shows
+    /// them, on the theme's colour (inverted, with Invert Colours, as the
+    /// page area is). Not a picture of PDFKit's views: those draw the room
+    /// round the pages solid black.
+    private func drawPagesOnScreen() -> UIImage? {
+        let bounds = view.bounds
+        guard bounds.width > 0, let document = pdfView.document else { return nil }
+        let format = UIGraphicsImageRendererFormat.preferred()
+        format.opaque = true
+        let box = pdfView.displayBox
+        let pages: [(PDFPage, CGRect)] = visiblePages.compactMap { index in
+            guard let page = document.page(at: index) else { return nil }
+            let rect = view.convert(pdfView.convert(page.bounds(for: box), from: page), from: pdfView)
+            return (page, rect)
+        }
+        let inverted = !inverter.isHidden
+        let around = inverted ? (pageArea.backgroundColor ?? currentTheme.uiBackground) : currentTheme.uiBackground
+        return UIGraphicsImageRenderer(bounds: bounds, format: format).image { context in
+            let cg = context.cgContext
+            around.setFill()
+            UIRectFill(bounds)
+            for (page, rect) in pages {
+                UIColor.white.setFill()
+                UIRectFill(rect)
+                let media = page.bounds(for: box)
+                cg.saveGState()
+                cg.clip(to: rect)
+                // PDF space has y up: flipped into the page's place.
+                cg.translateBy(x: rect.minX, y: rect.maxY)
+                cg.scaleBy(x: rect.width / media.width, y: -rect.height / media.height)
+                cg.translateBy(x: -media.minX, y: -media.minY)
+                page.draw(with: box, to: cg)
+                cg.restoreGState()
+            }
+            if inverted {
+                cg.setBlendMode(.difference)
+                UIColor.white.setFill()
+                UIRectFill(bounds)
+            }
+        }
+    }
+
+    override func endPress() {
+        super.endPress()
+        guard ambient.alpha < 1 else { return }
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.35) { self.ambient.alpha = 1 }
+    }
 
     // MARK: - Theme
 

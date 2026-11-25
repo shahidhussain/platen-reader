@@ -87,6 +87,16 @@ class ReaderBaseViewController: UIViewController {
         chrome.install(in: root)
         self.chrome = chrome
 
+        // The page's colour over the page until its first page is drawn,
+        // and pressed into place (PlatenPress.swift): under the controls,
+        // the loading bar and the spinner.
+        let cover = UIView(frame: root.bounds)
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        cover.isUserInteractionEnabled = false
+        cover.backgroundColor = currentTheme.uiBackground
+        root.insertSubview(cover, belowSubview: chrome.bottom.view)
+        pressCover = cover
+
         // Quiet progress indicator, shown only if opening takes > 500 ms.
         spinner = UIActivityIndicatorView(style: .medium)
         spinner.hidesWhenStopped = true
@@ -146,6 +156,7 @@ class ReaderBaseViewController: UIViewController {
     private var openingHost: UIViewController?
 
     private func showOpeningProgress() {
+        loadingWasShown = true
         let host = UIHostingController(rootView: OpeningProgressView(state: state))
         host.view.backgroundColor = .clear
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -181,11 +192,115 @@ class ReaderBaseViewController: UIViewController {
         }
     }
 
+    // MARK: - The platen press (PlatenPress.swift)
+
+    /// How this book came to be opened (the launch says if it went back to
+    /// it by itself).
+    var pressOccasion: PressOccasion = .open
+    /// Set by the launch splash while it stands over this book: the press
+    /// waits for it to go (it calls back at once if it has gone).
+    var pressWaitsFor: ((@escaping () -> Void) -> Void)?
+    /// The loading bar showed (here, or on the splash) before the page.
+    var loadingWasShown = false
+    private var pressCover: UIView?
+    private var pressHost: UIViewController?
+    private var pressSkipper: PressSkipRecogniser?
+
+    /// A picture of the page area as it is now, for the press (subclasses).
+    func pressPicture(_ done: @escaping (UIImage?) -> Void) { done(nil) }
+
+    /// The first page is drawn, under the cover: press it into place, or
+    /// just take the cover away.
+    func firstPageShown() {
+        guard pressCover != nil, pressHost == nil else { return }
+        guard pressOccasion.plays(loadingWasShown: loadingWasShown || pressWaitsFor != nil) else {
+            log.info("press: not played (back to the book without the loading bar)")
+            return endPress()
+        }
+        // Never stuck behind the cover, whatever happens to the picture.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            if self?.pressHost == nil { self?.endPress() }
+        }
+        pressPicture { [weak self] image in
+            guard let self, self.pressCover != nil else { return }
+            guard let image, let cgImage = image.cgImage else { return self.endPress() }
+            let play: () -> Void = { [weak self] in self?.playPress(cgImage, scale: image.scale) }
+            if let wait = self.pressWaitsFor {
+                self.pressWaitsFor = nil
+                wait(play)
+            } else {
+                play()
+            }
+        }
+    }
+
+    private func playPress(_ image: CGImage, scale: CGFloat) {
+        guard let cover = pressCover, pressHost == nil else { return }
+        var frozen: Double?
+        #if DEBUG
+        frozen = ProcessInfo.processInfo.environment["PLATEN_PRESS_FREEZE"].flatMap(Double.init)
+        #endif
+        let press = PlatenPressView(image: image, scale: scale,
+                                    background: Color(uiColor: currentTheme.uiBackground),
+                                    occasion: pressOccasion, start: .random(),
+                                    reduceMotion: UIAccessibility.isReduceMotionEnabled,
+                                    frozenAt: frozen) { [weak self] in self?.endPress() }
+        let host = UIHostingController(rootView: press)
+        host.view.backgroundColor = .clear
+        host.view.isUserInteractionEnabled = false
+        host.view.frame = cover.frame
+        host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        host.safeAreaRegions = []
+        addChild(host)
+        cover.superview?.insertSubview(host.view, aboveSubview: cover)
+        host.didMove(toParent: self)
+        pressHost = host
+        // Over when its time is up (SwiftUI's own word that an animation
+        // has ended did not always come).
+        let length = UIAccessibility.isReduceMotionEnabled ? PlatenMotion.Press.reducedDuration : pressOccasion.duration
+        DispatchQueue.main.asyncAfter(deadline: .now() + length + 0.05) { [weak self, weak host] in
+            if let host, self?.pressHost === host { self?.endPress() }
+        }
+        // Any touch ends it at once, and goes on to do what it does.
+        let skipper = PressSkipRecogniser { [weak self] in self?.endPress() }
+        view.addGestureRecognizer(skipper)
+        pressSkipper = skipper
+        log.info("press: \(self.pressOccasion == .open ? "opening" : "back to the book", privacy: .public)")
+    }
+
+    /// The press is over (or skipped, or not played): the page itself.
+    func endPress() {
+        #if DEBUG
+        if pressHost != nil, ProcessInfo.processInfo.environment["PLATEN_PRESS_FREEZE"]?.isEmpty == false { return }
+        #endif
+        pressCover?.removeFromSuperview()
+        pressCover = nil
+        if let host = pressHost {
+            host.willMove(toParent: nil)
+            host.view.removeFromSuperview()
+            host.removeFromParent()
+            pressHost = nil
+        }
+        if let skipper = pressSkipper {
+            // Not from inside its own touch: taken off a moment later.
+            pressSkipper = nil
+            DispatchQueue.main.async { [weak self] in self?.view.removeGestureRecognizer(skipper) }
+        }
+        pressWaitsFor = nil
+    }
+
+    /// A key ends the press too.
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if pressHost != nil { endPress() }
+        super.pressesBegan(presses, with: event)
+    }
+
     // MARK: - Failure and closing
 
     /// Shows why the book could not be opened, in place of the page.
     func showFailure(_ error: Error) {
         spinner.stopAnimating()
+        endPress()
         guard failureHost == nil else { return }
         let host = UIHostingController(rootView: OpenFailureView(error: error, fallback: failureFallbackTitle) { [weak self] attachBook in
             guard let self else { return }
@@ -370,6 +485,7 @@ class ReaderBaseViewController: UIViewController {
     func applyTheme() {
         let theme = currentTheme
         view.backgroundColor = theme.uiBackground
+        pressCover?.backgroundColor = theme.uiBackground
         state.pageColour = theme.background
         overrideUserInterfaceStyle = theme.interfaceStyle
         setNeedsStatusBarAppearanceUpdate()
@@ -493,4 +609,26 @@ class ReaderBaseViewController: UIViewController {
         let count = Double(width * height) * 255
         return GlowBand.RGB(r: sum.0 / count, g: sum.1 / count, b: sum.2 / count)
     }
+}
+
+/// Notices the first touch anywhere on the reader while the press plays,
+/// without taking it: it fails at once, so the touch carries on to the page
+/// or the controls as usual.
+private final class PressSkipRecogniser: UIGestureRecognizer {
+    private let touched: () -> Void
+
+    init(touched: @escaping () -> Void) {
+        self.touched = touched
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        touched()
+        state = .failed
+    }
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
 }

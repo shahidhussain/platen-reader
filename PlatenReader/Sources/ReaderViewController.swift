@@ -135,10 +135,18 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost {
 
     func sessionDidRenderFirstPage() {
         spinner.stopAnimation(nil)
+        firstPageShown()
         #if DEBUG
         DebugHooks.afterFirstRender(webView: webView, bookName: document.fileURL?.deletingPathExtension().lastPathComponent ?? "book",
                                     root: view) { [weak self] step in self?.runDebugStep(step) }
         #endif
+    }
+
+    /// The press's picture: the page as the web view draws it.
+    override func pressPicture(_ done: @escaping (CGImage?) -> Void) {
+        webView.takeSnapshot(with: nil) { image, _ in
+            done(image?.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        }
     }
 
     func sessionDidOpen() {

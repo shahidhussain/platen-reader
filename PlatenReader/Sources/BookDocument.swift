@@ -24,6 +24,17 @@ final class BookDocument: NSDocument {
         WelcomeWindowController.closeIfOpen()
     }
 
+    /// A window put back at launch (macOS's window restoration): the app
+    /// is going back to this book by itself, so its first page is pressed
+    /// into place only if the loading indicator had to show
+    /// (PlatenPress.swift).
+    override func restoreState(with coder: NSCoder) {
+        super.restoreState(with: coder)
+        for controller in windowControllers {
+            (controller.contentViewController as? ReaderBaseViewController)?.pressOccasion = .resume
+        }
+    }
+
     // MARK: Read-only
 
     override func data(ofType typeName: String) throws -> Data {

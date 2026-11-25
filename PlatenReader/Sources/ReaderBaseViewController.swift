@@ -83,6 +83,16 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
             self.commands.searchPanelClosed()
             self.view.window?.makeFirstResponder(self.pageView)
         }
+        // The page's colour over the page until its first page is drawn,
+        // and pressed into place (PlatenPress.swift): just above the page,
+        // under the controls and the spinner.
+        let cover = PressCoverView(frame: root.bounds)
+        cover.autoresizingMask = [.width, .height]
+        cover.wantsLayer = true
+        cover.layer?.backgroundColor = currentTheme.nsBackground.cgColor
+        root.addSubview(cover, positioned: .above, relativeTo: pageView)
+        pressCover = cover
+
         chrome.install(in: root)
         self.chrome = chrome
 
@@ -117,6 +127,7 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self, !self.hasShownPage, self.failureHost == nil else { return }
+            self.loadingWasShown = true
             self.spinner.startAnimation(nil)
         }
     }
@@ -141,11 +152,91 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
     func reportLayoutToSettings() {}
     func fullScreenChanged() { chrome.applyVisibility(animated: false) }
 
+    // MARK: - The platen press (PlatenPress.swift)
+
+    /// How this book came to be opened: a window put back at launch says it
+    /// is going back to it (BookDocument).
+    var pressOccasion: PressOccasion = .open
+    /// The loading indicator showed before the page.
+    private(set) var loadingWasShown = false
+    private var pressCover: NSView?
+    private var pressHost: NSView?
+    private var pressInputMonitor: Any?
+
+    /// A picture of the page area as it is now, for the press (subclasses).
+    func pressPicture(_ done: @escaping (CGImage?) -> Void) { done(nil) }
+
+    /// The first page is drawn, under the cover: press it into place, or
+    /// just take the cover away.
+    func firstPageShown() {
+        guard pressCover != nil, pressHost == nil else { return }
+        guard pressOccasion.plays(loadingWasShown: loadingWasShown) else {
+            log.info("press: not played (back to the book without the loading indicator)")
+            return endPress()
+        }
+        // Never stuck behind the cover, whatever happens to the picture.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            if self?.pressHost == nil { self?.endPress() }
+        }
+        pressPicture { [weak self] image in
+            guard let self, self.pressCover != nil else { return }
+            guard let image else { return self.endPress() }
+            self.playPress(image)
+        }
+    }
+
+    private func playPress(_ image: CGImage) {
+        guard let cover = pressCover, pressHost == nil, cover.bounds.width > 0 else { return endPress() }
+        var frozen: Double?
+        #if DEBUG
+        frozen = ProcessInfo.processInfo.environment["PLATEN_PRESS_FREEZE"].flatMap(Double.init)
+        #endif
+        let press = PlatenPressView(image: image, scale: CGFloat(image.width) / cover.bounds.width,
+                                    background: Color(nsColor: currentTheme.nsBackground),
+                                    occasion: pressOccasion, start: .random(), reduceMotion: reducedMotion,
+                                    frozenAt: frozen) { [weak self] in self?.endPress() }
+        let host = PressHostingView(rootView: press)
+        host.frame = cover.frame
+        host.autoresizingMask = [.width, .height]
+        cover.superview?.addSubview(host, positioned: .above, relativeTo: cover)
+        pressHost = host
+        // Over when its time is up (SwiftUI's own word that an animation
+        // has ended did not always come).
+        let length = reducedMotion ? PlatenMotion.Press.reducedDuration : pressOccasion.duration
+        DispatchQueue.main.asyncAfter(deadline: .now() + length + 0.05) { [weak self, weak host] in
+            if let host, self?.pressHost === host { self?.endPress() }
+        }
+        // Any click, key or scroll ends it at once, and then does what it
+        // does.
+        pressInputMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown, .scrollWheel]) { [weak self] event in
+                if event.window === self?.view.window { self?.endPress() }
+                return event
+            }
+        log.info("press: \(self.pressOccasion == .open ? "opening" : "back to the book", privacy: .public)")
+    }
+
+    /// The press is over (or skipped, or not played): the page itself.
+    func endPress() {
+        #if DEBUG
+        if pressHost != nil, ProcessInfo.processInfo.environment["PLATEN_PRESS_FREEZE"]?.isEmpty == false { return }
+        #endif
+        pressCover?.removeFromSuperview()
+        pressCover = nil
+        pressHost?.removeFromSuperview()
+        pressHost = nil
+        if let monitor = pressInputMonitor {
+            NSEvent.removeMonitor(monitor)
+            pressInputMonitor = nil
+        }
+    }
+
     // MARK: - Failure
 
     /// Shows why the book could not be opened, in place of the page.
     func showFailure(_ error: Error) {
         spinner.stopAnimation(nil)
+        endPress()
         guard failureHost == nil else { return }
         let host = NSHostingView(rootView: OpenFailureView(error: error, fallback: failureFallbackTitle) { [weak self] attachBook in
             guard let self else { return }
@@ -175,6 +266,7 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
     func applyWindowTheme() {
         let theme = currentTheme
         view.window?.backgroundColor = theme.nsBackground
+        pressCover?.layer?.backgroundColor = theme.nsBackground.cgColor
         state.pageColour = theme.background
         // Chrome and the overlay follow the page's lightness.
         view.window?.appearance = theme.appearance
@@ -329,4 +421,16 @@ class ReaderBaseViewController: NSViewController, NSMenuItemValidation {
 final class FrontWindowLayout: ObservableObject {
     static let shared = FrontWindowLayout()
     @Published var tooNarrowForTwoPages = false
+}
+
+/// The cover over the page while it loads: clicks go through it to the page
+/// (there is nothing to click until the page is there).
+private final class PressCoverView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// The press, which never takes a click (any click ends it and goes on to
+/// the page).
+private final class PressHostingView: NSHostingView<PlatenPressView> {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

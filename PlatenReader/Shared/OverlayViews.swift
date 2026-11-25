@@ -353,13 +353,9 @@ struct OverlayBar: View {
         )
     }
 
-    /// A bookmarked page's symbol: the honey accent on the Mac (the state, in
-    /// the app's one accent); red on iOS, matching its ribbon.
-    #if os(macOS)
+    /// A bookmarked page's symbol: the app's one accent, the orange of the
+    /// ribbon on the page.
     private static let bookmarkedColour = Color.platenAccent
-    #else
-    private static let bookmarkedColour = Color.red
-    #endif
 
     /// Bookmarks the page on screen (or removes its bookmark).
     private var bookmarkButton: some View {
