@@ -23,8 +23,53 @@ final class KokoroText {
 
     /// A sentence's sounds, in Kokoro's symbols.
     func phonemes(_ text: String) -> String {
-        g2p.phonemize(text: text).0
+        g2p.phonemize(text: Self.spoken(text).text).0
     }
+
+    /// The sentence as it is given to Misaki, and for each of its UTF-16
+    /// units the place in the sentence it came from (so the underline still
+    /// finds each word on the page):
+    ///
+    /// - A curly apostrophe (weren’t, human’s) becomes a straight one.
+    ///   Misaki took the curly one for a word of its own, with no sound but
+    ///   a space, so a little pause followed every such word (the reader
+    ///   heard pauses "here and there", 25 Nov 2026).
+    /// - "%" is said: "20%" is "20 percent". Misaki left it out.
+    static func spoken(_ text: String) -> (text: String, origin: [Int]) {
+        let units = Array(text.utf16)
+        var out: [UInt16] = []
+        var origin: [Int] = []
+        out.reserveCapacity(units.count)
+        let space = UInt16(UInt8(ascii: " "))
+        for (i, unit) in units.enumerated() {
+            switch unit {
+            case 0x2019: // ’
+                out.append(UInt16(UInt8(ascii: "'")))
+                origin.append(i)
+            case UInt16(UInt8(ascii: "%")):
+                var word = Array("percent".utf16)
+                if out.last.map({ $0 != space }) ?? false { word.insert(space, at: 0) }
+                if i + 1 < units.count, let next = Unicode.Scalar(units[i + 1]),
+                   CharacterSet.alphanumerics.contains(next) { word.append(space) }
+                out += word
+                origin += Array(repeating: i, count: word.count)
+            default:
+                out.append(unit)
+                origin.append(i)
+            }
+        }
+        return (String(decoding: out, as: UTF16.self), origin)
+    }
+
+    /// Words after which a long sentence is not split when it has to be
+    /// split between words: a piece ending "…to promote a" left the voice
+    /// hanging on the "a" (the reader heard it, 25 Nov 2026).
+    static let joiningWords: Set<String> = [
+        "a", "an", "the", "of", "to", "in", "on", "at", "by", "for", "with", "from", "into", "and", "or", "but",
+        "nor", "as", "than", "that", "this", "these", "those", "my", "your", "his", "her", "its", "our", "their",
+        "is", "was", "are", "were", "be", "been", "had", "has", "have", "would", "could", "should", "will", "can",
+        "not", "no", "very", "so", "if", "who", "which", "whose", "i", "he", "she", "we", "they", "it", "you",
+    ]
 
     /// A sentence as Kokoro's input: one list of token numbers per piece.
     func tokens(_ text: String) -> [[Int64]] {
@@ -44,15 +89,21 @@ final class KokoroText {
     /// it). Kokoro's durations for the tokens then say when each word is
     /// spoken.
     func pieces(_ text: String) -> [KokoroPiece] {
-        let (phonemes, words) = g2p.phonemize(text: text)
+        let spoken = Self.spoken(text)
+        let (phonemes, words) = g2p.phonemize(text: spoken.text)
         let symbols = Array(phonemes)
         // Which word each sound belongs to (an index into `ranges`), found by
         // walking Misaki's tokens, whose sounds and spaces make up the string
         // in order; -1 for spaces and punctuation.
         var owner = [Int](repeating: -1, count: symbols.count)
         var ranges: [NSRange] = []
-        let sentence = text as NSString
+        // Words are found in the text as given to Misaki, then put back on
+        // the sentence (`spoken`'s origins).
+        let sentence = spoken.text as NSString
         var searchFrom = 0, position = 0
+        // Spaces right after a joining word ("a", "the"…), where a split
+        // would leave the voice hanging.
+        var avoid = Set<Int>()
         for word in words {
             let sounds = (word.phonemes ?? g2p.unk).count
             let found = sentence.range(of: word.text, options: [],
@@ -60,13 +111,16 @@ final class KokoroText {
             if found.location != NSNotFound {
                 searchFrom = found.location + found.length
                 if sounds > 0, word.text.contains(where: { $0.isLetter || $0.isNumber }) {
-                    ranges.append(found)
+                    let start = spoken.origin[found.location]
+                    let end = spoken.origin[found.location + found.length - 1] + 1
+                    ranges.append(NSRange(location: start, length: end - start))
                     for i in position..<min(position + sounds, symbols.count) { owner[i] = ranges.count - 1 }
                 }
             }
+            if sounds > 0, Self.joiningWords.contains(word.text.lowercased()) { avoid.insert(position + sounds) }
             position += sounds + word.whitespace.count
         }
-        return Self.splitRanges(symbols, limit: Self.pieceSymbols).compactMap { span in
+        return Self.splitRanges(symbols, limit: Self.pieceSymbols, avoiding: avoid).compactMap { span in
             var tokens: [Int64] = [0]
             var marks: [KokoroPiece.Word] = []
             var last = -1
@@ -79,7 +133,8 @@ final class KokoroText {
                 tokens.append(id)
             }
             tokens.append(0)
-            return tokens.count > 2 ? KokoroPiece(tokens: tokens, words: marks) : nil
+            let endsAtPause = span.last.map { Self.pauses.contains(symbols[$0]) } ?? false
+            return tokens.count > 2 ? KokoroPiece(tokens: tokens, words: marks, endsAtPause: endsAtPause) : nil
         }
     }
 
@@ -90,8 +145,18 @@ final class KokoroText {
         return splitRanges(symbols, limit: limit).map { String(symbols[$0]) }
     }
 
-    /// `split`, as ranges of `symbols`, without spaces at either end.
-    static func splitRanges(_ symbols: [Character], limit: Int) -> [Range<Int>] {
+    /// Punctuation the voice pauses at, where a sentence is best split.
+    static let pauses: Set<Character> = Set(".,;:!?—…")
+
+    /// How far over `pieceSymbols` a sentence may run and still be read in
+    /// one piece: splitting one just over the limit (137 sounds) made a
+    /// pause in the middle of it (25 Nov 2026).
+    static let pieceSlack = 40
+
+    /// `split`, as ranges of `symbols`, without spaces at either end. A
+    /// split between words is not made at a space in `avoiding` (after a
+    /// joining word), unless there is no other.
+    static func splitRanges(_ symbols: [Character], limit: Int, avoiding: Set<Int> = []) -> [Range<Int>] {
         var pieces: [Range<Int>] = []
         var start = 0
         func add(_ range: Range<Int>) {
@@ -100,9 +165,14 @@ final class KokoroText {
             while upper > lower, symbols[upper - 1].isWhitespace { upper -= 1 }
             if lower < upper { pieces.append(lower..<upper) }
         }
-        while symbols.count - start > limit {
+        while symbols.count - start > limit + pieceSlack {
             let window = start..<(start + limit)
-            let cut = window.last(where: { ".,;:!?—…".contains(symbols[$0]) }).map { $0 + 1 }
+            // At the last pause in the second half of the window, else
+            // between words (not after a joining word), else anywhere.
+            let half = start + limit / 2
+            let cut = window.last(where: { $0 >= half && pauses.contains(symbols[$0]) }).map { $0 + 1 }
+                ?? window.last(where: { symbols[$0] == " " && !avoiding.contains($0) })
+                ?? window.last(where: { pauses.contains(symbols[$0]) }).map { $0 + 1 }
                 ?? window.last(where: { symbols[$0] == " " })
                 ?? window.upperBound
             add(start..<cut)
@@ -125,6 +195,55 @@ struct KokoroPiece {
     }
     let tokens: [Int64]
     let words: [Word]
+    /// Whether the piece ends at punctuation (so a pause after it is
+    /// natural), rather than between two words.
+    var endsAtPause = false
+
+    /// A sentence's pieces, once spoken, joined into one sound. Each piece
+    /// Kokoro makes starts with about 0.4 s of silence and ends with about
+    /// 0.6 s, right for a sentence on its own but over a second of silence
+    /// in the middle of one split in two (the reader heard it, 25 Nov 2026).
+    /// Between pieces, the silence is cut to a short pause at punctuation
+    /// (`pauseGap`), or a word's gap elsewhere (`wordGap`); the sentence
+    /// keeps its own silence at either end. Each word's start moves with
+    /// its sound.
+    static func join(_ parts: [(samples: [Float], words: [(sample: Int, range: NSRange)], endsAtPause: Bool)])
+        -> (samples: [Float], words: [(sample: Int, range: NSRange)]) {
+        var samples: [Float] = []
+        var words: [(sample: Int, range: NSRange)] = []
+        for (index, part) in parts.enumerated() {
+            var lower = 0, upper = part.samples.count
+            if index > 0 { lower = max(0, silence(in: part.samples, fromEnd: false) - leadKept) }
+            if index < parts.count - 1 {
+                let keep = part.endsAtPause ? pauseGap : wordGap
+                upper = max(lower, part.samples.count - max(0, silence(in: part.samples, fromEnd: true) - keep))
+            }
+            let offset = samples.count - lower
+            words += part.words.map { (max(samples.count, $0.sample + offset), $0.range) }
+            samples += part.samples[lower..<upper]
+        }
+        return (samples, words)
+    }
+
+    /// Kept of a piece's silence after punctuation (0.25 s at 24 kHz), and
+    /// between two words (0.05 s); and of the silence at a later piece's
+    /// start (0.02 s, so its first sound is not clipped).
+    static let pauseGap = 6000
+    static let wordGap = 1200
+    static let leadKept = 480
+
+    /// How many samples at the start (or end) of `samples` are silent:
+    /// counted in 10 ms steps, each quieter than -40 dB throughout.
+    static func silence(in samples: [Float], fromEnd: Bool) -> Int {
+        let step = 240
+        var count = 0
+        while count + step <= samples.count {
+            let range = fromEnd ? (samples.count - count - step)..<(samples.count - count) : count..<(count + step)
+            if samples[range].contains(where: { abs($0) >= 0.01 }) { break }
+            count += step
+        }
+        return count
+    }
 
     /// When each word begins, in samples from the piece's start, given
     /// Kokoro's duration (in frames) for each token.
