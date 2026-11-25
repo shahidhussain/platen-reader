@@ -80,7 +80,7 @@ final class KokoroTextTests: XCTestCase {
     func testLongSentencesAreSplitAtPausesWithinTheLimit() {
         let text = String(repeating: "abc ", count: 30) + "def, " + String(repeating: "ghi ", count: 30)
         let pieces = KokoroText.split(text, limit: 140)
-        XCTAssertTrue(pieces.allSatisfy { $0.count <= 140 })
+        XCTAssertTrue(pieces.allSatisfy { $0.count <= 140 + KokoroText.pieceSlack })
         XCTAssertTrue(pieces[0].hasSuffix("def,"), "split at the comma, the last pause before the limit")
         XCTAssertEqual(pieces.joined(separator: " ").filter { !$0.isWhitespace }, text.filter { !$0.isWhitespace })
     }
@@ -141,8 +141,68 @@ final class KokoroTextTests: XCTestCase {
         let sentence = Array(repeating: "hello world", count: 20).joined(separator: ", ") + "."
         let pieces = text.pieces(sentence)
         XCTAssertGreaterThan(pieces.count, 1)
-        XCTAssertTrue(pieces.allSatisfy { $0.tokens.count <= KokoroText.pieceSymbols + 2 })
+        XCTAssertTrue(pieces.allSatisfy { $0.tokens.count <= KokoroText.pieceSymbols + KokoroText.pieceSlack + 2 })
         XCTAssertEqual(pieces.map(\.words.count).reduce(0, +), 40, "every word in exactly one piece")
+    }
+
+    /// A curly apostrophe (weren’t) is read as a straight one: Misaki took
+    /// it for a word of its own, with a space after it, so a small pause
+    /// followed every such word (the reader heard them, 25 Nov 2026). The
+    /// underline still finds the word as the page has it.
+    func testACurlyApostropheIsNoPause() throws {
+        let text = try XCTUnwrap(KokoroText(pack: folder, british: false))
+        let curly = text.phonemes("hello\u{2019}s world")
+        XCTAssertFalse(curly.contains("  "), curly)
+        XCTAssertEqual(curly, text.phonemes("hello's world"))
+        let sentence = "hello\u{2019}s world."
+        let words = text.pieces(sentence).flatMap(\.words).map { (sentence as NSString).substring(with: $0.range) }
+        XCTAssertEqual(words, ["hello\u{2019}s", "world"])
+    }
+
+    /// "%" is said ("20 percent"); Misaki left it out. Each unit of the text
+    /// Misaki is given knows where in the sentence it came from.
+    func testPercentIsSaid() {
+        XCTAssertEqual(KokoroText.spoken("20% of it").text, "20 percent of it")
+        XCTAssertEqual(KokoroText.spoken("a 5 % rise").text, "a 5 percent rise")
+        XCTAssertEqual(KokoroText.spoken("all 100%.").text, "all 100 percent.")
+        let spoken = KokoroText.spoken("1%x")
+        XCTAssertEqual(spoken.text, "1 percent x")
+        XCTAssertEqual(spoken.origin, [0] + Array(repeating: 1, count: 9) + [2])
+    }
+
+    /// A sentence just over the limit is read in one piece, and one that
+    /// must be split between words is not split after "a" or "the" (it
+    /// left the voice hanging on the "a" of "promote a mutation").
+    func testSplitsAreNotMadeAfterJoiningWords() {
+        let short = [Character](repeating: "x", count: KokoroText.pieceSymbols + 10)
+        XCTAssertEqual(KokoroText.splitRanges(short, limit: KokoroText.pieceSymbols).count, 1)
+        // "aaaa b cccc…": the space after "b" (index 6) is to be avoided.
+        let symbols = Array("aaaa b " + String(repeating: "c", count: 60))
+        let pieces = KokoroText.splitRanges(symbols, limit: 10, avoiding: [6])
+        XCTAssertEqual(pieces.first.map { String(symbols[$0]) }, "aaaa")
+    }
+
+    /// Pieces of one sentence are joined without the long silence Kokoro
+    /// leaves at each end of a piece (over a second, heard mid-sentence):
+    /// a short pause after punctuation, a word's gap between words, the
+    /// sentence's own silence kept at its two ends, and each word moved
+    /// with its sound.
+    func testPiecesAreJoinedWithoutTheirLongSilence() {
+        let quiet = { (n: Int) in [Float](repeating: 0, count: n) }
+        let loud = { (n: Int) in [Float](repeating: 0.5, count: n) }
+        let first = quiet(9600) + loud(24000) + quiet(14400)
+        let second = quiet(9600) + loud(12000) + quiet(14400)
+        let range = NSRange(location: 0, length: 1)
+        let joined = KokoroPiece.join([
+            (first, [(9600, range)], false),
+            (second, [(9600, range)], true),
+        ])
+        let expected = 9600 + 24000 + KokoroPiece.wordGap + KokoroPiece.leadKept + 12000 + 14400
+        XCTAssertEqual(joined.samples.count, expected)
+        XCTAssertEqual(joined.words.map(\.sample), [9600, 9600 + 24000 + KokoroPiece.wordGap + KokoroPiece.leadKept])
+        // After punctuation, a longer pause.
+        let atComma = KokoroPiece.join([(first, [], true), (second, [], true)])
+        XCTAssertEqual(atComma.samples.count - joined.samples.count, KokoroPiece.pauseGap - KokoroPiece.wordGap)
     }
 
     /// Words begin where Kokoro's durations put their first sound: a
