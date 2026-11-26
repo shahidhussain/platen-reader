@@ -19,8 +19,8 @@ enum AppLinks {
     static let drmGuide = URL(string: "https://platenreader.org/drm")!
 
     /// The privacy policy (About, and Settings on iOS; also given to App
-    /// Store Connect). TO CONFIRM: the address of the policy now on the site.
-    static let privacyPolicy = URL(string: "https://platenreader.org/privacy")!
+    /// Store Connect), on the author's site.
+    static let privacyPolicy = URL(string: "https://shahidhussain.com/projects/platen-reader/privacy/")!
     /// The author's website (About: "Made by Shahid Hussain").
     static let author = URL(string: "https://shahidhussain.com")!
 
