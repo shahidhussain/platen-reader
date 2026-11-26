@@ -355,6 +355,11 @@ final class FolderModel: NSObject, ObservableObject {
     @Published private(set) var covers: [URL: BookCoverInfo] = [:]
     /// The cover picture files (in the cover cache), by book URL.
     @Published private(set) var coverFiles: [URL: URL] = [:]
+    /// Titles and authors read for a search ahead of the covers
+    /// (`readTitlesForSearch`), by book URL.
+    @Published private(set) var titles: [URL: BookCoverInfo] = [:]
+    /// How many books' titles are still being read for a search.
+    @Published private(set) var titlesToRead = 0
     /// Books being downloaded because the reader tapped them; opened once
     /// they arrive.
     @Published private(set) var downloading: Set<URL> = []
@@ -365,6 +370,9 @@ final class FolderModel: NSObject, ObservableObject {
     /// appearing).
     private let coverQueue: DispatchQueue
     private let scanQueue: DispatchQueue
+    /// Reading titles for a search, apart from the covers (much quicker).
+    private let titleQueue: DispatchQueue
+    private var readingTitles = false
     /// Set while the folder is on screen; covers still queued are skipped
     /// once it is not.
     private let active = ActiveFlag()
@@ -388,6 +396,7 @@ final class FolderModel: NSObject, ObservableObject {
         self.cache = cache
         coverQueue = DispatchQueue(label: "org.platenreader.covers", qos: .userInitiated)
         scanQueue = DispatchQueue(label: "org.platenreader.folder-scan", qos: .userInitiated)
+        titleQueue = DispatchQueue(label: "org.platenreader.folder-titles", qos: .userInitiated)
         super.init()
         if let kept = FolderListingCache.listing(of: folder) {
             entries = kept
@@ -457,6 +466,7 @@ final class FolderModel: NSObject, ObservableObject {
         requestedCloud = requestedCloud.filter { urls.contains($0.key) }
         covers = covers.filter { urls.contains($0.key) }
         coverFiles = coverFiles.filter { urls.contains($0.key) }
+        titles = titles.filter { urls.contains($0.key) }
         for entry in new where entry.kind == .book {
             if entry.isDownloaded { loadCover(entry) } else { loadCloudThumbnail(entry) }
         }
@@ -486,6 +496,58 @@ final class FolderModel: NSObject, ObservableObject {
                 self.covers[url] = made.info
                 self.coverFiles[url] = made.imageURL
             }
+        }
+    }
+
+    /// What is known of a book's title and authors: from its cover, or
+    /// read for a search.
+    func info(for url: URL) -> BookCoverInfo? { covers[url] ?? titles[url] }
+
+    /// A search has begun: reads the title and authors of every book whose
+    /// cover is not made yet, so the search finds books by title and
+    /// author, not only by file name.
+    ///
+    /// Covers are made one at a time, in the grid's order; in a large
+    /// folder (or one on a share) that takes minutes, and until a book's
+    /// cover was made its title was unknown, so a search the first time a
+    /// folder was seen missed books it found later (reported 25 Nov 2026).
+    /// Reading only the title (`BookCover.info`) is much quicker. A title
+    /// kept with a cover made before is used as it is. Books in iCloud
+    /// only are left (reading them would download them).
+    func readTitlesForSearch() {
+        guard !readingTitles else { return }
+        let todo = entries.filter { $0.kind == .book && $0.isDownloaded && info(for: $0.url) == nil }
+        guard !todo.isEmpty else { return }
+        readingTitles = true
+        titlesToRead = todo.count
+        let cache = cache
+        let active = active
+        titleQueue.async {
+            var batch: [URL: BookCoverInfo] = [:]
+            var sent = Date()
+            let send = { (finished: Bool) in
+                let found = batch
+                batch = [:]
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.titles.merge(found) { $1 }
+                    self.titlesToRead = finished ? 0 : max(0, self.titlesToRead - found.count)
+                    if finished { self.readingTitles = false }
+                }
+            }
+            for entry in todo {
+                // Left the screen: stop (a later search begins again).
+                guard active.isOn else { break }
+                let kept = CoverCache.key(for: entry.url).flatMap { cache.cached(key: $0) }?.info
+                batch[entry.url] = kept ?? BookCover.info(from: entry.url)
+                // The results grow as titles come in, a few times a second.
+                if Date().timeIntervalSince(sent) > 0.3 {
+                    send(false)
+                    sent = Date()
+                }
+            }
+            send(true)
+            log.info("folder search: titles of \(todo.count) books read ahead of their covers")
         }
     }
 

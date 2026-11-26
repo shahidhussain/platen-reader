@@ -50,7 +50,19 @@
     "Favourites kept on this device: %lld (%@)." : {
 
     },
+    "Folder not available on this network" : {
+
+    },
+    "Folder not connected" : {
+
+    },
+    "Folder not connected while offline" : {
+
+    },
     "Keep Favourites on This Device" : {
+
+    },
+    "Reconnecting %@…" : {
 
     },
     "Reconnecting…" : {
@@ -766,6 +778,9 @@
 
     },
     "Search Book for Selection" : {
+
+    },
+    "Searching titles and authors: %lld to go" : {
 
     },
     "Sections" : {

@@ -207,6 +207,28 @@ final class BookCoverTests: XCTestCase {
         XCTAssertEqual(picture.height, 80)
     }
 
+    /// Only the title and authors (for a folder's search, before covers
+    /// are made): the same as the full reading gives, from a file.
+    func testTitleOnlyFromFiles() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let epub = folder.appendingPathComponent("book.epub")
+        try EPUBFixture.basic { zip in
+            zip.add("OEBPS/content.opf", EPUBFixture.opf(extraManifest: "<item id=\"c\" href=\"c.png\" media-type=\"image/png\" properties=\"cover-image\"/>"))
+            zip.add("OEBPS/c.png", png(width: 200, height: 300, red: 1))
+        }.build().write(to: epub)
+        XCTAssertEqual(BookCover.info(from: epub), BookCoverInfo(title: "Test Book", authors: ["Ada Author"]))
+
+        let pdf = folder.appendingPathComponent("report.pdf")
+        try pdfData(width: 400, height: 600, title: "A Report").write(to: pdf)
+        XCTAssertEqual(BookCover.info(from: pdf).title, "A Report")
+
+        let text = folder.appendingPathComponent("notes.txt")
+        try Data("just some text".utf8).write(to: text)
+        XCTAssertNil(BookCover.info(from: text).title)
+    }
+
     // MARK: Cache
 
     private func temporaryFolder() throws -> URL {
