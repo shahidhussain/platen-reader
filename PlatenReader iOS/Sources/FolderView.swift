@@ -160,9 +160,11 @@ struct FolderGridView: View {
         // (SwipeBack), as does tapping the Home tab.
         .navigationBarTitleDisplayMode(.inline)
         // The search field opens from the search button (and closes with
-        // Cancel, clearing the search).
+        // Cancel, clearing the search). While it has words in it, it stays
+        // up as the results are scrolled, so what was searched for stays in
+        // sight; empty, it tucks away on scrolling as usual.
         .searchable(text: $query, isPresented: $searching,
-                    placement: .navigationBarDrawer(displayMode: .automatic),
+                    placement: .navigationBarDrawer(displayMode: query.isEmpty ? .automatic : .always),
                     prompt: Text("Title, author or file name"))
         // A note in the log of what each search found, once typing pauses,
         // to tell "not in the folder's listing yet" from "not matched".
