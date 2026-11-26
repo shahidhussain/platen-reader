@@ -42,12 +42,14 @@ struct FolderGridView: View {
     /// The books and folders that match the search (all of them when
     /// nothing is typed): by file name, and for books their title and
     /// authors too.
+    private var isSearching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+
     private var shown: [FolderEntry] {
-        let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        let searching = isSearching
         return filter.sort.sorted(model.entries, info: model.covers).filter { entry in
             if entry.kind == .book, !filter.shows(entry.url) { return false }
             guard searching else { return true }
-            let info = model.covers[entry.url]
+            let info = model.info(for: entry.url)
             return FolderSearch.matches(query, name: entry.name, title: info?.title, authors: info?.authors ?? [])
         }
     }
@@ -115,7 +117,7 @@ struct FolderGridView: View {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
                     ContentUnavailableView("No Books of These Kinds", systemImage: "line.3.horizontal.decrease.circle",
                                            description: Text("Change the filter to see the other books here."))
-                } else {
+                } else if model.titlesToRead == 0 {
                     ContentUnavailableView.search(text: query)
                 }
             } else if model.entries.isEmpty {
@@ -128,7 +130,13 @@ struct FolderGridView: View {
         }
         .overlay(alignment: .bottom) {
             let (done, total) = model.coverProgress
-            if model.hasLoaded, total > 0, done < total {
+            if isSearching, model.titlesToRead > 0 {
+                // Still reading titles and authors to search: the results
+                // grow as they come in.
+                TitleProgress(left: model.titlesToRead)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+            } else if model.hasLoaded, total > 0, done < total {
                 CoverProgress(done: done, total: total)
                     .padding(.bottom, 8)
                     .transition(.opacity)
@@ -149,7 +157,10 @@ struct FolderGridView: View {
         // A note in the log of what each search found, once typing pauses,
         // to tell "not in the folder's listing yet" from "not matched".
         .task(id: query) {
-            guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+            guard isSearching else { return }
+            // Titles and authors not known yet (their covers still to be
+            // made) are read now, so the search finds them.
+            model.readTitlesForSearch()
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled else { return }
             logSearch()
@@ -173,6 +184,14 @@ struct FolderGridView: View {
         .onAppear {
             model.onDownloaded = openBook
             model.start()
+            #if DEBUG
+            // PLATEN_FOLDER_SEARCH=<words>: searches as the folder first
+            // appears, as a reader typing at once would (DebugHooks.swift).
+            if let words = ProcessInfo.processInfo.environment["PLATEN_FOLDER_SEARCH"], !words.isEmpty, query.isEmpty {
+                searching = true
+                query = words
+            }
+            #endif
             // Not added to the Home list: only folders the reader chose
             // go there (Choose Folder…), not every folder browsed into.
         }
@@ -189,7 +208,7 @@ struct FolderGridView: View {
         let books = model.entries.filter { $0.kind == .book }
         let found = shown
         let byName = books.filter { FolderSearch.matches(query, name: $0.name) }.count
-        let titled = books.filter { model.covers[$0.url]?.title != nil }.count
+        let titled = books.filter { model.info(for: $0.url)?.title != nil }.count
         log.info("folder search: \(found.count) shown of \(model.entries.count) entries (\(books.count) books, \(titled) with titles read, \(byName) matching by file name), loaded: \(model.hasLoaded)")
         #if DEBUG
         // Debug builds only: the words and names themselves.
@@ -312,6 +331,27 @@ private struct CoverProgress: View {
                 .progressViewStyle(.linear)
                 .frame(width: 160)
             Text("Making covers: \(done) of \(total)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: Capsule())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// While a search waits for books' titles and authors to be read
+/// (`FolderModel.readTitlesForSearch`): how many are left. The results grow
+/// meanwhile.
+private struct TitleProgress: View {
+    let left: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Searching titles and authors: \(left) to go")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()

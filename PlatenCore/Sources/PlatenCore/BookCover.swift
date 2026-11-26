@@ -62,6 +62,14 @@ public enum BookCover {
         return result
     }
 
+    /// Only a book's title and authors, without making its picture: for an
+    /// EPUB the zip directory and the package, for a PDF its document
+    /// information. Much quicker than `extract`, so a folder's search can
+    /// know every book's title well before every cover is made.
+    public static func info(from url: URL, coordinated: Bool = true) -> BookCoverInfo {
+        extract(from: url, maxPixelSize: 0, coordinated: coordinated).info
+    }
+
     private static func extractUncoordinated(url: URL, maxPixelSize: Int) -> Result {
         guard let source = try? FileByteSource(url: url) else { return Result(info: BookCoverInfo()) }
         if let head = try? source.read(offset: 0, length: 1024), PDFIdentity.looksLikePDF(head) {
@@ -86,6 +94,7 @@ public enum BookCover {
               let opf = read(opfPath) else { return Result(info: BookCoverInfo()) }
         let package = EPUBPackageParser.parsePackage(opf, path: resolver.resolve(opfPath) ?? opfPath)
         let info = BookCoverInfo(title: package.title, authors: package.creators)
+        guard maxPixelSize > 0 else { return Result(info: info) } // the title only (`info(from:)`)
         let jpeg = epubCoverPath(package: package, read: read)
             .flatMap(read)
             .flatMap { thumbnail(imageData: $0, maxPixelSize: maxPixelSize) }
@@ -168,6 +177,8 @@ public enum BookCover {
                 info.title = title
             }
         }
+
+        guard maxPixelSize > 0 else { return Result(info: info) } // the title only (`info(from:)`)
 
         // The page's visible area, turned as the PDF says it should be shown.
         let box = page.getBoxRect(.cropBox)
