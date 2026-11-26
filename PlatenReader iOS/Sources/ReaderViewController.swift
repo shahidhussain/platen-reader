@@ -525,7 +525,18 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     /// PDF's is.
     private func glowSource(_ configuration: WKSnapshotConfiguration, done: @escaping (UIImage?) -> Void) {
         if !lonePictureView.isHidden, let picture = lonePictureView.image { return done(picture) }
-        guard state.isFixedLayout else { return pageSnapshot(configuration, done: done) }
+        guard state.isFixedLayout else {
+            // A bookmarked page: not the strip at the top where its ribbon
+            // hangs, whose orange otherwise tinted the glow beside it (device
+            // testing, 26 Nov 2026). The rest of the page stretches to fill
+            // the glow, which is a soft blur either way.
+            if state.isPageBookmarked {
+                let clear: CGFloat = 64
+                configuration.rect = CGRect(x: 0, y: clear, width: webView.bounds.width,
+                                            height: max(1, webView.bounds.height - clear))
+            }
+            return pageSnapshot(configuration, done: done)
+        }
         session.fixedLayoutPageRects { [weak self] rects in
             guard let self else { return done(nil) }
             let area = rects.reduce(CGRect.null) { $0.union($1) }.intersection(self.webView.bounds)
@@ -613,7 +624,9 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         let rounded = safe.bottom > 0 || safe.left > 0 || safe.right > 0
         guard rounded else { return 16 }
         let window = view.window?.bounds.size ?? view.bounds.size
-        return min(window.width, window.height) < 500 ? 60 : 26
+        // A few points of its top corner may be cut by the curve: no harm,
+        // and it sits closer to the corner (reader's request, 26 Nov 2026).
+        return min(window.width, window.height) < 500 ? 42 : 20
     }
 
     /// What differs in the page's settings on iOS:

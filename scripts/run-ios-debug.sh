@@ -18,6 +18,7 @@
 #   PLATEN_OPEN_DELAY  seconds to wait after launch before opening the book
 #   PLATEN_WAIT    seconds to wait for the first page before the steps (default 6)
 #   PLATEN_PRESS_FREEZE  hold the opening press still at this point (0 to 1)
+#   PLATEN_ANIMATION_SPEED  run animations at this speed (0.1: ten times slower)
 #
 # The book is copied into the app's own Documents folder first: coordinated
 # reads of files on the Mac's disk stall in the Simulator, while files in the
@@ -51,7 +52,7 @@ cp "$book" "$documents/"
 rm -f "$snaps/$name"-*.png(N)
 
 started=$(date "+%Y-%m-%d %H:%M:%S")
-SIMCTL_CHILD_PLATEN_PRESS_FREEZE=${PLATEN_PRESS_FREEZE:-} SIMCTL_CHILD_PLATEN_OPEN_DELAY=${PLATEN_OPEN_DELAY:-0} SIMCTL_CHILD_PLATEN_OPEN_PATH="$documents/$(basename "$book")" SIMCTL_CHILD_PLATEN_STEPS="$steps" SIMCTL_CHILD_PLATEN_KEEP_CONTROLS=${PLATEN_KEEP_CONTROLS:-} SIMCTL_CHILD_PLATEN_LOG_PAGE_FIT=${PLATEN_LOG_PAGE_FIT:-} SIMCTL_CHILD_PLATEN_KOKORO_PACK=${PLATEN_KOKORO_PACK:-} \
+SIMCTL_CHILD_PLATEN_PRESS_FREEZE=${PLATEN_PRESS_FREEZE:-} SIMCTL_CHILD_PLATEN_ANIMATION_SPEED=${PLATEN_ANIMATION_SPEED:-} SIMCTL_CHILD_PLATEN_OPEN_DELAY=${PLATEN_OPEN_DELAY:-0} SIMCTL_CHILD_PLATEN_OPEN_PATH="$documents/$(basename "$book")" SIMCTL_CHILD_PLATEN_STEPS="$steps" SIMCTL_CHILD_PLATEN_KEEP_CONTROLS=${PLATEN_KEEP_CONTROLS:-} SIMCTL_CHILD_PLATEN_LOG_PAGE_FIT=${PLATEN_LOG_PAGE_FIT:-} SIMCTL_CHILD_PLATEN_KOKORO_PACK=${PLATEN_KOKORO_PACK:-} \
   xcrun simctl launch "$sim" $bundle > /dev/null
 
 # The first page takes a few seconds in the Simulator (WebKit is slow to

@@ -382,11 +382,12 @@ def azw3(path, title, author, skeleton, fragment, pictures):
     open(path, "wb").write(_palm_database(title, records))
 
 
-def text_pdf(path, title, pages, doc_id="5D41402ABC4B2A76B9719D911017C592"):
+def text_pdf(path, title, pages, doc_id="5D41402ABC4B2A76B9719D911017C592", sizes=None):
     """A PDF of text pages as a printed book has them: each page is
     (header, body lines, footer), the header at the top, the footer at the
     bottom (read aloud must leave both out, and join a word hyphenated at a
-    line's end and a sentence running onto the next page)."""
+    line's end and a sentence running onto the next page). `sizes`: each
+    page's (width, height) in points, if not all US Letter."""
     objects = []
 
     def add(body):
@@ -400,13 +401,14 @@ def text_pdf(path, title, pages, doc_id="5D41402ABC4B2A76B9719D911017C592"):
     pages_obj = add(None)
     font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     page_ids = []
-    for header, body, footer in pages:
-        parts = [f"BT /F1 10 Tf 72 760 Td ({esc(header)}) Tj ET"]
-        parts.append("BT /F1 12 Tf 72 720 Td 16 TL " + " ".join(f"({esc(l)}) '" for l in body) + " ET")
-        parts.append(f"BT /F1 10 Tf 290 40 Td ({esc(footer)}) Tj ET")
+    for i, (header, body, footer) in enumerate(pages):
+        width, height = sizes[i] if sizes else (612, 792)
+        parts = [f"BT /F1 10 Tf 72 {height - 32} Td ({esc(header)}) Tj ET"]
+        parts.append(f"BT /F1 12 Tf 72 {height - 72} Td 16 TL " + " ".join(f"({esc(l)}) '" for l in body) + " ET")
+        parts.append(f"BT /F1 10 Tf {width // 2 - 16} 40 Td ({esc(footer)}) Tj ET")
         text = " ".join(parts)
         stream = add(f"<< /Length {len(text)} >>\nstream\n{text}\nendstream")
-        page_ids.append(add(f"<< /Type /Page /Parent {pages_obj} 0 R /MediaBox [0 0 612 792] "
+        page_ids.append(add(f"<< /Type /Page /Parent {pages_obj} 0 R /MediaBox [0 0 {width} {height}] "
                             f"/Contents {stream} 0 R /Resources << /Font << /F1 {font} 0 R >> >> >>"))
     objects[pages_obj - 1] = (f"<< /Type /Pages /Kids [{' '.join(f'{p} 0 R' for p in page_ids)}] "
                               f"/Count {len(page_ids)} >>")
@@ -691,6 +693,17 @@ def main():
     ])
     made.append(p)
 
+    # Pages of different sizes (a wide one, then a small one): a page curl
+    # onto a larger page must not show it round the leaf before the curl.
+    p = os.path.join(OUT, "mixed-sizes.pdf")
+    text_pdf(p, "Mixed Sizes", [
+        ("MIXED SIZES", ["A US Letter page."], "Page 1"),
+        ("MIXED SIZES", ["A wide, square page, larger than the one before."], "Page 2"),
+        ("MIXED SIZES", ["A US Letter page again."], "Page 3"),
+        ("MIXED SIZES", ["A small page, smaller than the one before."], "Page 4"),
+    ], doc_id="3F79BB7B435B05321651DAEFD374CDC6", sizes=[(612, 792), (900, 900), (612, 792), (420, 560)])
+    made.append(p)
+
     p = os.path.join(OUT, "square-pages.pdf")
     simple_pdf(p, "Square Book", ["Bears", "Hats"], doc_id="2C26B46B68FFC68FF99B453C1D304134", square=True)
     made.append(p)
@@ -757,6 +770,23 @@ def main():
                        [("ch1.xhtml", plate)],
                        manifest_extra=['<item id="pic" href="images/plate.png" media-type="image/png"/>'],
                        extra_files=[("OEBPS/images/plate.png", png(600, 800, (40, 96, 160)))]))
+
+    # A picture book made as text: on each page a picture in a paragraph
+    # that indents its first line, at the page's full width, and a caption.
+    # The indent pushed the picture past the page's edge, and a sliver of
+    # it showed down the next page's left side (device testing, 26 Nov
+    # 2026): each must end within its page (bookfixes.js).
+    spreads = "".join(
+        f'<div style="break-before: column"><p class="pic"><img src="images/scene.png" alt="Scene {n}"/></p>'
+        f'<p class="caption">Page {n} of the picture book: the monkeys jump on the bed.</p></div>'
+        for n in range(1, 5))
+    indented = xhtml("Monkeys",
+                     '<style>p { text-indent: 2.5em; } img { width: 100%; }</style>'
+                     f'<h1>Five Monkeys</h1>{spreads}')
+    made.append(simple("picture-indent.epub", "Five Monkeys",
+                       [("ch1.xhtml", indented)],
+                       manifest_extra=['<item id="pic" href="images/scene.png" media-type="image/png"/>'],
+                       extra_files=[("OEBPS/images/scene.png", png(800, 600, (200, 120, 60)))]))
 
     # Read aloud: a book in French (dc:language fr) is read with Apple's
     # French voice, never offered the English natural voice.

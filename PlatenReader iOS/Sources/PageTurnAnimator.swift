@@ -226,23 +226,53 @@ final class PageTurnAnimator {
             self.pageView.superview?.insertSubview(pager.view, aboveSubview: self.pageView)
             pager.didMove(toParent: self.host)
 
+            // Only a page curls (a PDF's, `curlRegion`): the live page is
+            // hidden while it turns underneath, so a larger next page is not
+            // seen round the leaf before the curl begins (device testing,
+            // 26 Nov 2026). Its picture lies under the leaf instead, the
+            // parts past the old page fading in as the leaf turns.
+            let pageOnly = self.curlRegion != nil
+            if pageOnly { self.pageView.alpha = 0 }
+            let showLive: () -> Void = { [weak self] in self?.pageView.alpha = 1 }
+
             // Turn underneath, then curl the old page away to show the new.
             self.turnOrReportEdge(request) { moved in
-                guard self.generation == turn else { return }
-                guard moved else { return self.removePager() } // at the start or end
+                guard self.generation == turn else { return showLive() }
+                guard moved else { showLive(); return self.removePager() } // at the start or end
                 self.snapshot(true) { full in
-                    guard self.generation == turn, let after = full.flatMap({ self.crop($0, to: region) }) else {
+                    guard self.generation == turn, let full, let after = self.crop(full, to: region) else {
+                        showLive()
                         return self.removePager()
                     }
                     let started = CACurrentMediaTime()
+                    if pageOnly {
+                        let picture = UIImageView(image: full)
+                        picture.frame = self.pageView.frame
+                        picture.alpha = 0
+                        self.pageView.superview?.insertSubview(picture, belowSubview: pager.view)
+                        self.curlUnderlay?.removeFromSuperview()
+                        self.curlUnderlay = picture
+                        UIView.animate(withDuration: Self.curlDuration, delay: 0, options: [.curveEaseInOut]) {
+                            picture.alpha = 1
+                        }
+                    }
                     // A double-sided turn names both sides of the leaf
                     // that ends up on show: the new page, and its back.
                     let back = backs.back()
-                    let new = self.picturePage(after)
+                    // A page-only curl: round a smaller new page, what is
+                    // behind shows (not the page's colour).
+                    let new = self.picturePage(after, clear: pageOnly)
                     self.pagerAnimating = true
                     pager.setViewControllers([new, back],
                                              direction: leafMovesLeft ? .forward : .reverse, animated: true) { _ in
                         log.info("page curl took \(Int((CACurrentMediaTime() - started) * 1000)) ms")
+                        // The live page again, as the pictures go (unless a
+                        // later turn has taken over, and sees to it).
+                        if self.generation == turn {
+                            showLive()
+                            self.curlUnderlay?.removeFromSuperview()
+                            self.curlUnderlay = nil
+                        }
                         // Always this pager, even if a later turn has
                         // moved on: only now is its transition over. It is
                         // taken down on the next turn of the run loop: the
@@ -322,6 +352,9 @@ final class PageTurnAnimator {
         guard let cg = image.cgImage?.cropping(to: pixels) else { return nil }
         return UIImage(cgImage: cg, scale: scale, orientation: image.imageOrientation)
     }
+
+    /// The new page's picture under a page-only curl (see `curl`).
+    private var curlUnderlay: UIView?
 
     /// Holds the curl's data source while it runs (the page view
     /// controller keeps only a weak reference).
@@ -520,6 +553,8 @@ final class PageTurnAnimator {
         pageView.transform = .identity
         pageView.alpha = 1
         removeCover()
+        curlUnderlay?.removeFromSuperview()
+        curlUnderlay = nil
         if let pager, pagerAnimating {
             // Mid-curl: hide it and let it finish; its completion removes
             // it (see `pagerAnimating`).
@@ -565,10 +600,12 @@ final class PageTurnAnimator {
         pager.removeFromParent()
     }
 
-    private func picturePage(_ image: UIImage) -> UIViewController {
-        // (Its background shows only if the picture is smaller than the leaf.)
+    private func picturePage(_ image: UIImage, clear: Bool = false) -> UIViewController {
+        // (Its background shows only if the picture is smaller than the leaf,
+        // or see-through round the page.) `clear`: none, so what is behind
+        // shows round a page smaller than the leaf.
         let page = UIViewController()
-        page.view.backgroundColor = host.view.backgroundColor
+        page.view.backgroundColor = clear ? .clear : host.view.backgroundColor
         let imageView = UIImageView(image: image)
         imageView.frame = page.view.bounds
         imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]

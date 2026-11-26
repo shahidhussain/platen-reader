@@ -41,6 +41,7 @@ check "Writer, R J Van - The Hill.txt" "(b=>'title:'+b.metadata.title+' by:'+JSO
 check cover-page.epub         "'lone:'+platen.view.renderer.getContents()[0].doc.documentElement.classList.contains('platen-lone-picture')" "lone:true"
 # A page partway through a chapter that is one picture and nothing else
 # counts as a picture-only page (the page before it, text, does not).
+check picture-indent.epub     "platen.next();platen.next();'overflow:'+platen.pictureOverflow()" "overflow:0"
 check plate-page.epub         "${NARROW}platen.view.goTo(0);'before:'+platen.pagePicture();platen.next();'plate:'+platen.pagePicture()" "plate:true" "before:true"
 # Body text set at 75% by the book still comes out at the size chosen.
 check small-body-text.epub    "(d=>'body:'+(Math.abs(parseFloat(getComputedStyle(d.querySelector('p')).fontSize)-platen.fontSize())<0.1))(platen.view.renderer.getContents()[0].doc)" "body:true"
@@ -58,6 +59,7 @@ check azw3-picture.azw3        "$PICS"                                  "pics:tr
 # word hyphenated across lines joined, a sentence across pages read whole.
 check running-heads.pdf       "@readAloudPreview:"                     "read aloud: Rivers begin as rain falling on high ground. | The water gathers in small streams that join and grow. | Each stream finds its own path down the hillside, and the river ran on and on until it met the sea at last." "RIVER STUDIES"
 check square-pages.pdf        "-"                                      "PDF: 4 pages, 2 contents entries"
+check mixed-sizes.pdf         "-"                                      "PDF: 4 pages, 0 contents entries"
 # A note reference opens its note in a pop-up (and the page does not move);
 # a superscript link into a notes file counts as one too.
 NOTE='(d=>(d.querySelector(SEL).click(),"clicked"))(platen.view.renderer.getContents()[0].doc)'

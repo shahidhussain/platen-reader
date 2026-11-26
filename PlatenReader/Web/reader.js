@@ -28,7 +28,7 @@
 import './foliate/view.js'
 import { EPUB } from './foliate/epub.js'
 import { reader } from './modules/state.js'
-import { applyJustification, auditColours, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes } from './modules/bookfixes.js'
+import { applyJustification, auditColours, ensureReadableColours, fitLonePicture, fitOverflowingPictures, fitWideTables, normaliseBodyTextSize, overflowingPictures, rescalePublisherFontSizes } from './modules/bookfixes.js'
 import { pagesOnScreen, scheduleRibbons, setBookmarkList, setControlsVisible as ribbonsWithControls, setRibbonMotion, toggleBookmark } from './modules/bookmarks.js'
 import { post } from './modules/bridge.js'
 import { sendContents } from './modules/contents.js'
@@ -213,9 +213,13 @@ const onRelocate = ({ detail }) => {
         for (const { doc } of reader.view.renderer.getContents?.() ?? []) nameSection(doc, tocItem?.label?.trim())
         pageChanged(lastReason)
         reportLonePicture()
-        // Page width changes with the layout; re-check tables each time.
+        // Page width changes with the layout; re-check tables and pictures
+        // each time.
         if (!reader.isFixedLayout && reader.settings?.flow !== 'scrolled')
-            for (const { doc } of reader.view.renderer.getContents?.() ?? []) if (doc) fitWideTables(doc)
+            for (const { doc } of reader.view.renderer.getContents?.() ?? []) if (doc) {
+                fitWideTables(doc)
+                fitOverflowingPictures(doc)
+            }
     })
     post('relocate', {
         pagesLeft,
@@ -416,6 +420,10 @@ window.platen = {
     readAloudSentences: count => readAloud.sentences(count),
     readAloudProbeStart: () => readAloud.probeStart(),
     measureText,
+    // How many pictures on the chapters laid out reach past their page's
+    // right-hand edge (none should: fitOverflowingPictures).
+    pictureOverflow: () => (reader.view?.renderer.getContents?.() ?? [])
+        .reduce((n, { doc }) => n + (doc ? overflowingPictures(doc) : 0), 0),
     setControlsVisible: (on, headerBottom) => {
         document.getElementById('page-numbers')?.classList.toggle('under-controls', !!on)
         ribbonsWithControls(on, headerBottom)

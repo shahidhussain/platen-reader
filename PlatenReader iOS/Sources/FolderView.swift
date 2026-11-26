@@ -196,6 +196,8 @@ struct FolderGridView: View {
             // go there (Choose Folder…), not every folder browsed into.
         }
         .onDisappear { model.stop() }
+        // Covers are made in the order the grid shows (Random included).
+        .onChange(of: shown.map(\.url), initial: true) { _, order in model.showOrder(order) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             model.refresh()
         }

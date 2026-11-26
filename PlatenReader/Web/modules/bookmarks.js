@@ -40,9 +40,12 @@ document.body.append(leaving)
 const ribbonOutline = `<svg viewBox="0 0 20 30" aria-hidden="true" preserveAspectRatio="none">
     <path d="M.5 0v29.5l9.5-6.4 9.5 6.4V0"/></svg>`
 const ribbonPicture = dark => {
+    // A strip of cloth that repeats down the ribbon's length, whatever it
+    // is, and the notched end below it.
     const name = dark ? 'dark' : 'light'
-    return `<img alt="" draggable="false" src="ribbon/ribbon-${name}@2x.png"
-        srcset="ribbon/ribbon-${name}@2x.png 2x, ribbon/ribbon-${name}@3x.png 3x">`
+    const strip = `-webkit-image-set(url(ribbon/ribbon-strip-${name}@2x.png) 2x, url(ribbon/ribbon-strip-${name}@3x.png) 3x)`
+    return `<span class="strip" style="background-image: ${strip}"></span><img class="end" alt="" draggable="false"
+        src="ribbon/ribbon-end-${name}@2x.png" srcset="ribbon/ribbon-end-${name}@2x.png 2x, ribbon/ribbon-end-${name}@3x.png 3x">`
 }
 
 // The ribbon's motions, in seconds and degrees: Swift sends them from
@@ -257,16 +260,13 @@ function refreshRibbons() {
             el.style.top = `${Math.round(top)}px`
             el.style.setProperty('--ribbon-height', `${ribbonHeight}px`)
             // iOS, paginated: while the controls are up, the top bar would
-            // cover the ribbon, so it stands just below the bar (past the
-            // fade of its band), larger
-            // (twice its 20 by 30), 16 pixels in from the edge, and goes back
-            // up to the top when they go (reader's request, 25 Nov 2026).
+            // cover the ribbon, so it is pulled down longer, the same width
+            // and from the same place, until its end hangs below the bar
+            // (past its band's fade); it shortens again when they go
+            // (reader's request, 26 Nov 2026).
             if (marked && touch && !scrolled) {
-                el.classList.add('liftable')
-                const lifted = 40
-                el.style.setProperty('--lift-x', `${Math.round(edge - 16 - lifted - (left + 18))}px`)
-                el.style.setProperty("--lift-y", `${Math.round(headerBottom + 26 - top)}px`)
-                el.style.setProperty('--lift-scale', `${lifted / ribbonWidth}`)
+                el.classList.add('pullable')
+                el.style.setProperty('--pulled-height', `${Math.round(Math.max(ribbonHeight, headerBottom + 26 + 34 - top))}px`)
             }
             el.innerHTML = `<span class="ribbon">${marked ? ribbonPicture(reader.settings?.theme?.dark) : ribbonOutline}</span>`
             if (cfi) el.dataset.cfi = cfi

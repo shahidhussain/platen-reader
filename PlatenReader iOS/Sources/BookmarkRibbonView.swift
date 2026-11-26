@@ -11,30 +11,33 @@ import UIKit
 /// (`liftOff`); turning onto a bookmarked page shows it simply there. The
 /// timings are PlatenMotion.Ribbon's (PlatenPress.swift).
 final class BookmarkRibbonView: UIView {
-    /// The size it is drawn at (points): half as big again as the
-    /// picture's 20 by 30, to be seen at a glance.
+    /// The size it is drawn at (points): half as big again as the drawing's
+    /// 20 points across, to be seen at a glance. While the controls are up
+    /// it is pulled longer, the same width (`PDFReaderViewController`).
     static let size = CGSize(width: 30, height: 45)
-    /// Its size while the controls are up, below the top bar: twice the
-    /// picture's.
-    static let liftedSize = CGSize(width: 40, height: 60)
 
     /// The ribbon itself, hinged at its top edge (its anchor), so it folds
-    /// and swings about the page's edge without moving the view's frame.
-    private let cloth = UIImageView()
+    /// and swings about the page's edge without moving the view's frame: a
+    /// strip of cloth repeating down its length, and the notched end.
+    private let cloth = UIView()
+    private let strip = UIImageView()
+    private let end = UIImageView()
 
     /// Whether it is drawn for a dark page.
     var isDark = false {
-        didSet { if isDark != oldValue { cloth.image = Self.picture(dark: isDark) } }
+        didSet { if isDark != oldValue { loadPictures() } }
     }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         isAccessibilityElement = false
-        cloth.image = Self.picture(dark: false)
-        cloth.contentMode = .scaleToFill
         cloth.layer.anchorPoint = CGPoint(x: 0.5, y: 0)
+        cloth.addSubview(strip)
+        cloth.addSubview(end)
+        end.contentMode = .scaleToFill
         addSubview(cloth)
+        loadPictures()
         // A very soft shadow on the page beneath: it sits on the paper.
         cloth.layer.shadowColor = UIColor.black.cgColor
         cloth.layer.shadowOpacity = 0.25
@@ -47,18 +50,39 @@ final class BookmarkRibbonView: UIView {
 
     override var intrinsicContentSize: CGSize { Self.size }
 
+    /// The ribbon as drawn now, at its size (for pictures of the page). Drawn
+    /// from its layers, so it comes out even while the page is hidden.
+    var picture: UIImage? {
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        return UIGraphicsImageRenderer(size: bounds.size).image { context in
+            cloth.layer.render(in: context.cgContext)
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         cloth.bounds = CGRect(origin: .zero, size: bounds.size)
         cloth.center = CGPoint(x: bounds.midX, y: 0) // the anchor is its top edge
+        // The end is half as long as the ribbon is wide; the strip fills
+        // the rest, repeating.
+        let endLength = min(bounds.height, bounds.width / 2)
+        strip.frame = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - endLength)
+        end.frame = CGRect(x: 0, y: bounds.height - endLength, width: bounds.width, height: endLength)
     }
 
-    /// The picture, from the web shell's folder (both apps carry it).
-    private static func picture(dark: Bool) -> UIImage? {
-        let name = "ribbon-\(dark ? "dark" : "light")@3x"
-        guard let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "Web/ribbon"),
-              let data = try? Data(contentsOf: url) else { return nil }
-        return UIImage(data: data, scale: 3)
+    /// The pieces, from the web shell's folder (both apps carry them),
+    /// sized so a repeat of the strip is as wide as the ribbon.
+    private func loadPictures() {
+        let shade = isDark ? "dark" : "light"
+        func picture(_ piece: String) -> UIImage? {
+            guard let url = Bundle.main.url(forResource: "ribbon-\(piece)-\(shade)@3x", withExtension: "png",
+                                            subdirectory: "Web/ribbon"),
+                  let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return nil }
+            let scale = image.size.width / Self.size.width
+            return image.cgImage.map { UIImage(cgImage: $0, scale: scale, orientation: .up) }
+        }
+        strip.image = picture("strip")?.resizableImage(withCapInsets: .zero, resizingMode: .tile)
+        end.image = picture("end")
     }
 
     private static func pose(fold: Double, turn: Double) -> CATransform3D {

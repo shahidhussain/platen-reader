@@ -115,6 +115,74 @@ enum GlowBand {
         return (Double(poor) / Double(pixels.count), Double(detailed) / Double(pixels.count))
     }
 
+    // MARK: - How much band, and its colour
+
+    /// What the band behind one of the controls' bars should be: its colour
+    /// and how opaque (0: none at all, 1: solid), from what lies behind the
+    /// bar (`pixels`, rows of a small picture of it, `width` across) under
+    /// controls drawn in white (`darkTheme`) or black, on a page of colour
+    /// `page` (the reader's model, 26 Nov 2026):
+    ///
+    /// - As see-through as it can be: none where the controls already read
+    ///   clearly against what is behind (enough contrast, no busy detail);
+    ///   some where they nearly do; solid only where they must have it.
+    /// - Its colour always comes from what is behind, as the ambient glow's
+    ///   does (their average colour), moved towards the page's colour only
+    ///   as far as the controls need to read against it solid, so even a
+    ///   solid band belongs to the page rather than sitting on it.
+    ///
+    /// The opacity is the least of two needs: enough that all but
+    /// `backdropTolerance` of what is behind reaches `backdropContrast`
+    /// against the controls once the band is laid over it; and enough to dim
+    /// fine detail (the book's own lines of text, a busy picture), which a
+    /// band of opacity α softens to (1 - α) of its strength, until even its
+    /// busy rows are faint. Rounded up to a tenth, so a page barely
+    /// different gives the same band.
+    static func backing(behind pixels: [RGB], width: Int, darkTheme: Bool, page: RGB) -> (colour: RGB, opacity: Double) {
+        guard !pixels.isEmpty, width > 1 else { return (page, 1) }
+        let text = darkTheme ? RGB.white : RGB.black
+        let count = Double(pixels.count)
+        let average = RGB(r: pixels.reduce(0) { $0 + $1.r } / count, g: pixels.reduce(0) { $0 + $1.g } / count,
+                          b: pixels.reduce(0) { $0 + $1.b } / count)
+        let band = colour(edge: average, page: page, darkTheme: darkTheme)
+
+        // Contrast: the least opacity each pixel needs (in twentieths),
+        // and the level that covers all but the tolerated share.
+        var needs = pixels.map { pixel -> Double in
+            for step in 0...20 {
+                let amount = Double(step) / 20
+                if contrast(pixel.mixed(with: band, amount), text) >= backdropContrast { return amount }
+            }
+            return 1
+        }
+        needs.sort()
+        let forContrast = needs[min(needs.count - 1, Int(Double(needs.count) * (1 - backdropTolerance)))]
+
+        // Detail: how busy the busiest rows are. A line of the book's text
+        // has sharp strokes all along it, so a few rows of it are busy
+        // through and through, however much plain margin is round them (a
+        // share of all the pixels missed the page's last line just behind
+        // the location line, 26 Nov 2026); a clean edge in a picture or the
+        // glow is a pixel or two per row. Each row's busyness is how strong
+        // its strongest tenth of steps between neighbours are; the second
+        // busiest row decides (one stray row does not), and the opacity
+        // softens it below a faint difference.
+        let luminances = pixels.map(\.luminance)
+        var rowBusyness: [Double] = []
+        for start in stride(from: 0, to: luminances.count - width + 1, by: width) {
+            var steps = (start..<(start + width - 1)).map { abs(luminances[$0] - luminances[$0 + 1]) }
+            steps.sort()
+            rowBusyness.append(steps[Int(Double(steps.count) * 0.9)])
+        }
+        rowBusyness.sort(by: >)
+        let strong = rowBusyness.count > 1 ? rowBusyness[1] : (rowBusyness.first ?? 0)
+        let faint = 0.04
+        let forDetail = strong > faint ? 1 - faint / strong : 0
+
+        let opacity = (max(forContrast, forDetail) * 10).rounded(.up) / 10
+        return (band, min(max(opacity, 0), 1))
+    }
+
     // MARK: - The band's colour
 
     /// The band's colour for a glow whose colour at the band's edge is
