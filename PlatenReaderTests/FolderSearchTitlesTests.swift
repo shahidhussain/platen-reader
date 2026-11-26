@@ -1,3 +1,4 @@
+import CoreGraphics
 import PlatenCore
 import XCTest
 
@@ -24,18 +25,30 @@ final class FolderSearchTitlesTests: XCTestCase {
         XCTAssertTrue(condition(), what)
     }
 
+    /// A one-page PDF with `title` in its document information.
+    private static func pdf(title: String) -> Data {
+        let data = NSMutableData()
+        var box = CGRect(x: 0, y: 0, width: 200, height: 300)
+        let info = [kCGPDFContextTitle: title] as CFDictionary
+        let context = CGContext(consumer: CGDataConsumer(data: data)!, mediaBox: &box, info)!
+        context.beginPDFPage(nil)
+        context.endPDFPage()
+        context.closePDF()
+        return data as Data
+    }
+
     func testTitlesAreReadForASearchAheadOfTheCovers() async throws {
-        // Fixture books under names that say nothing of their titles.
-        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .appendingPathComponent("../Fixtures/generated").standardizedFileURL
+        // Books under names that say nothing of their titles: small PDFs
+        // with a title in their document information, made here (the
+        // generated fixtures are not there when CI runs these tests).
         let folder = root.appendingPathComponent("books")
         var expected: [URL: String] = [:]
-        for (i, name) in ["novel.epub", "french.epub", "rtl.epub", "outline.pdf"].enumerated() {
-            let copy = folder.appendingPathComponent("book \(i).\((name as NSString).pathExtension)")
-            try FileManager.default.copyItem(at: fixtures.appendingPathComponent(name), to: copy)
-            if let title = BookCover.info(from: copy).title { expected[copy.standardizedFileURL] = title }
+        for (i, title) in ["Middlemarch", "The Tunnel Under the World", "Persuasion", "Kokoro"].enumerated() {
+            let copy = folder.appendingPathComponent("book \(i).pdf")
+            try Self.pdf(title: title).write(to: copy)
+            expected[copy.standardizedFileURL] = title
         }
-        XCTAssertGreaterThanOrEqual(expected.count, 3, "the fixtures have titles")
+        XCTAssertEqual(BookCover.info(from: folder.appendingPathComponent("book 0.pdf")).title, "Middlemarch")
 
         let model = FolderModel(folder: folder, cache: CoverCache(directory: root.appendingPathComponent("covers"),
                                                                    maxPixelSize: 60))
