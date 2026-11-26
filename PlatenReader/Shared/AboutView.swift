@@ -158,16 +158,24 @@ struct AboutView: View {
         .padding(.horizontal, 8)
     }
 
-    /// Source code and Report an Issue, side by side.
+    /// The privacy policy, source code and Report an Issue: side by side,
+    /// or one above the other where they do not fit (a small phone, large
+    /// text).
     private var links: some View {
-        HStack(spacing: 18) {
-            Link(destination: AppLinks.repository) { Text("Source Code") }
-            Link(destination: AppLinks.newIssue) { Text("Report an Issue") }
+        ViewThatFits {
+            HStack(spacing: 18) { linkItems }
+            VStack(spacing: 8) { linkItems }
         }
         .font(.callout)
         // The accent, as the links above: on the Mac a Link ignores tint.
         .foregroundStyle(Color.platenAccent)
         .tint(.platenAccent)
+    }
+
+    @ViewBuilder private var linkItems: some View {
+        Link(destination: AppLinks.privacyPolicy) { Text("Privacy Policy") }
+        Link(destination: AppLinks.repository) { Text("Source Code") }
+        Link(destination: AppLinks.newIssue) { Text("Report an Issue") }
     }
 
     /// `sentence` with the words `part` as a link to `url` (names are not
