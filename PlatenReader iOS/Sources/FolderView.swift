@@ -183,7 +183,7 @@ struct FolderGridView: View {
             }
         }
         .sheet(isPresented: $showingOptions) { FolderViewOptions() }
-        .refreshable { model.refresh() }
+        .refreshable { await model.refreshByReader() }
         .onAppear {
             model.onDownloaded = openBook
             model.start()
