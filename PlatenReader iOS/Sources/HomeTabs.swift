@@ -674,6 +674,17 @@ struct RecentFoldersView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Why a folder cannot be reached, as far as the app can tell: offline,
+    /// for one in a cloud or on a share; not on this network, for a share
+    /// reached while online (the likeliest reason, though its server may
+    /// also be off or asleep); else simply not connected.
+    static func unavailableReason(_ kind: StorageKind, online: Bool) -> String {
+        let remote = kind == .iCloud || kind == .otherCloud || kind == .network
+        if remote, !online { return String(localized: "Folder not connected while offline") }
+        if kind == .network { return String(localized: "Folder not available on this network") }
+        return String(localized: "Folder not connected")
+    }
+
     private func row(_ item: RecentItem) -> some View {
         let state = reach[item.id] ?? .checking
         let gone = state == .unavailable
@@ -687,27 +698,28 @@ struct RecentFoldersView: View {
             } else {
                 FolderRowPicture(item: item, gone: gone)
             }
+            // Two lines whatever the state, so a row never changes size as
+            // the folders are checked (a third line for "Reconnecting…" made
+            // the list jump at launch; device testing, 25 Nov 2026).
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
+                // Reconnecting: said in the title ("Reconnecting Comics…").
+                Text(state == .reconnecting ? String(localized: "Reconnecting \(item.name)…") : item.name)
                     .foregroundStyle(gone ? .secondary : .primary)
-                // The path, cut at the start if long: its end (the folder
-                // and those just above it) is what tells folders apart.
-                Text(item.locationText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.head)
-                // Said only when the folder cannot be reached (when it was
-                // last opened is not shown: it told the reader little).
-                if state == .unavailable {
-                    Text(kind == .network ? "Not connected" : "Not available")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                } else if state == .reconnecting {
-                    Text("Reconnecting…")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                // The path, cut at the start if long: its end (the folder
+                // and those just above it) is what tells folders apart. When
+                // the folder cannot be reached, that is said in its place.
+                Group {
+                    if state == .unavailable {
+                        Text(Self.unavailableReason(kind, online: network.isOnline))
+                    } else {
+                        Text(item.locationText)
+                    }
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.head)
             }
             Spacer(minLength: 8)
             if !editMode.isEditing { // the drag handle stands there instead

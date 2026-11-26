@@ -11,6 +11,8 @@ import UIKit
 ///   Use a path inside the app's container (copy the book into
 ///   `$(xcrun simctl get_app_container booted org.platenreader.PlatenReader data)/Documents`):
 ///   coordinated reads of paths on the Mac itself stall in the Simulator.
+/// - `PLATEN_FOLDER_SEARCH=<words>` searches the folder view for them as
+///   it first appears (with `PLATEN_FOLDER_PATH`).
 /// - `PLATEN_FOLDER_PATH=<path>` chooses the folder the home screen shows
 ///   as covers, as "Choose Folder…" would (a folder inside the app's
 ///   container, for the same reason).
