@@ -217,6 +217,11 @@ struct OverlayBar: View {
             HStack(spacing: 0) {
                 contentsButton.frame(maxWidth: .infinity, minHeight: 44)
                 bookmarkButton.scaleEffect(x: 1.15, y: 1).frame(maxWidth: .infinity, minHeight: 44)
+                // Read aloud in the middle of the row, where there is one.
+                if let readAloud = actions.readAloud {
+                    ReadAloudButton(phase: state.readAloud, actions: readAloud)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
                 layoutButton.frame(maxWidth: .infinity, minHeight: 44)
                 typographyButton.frame(maxWidth: .infinity, minHeight: 44)
             }

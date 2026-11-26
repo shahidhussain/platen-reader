@@ -8,8 +8,8 @@ struct ReadAloudButtonActions {
     var stop: () -> Void
 }
 
-/// The speaker button (iOS: at the right of the top bar; Mac: on the overlay
-/// bar): starts reading aloud from the current page; while reading, pauses
+/// The speaker button (on the overlay bar: iOS's bottom bar, in the middle;
+/// the Mac's bar): starts reading aloud from the current page; while reading, pauses
 /// and resumes. A long press (Mac: a right-click) offers Stop Reading. The
 /// usual player pattern (play and pause in one button), with the speaker as
 /// the way in.
@@ -19,23 +19,12 @@ struct ReadAloudButton: View {
 
     var body: some View {
         Button(action: actions.tap) {
-            #if os(iOS)
-            Image(systemName: symbol)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.primary)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-            #else
-            // On the Mac's bar, sized and coloured by the bar, as its other
-            // symbols are.
+            // On the bar (the Mac's, or iOS's bottom bar), sized and
+            // coloured by it, as its other symbols are.
             Image(systemName: symbol)
                 .contentTransition(.symbolEffect(.replace))
-            #endif
         }
-        #if os(iOS)
-        .buttonStyle(.plain)
-        #else
+        #if os(macOS)
         .help(Text(label))
         #endif
         .accessibilityLabel(Text(label))

@@ -173,9 +173,12 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         installChrome(in: root)
         // While the controls are up, the page number steps aside for their
         // location line, which sits in the same place.
+        // A bookmark's ribbon, at the top of the screen, would be under the
+        // top bar: it stands just below it, larger, while they are up.
         chrome.onVisibilityChanged = { [weak self] visible in
-            self?.session.setControlsVisible(visible)
-            if visible { self?.scheduleBandCheck(after: 0) }
+            guard let self else { return }
+            self.session.setControlsVisible(visible, headerBottom: Double(self.chrome.headerBottom))
+            if visible { self.scheduleBandCheck(after: 0) }
         }
         view = root
     }
@@ -600,6 +603,19 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
 
     override func savePositionNow() { session.savePositionNow() }
 
+    /// How far in from the screen's right edge a book's ribbon hangs from
+    /// the top, so none of it is cut off by the screen's rounded corner. A
+    /// screen with a home indicator has rounded corners: large on a phone
+    /// (about 55 points), small on an iPad (about 18). Not a published
+    /// measure, so a safe estimate from the window's shape.
+    static func ribbonInset(for view: UIView) -> CGFloat {
+        let safe = view.window?.safeAreaInsets ?? view.safeAreaInsets
+        let rounded = safe.bottom > 0 || safe.left > 0 || safe.right > 0
+        guard rounded else { return 16 }
+        let window = view.window?.bounds.size ?? view.bounds.size
+        return min(window.width, window.height) < 500 ? 60 : 26
+    }
+
     /// What differs in the page's settings on iOS:
     /// - `touch`: taps are recognised here (see `pageTapped`), so the page
     ///   reports no click zones of its own;
@@ -611,6 +627,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
     ///   clear of the Dynamic Island, the status bar and the home indicator.
     func adjust(_ web: inout WebSettings) {
         web.touch = true
+        web.ribbonInset = Double(Self.ribbonInset(for: view))
         web.transparent = usesAmbientLight
         // iPhone: one page always, in either orientation (spec, "Layout").
         // iPad, and a phone with a tablet-sized screen (an iPhone Duo

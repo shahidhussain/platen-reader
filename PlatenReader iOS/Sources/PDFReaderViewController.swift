@@ -182,7 +182,12 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         state.allowsTwoPages = true
         installChrome(in: root)
         chrome.onVisibilityChanged = { [weak self] visible in
-            self?.updateRibbon()
+            // The ribbon moves below the top bar, or back to the page.
+            UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.3, delay: 0,
+                           options: [.curveEaseOut, .beginFromCurrentState]) {
+                self?.updateRibbon()
+                self?.ribbon.layoutIfNeeded()
+            }
             if visible { self?.scheduleBandCheck(after: 0) }
         }
         configurePageTurner()
@@ -788,6 +793,14 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         // rest of it curled in (device testing, 25 Nov 2026).
         var y = max(pageRect.minY, 0)
         if state.flow == .scrolled { y = max(y, safe.minY) }
+        // While the controls are up, the top bar would cover it: it stands
+        // just below the bar (past the fade of its band), larger, 16 points in from the edge, and goes
+        // back to the page when they go (reader's request, 25 Nov 2026).
+        if let chrome, chrome.isVisible {
+            let lifted = BookmarkRibbonView.liftedSize
+            let below = pageArea.convert(CGPoint(x: 0, y: chrome.headerBottom), from: view).y + 26
+            return CGRect(x: safe.maxX - 16 - lifted.width, y: below, width: lifted.width, height: lifted.height)
+        }
         return CGRect(x: x, y: y, width: size.width, height: size.height)
     }
 

@@ -29,7 +29,7 @@ import './foliate/view.js'
 import { EPUB } from './foliate/epub.js'
 import { reader } from './modules/state.js'
 import { applyJustification, auditColours, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes } from './modules/bookfixes.js'
-import { pagesOnScreen, scheduleRibbons, setBookmarkList, setRibbonMotion, toggleBookmark } from './modules/bookmarks.js'
+import { pagesOnScreen, scheduleRibbons, setBookmarkList, setControlsVisible as ribbonsWithControls, setRibbonMotion, toggleBookmark } from './modules/bookmarks.js'
 import { post } from './modules/bridge.js'
 import { sendContents } from './modules/contents.js'
 import { attachPointerHandlers, noteScroll, pictureAt, swipe, tapTarget } from './modules/input.js'
@@ -416,7 +416,10 @@ window.platen = {
     readAloudSentences: count => readAloud.sentences(count),
     readAloudProbeStart: () => readAloud.probeStart(),
     measureText,
-    setControlsVisible: on => document.getElementById('page-numbers')?.classList.toggle('under-controls', !!on),
+    setControlsVisible: (on, headerBottom) => {
+        document.getElementById('page-numbers')?.classList.toggle('under-controls', !!on)
+        ribbonsWithControls(on, headerBottom)
+    },
     // For debugging and automated checks (scripts/run-debug.sh steps).
     get view() { return reader.view },
     clearSearch,

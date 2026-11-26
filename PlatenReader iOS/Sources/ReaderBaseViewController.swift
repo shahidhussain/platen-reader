@@ -526,6 +526,15 @@ class ReaderBaseViewController: UIViewController {
 
     private func checkBands() {
         guard let chrome, view.bounds.width > 0 else { return }
+        // Scroll layout: the text keeps moving under the controls, so an
+        // answer from a picture taken a moment ago goes stale (a blank
+        // stretch under the title, then text scrolled up behind a
+        // see-through header; device testing, 25 Nov 2026). Always banded.
+        if state.flow == .scrolled {
+            if !state.topBandNeeded { state.topBandNeeded = true }
+            if !state.bottomBandNeeded { state.bottomBandNeeded = true }
+            return
+        }
         let bounds = view.bounds
         // Where the controls' text and buttons are: the top bar from the top
         // of the screen (the status bar too) to its last line, and the
@@ -552,7 +561,8 @@ class ReaderBaseViewController: UIViewController {
                 let top = GlowBand.needsBand(behind: sample(topArea), width: cg.width, darkTheme: dark)
                 let bottom = GlowBand.needsBand(behind: sample(bottomArea), width: cg.width, darkTheme: dark)
                 DispatchQueue.main.async {
-                    guard let self else { return }
+                    // Not an answer for a page that has since become a scroll.
+                    guard let self, self.state.flow != .scrolled else { return }
                     if self.state.topBandNeeded != top { self.state.topBandNeeded = top }
                     if self.state.bottomBandNeeded != bottom { self.state.bottomBandNeeded = bottom }
                 }
