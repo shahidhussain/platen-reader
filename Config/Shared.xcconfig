@@ -24,7 +24,17 @@ PRODUCT_MODULE_NAME = PlatenReader
 // release with something new. Meanwhile the third number goes up by one with
 // every change made (each request's commit), so a build on a test device can
 // be matched to it: 0.8.1 is the first of these.
-MARKETING_VERSION = 0.8.71
+MARKETING_VERSION = 0.8.72
+// The build number. Every upload to App Store Connect needs a higher one
+// than the last upload for that platform, so it is never set by hand here:
+// - iOS, uploaded from Xcode (Product > Archive, then Distribute App): leave
+//   "Manage Version and Build Number" ticked, and Xcode gives the upload the
+//   next number App Store Connect expects.
+// - Any upload from a script or workflow: pass the number of commits on main,
+//   CURRENT_PROJECT_VERSION=$(git rev-list --count HEAD), which only goes up
+//   and can be worked out again from the tag.
+// - The Mac download build (release.yml) passes the workflow's run number.
+// iOS and Mac builds are numbered separately, so the two schemes never clash.
 CURRENT_PROJECT_VERSION = 1
 
 // The minimum systems from the spec's "Decisions made".
