@@ -82,6 +82,25 @@ struct HomeTabs: View {
     }
 }
 
+extension EnvironmentValues {
+    /// The tab row's bottom safe area: the tab bar's, and the keyboard's
+    /// when it is up. A scroll view in a page compares it with its own and
+    /// makes room for the difference (`roomBelow(_:)`; see `HomeTabRow`).
+    @Entry var tabRowBottom: CGFloat = 0
+}
+
+extension View {
+    /// Makes room at the bottom of a scroll view in a page of the tab row
+    /// for whatever of the tab bar and the keyboard its own safe area left
+    /// out (see `HomeTabRow`), so its last row can be scrolled clear of them.
+    func roomBelow(_ ownBottom: Binding<CGFloat>, tabRowBottom: CGFloat) -> some View {
+        safeAreaPadding(.bottom, max(0, tabRowBottom - ownBottom.wrappedValue))
+            // Measured outside the padding, so it is the safe area the
+            // scroll view was given, not counting what is added here.
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { ownBottom.wrappedValue = $0 }
+    }
+}
+
 /// The three tabs side by side, which slide sideways under the finger (or
 /// when a tab is tapped), so they read as three pages in a row. The tab bar
 /// stays at the bottom even inside a folder, so the reader can always get
@@ -107,6 +126,14 @@ struct HomeTabRow: View {
         // notch's strips on an iPhone turned sideways.
         GeometryReader { outer in
             let insets = outer.safeAreaInsets
+            // The row's bottom safe area takes in the tab bar, and the
+            // keyboard when it is up (the tab bar rides up on it), but the
+            // pages' navigation stacks hand neither on to what is in them,
+            // which gets only the device's own. So a folder's last row of
+            // covers stayed under the tab bar, and its search results ran on
+            // under the keyboard, out of reach (reported 26 Nov 2026). Each
+            // page is told the row's (`tabRowBottom`), and its scroll view
+            // makes room for what it was not given (`roomBelow`).
             ScrollViewReader { reader in
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
@@ -116,6 +143,7 @@ struct HomeTabRow: View {
                             // navigation bar must move in too.
                             .padding(.leading, insets.leading)
                             .padding(.trailing, insets.trailing)
+                            .environment(\.tabRowBottom, insets.bottom)
                             // The strips beside it in the page's own colour.
                             .background(slotColour(tab), ignoresSafeAreaEdges: .all)
                             .containerRelativeFrame(.horizontal)

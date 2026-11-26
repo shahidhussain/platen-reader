@@ -388,6 +388,12 @@ final class FolderModel: NSObject, ObservableObject {
     /// follows it (`rescan`), rather than queueing up behind a slow one.
     private var scanning = false
     private var rescan = false
+    /// Whether the read to follow was asked for by the reader, and when
+    /// the read under way began.
+    private var rescanByReader = false
+    private var scanStarted: Date?
+    /// Pulls to refresh waiting for the read to finish (`refreshByReader`).
+    private var refreshWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     /// Called when a book the reader tapped has finished downloading.
     var onDownloaded: ((URL) -> Void)?
 
@@ -436,24 +442,97 @@ final class FolderModel: NSObject, ObservableObject {
     /// they are done in order on a queue of their own.
     private static let presenterQueue = DispatchQueue(label: "org.platenreader.folder-presenter", qos: .utility)
 
-    /// Reads the folder again.
-    func refresh() {
-        guard !scanning else { rescan = true; return }
+    /// Reads the folder again. `byReader` when the reader asked (pull to
+    /// refresh): then a folder on a network share is first read through
+    /// file coordination (`askTheShare`), and the read is logged whatever
+    /// it took.
+    func refresh(byReader: Bool = false) {
+        guard !scanning else {
+            rescan = true
+            rescanByReader = rescanByReader || byReader
+            if byReader, let scanStarted {
+                // A read still going holds this one up: worth knowing when
+                // a share seems not to refresh.
+                let seconds = Date().timeIntervalSince(scanStarted)
+                log.info("folder refresh: waiting for a read begun \(seconds, format: .fixed(precision: 1)) s ago")
+            }
+            return
+        }
         scanning = true
+        let started = Date()
+        scanStarted = started
         let folder = folder
+        let place = StoragePlace(path: folder.path).kind
+        let askShare = byReader && place == .network
         scanQueue.async {
-            let entries = FolderScanner.entries(in: folder)
+            let entries = askShare ? Self.askTheShare(folder) : FolderScanner.entries(in: folder)
+            let ms = Date().timeIntervalSince(started) * 1000
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.scanning = false
+                self.scanStarted = nil
+                // Every read the reader asked for, and any slow one, goes
+                // to the diagnostics file: how long it took and what it
+                // found (counts only, never names).
+                let books = entries.count(where: { $0.kind == .book }), folders = entries.count - books
+                let added = Set(entries.map(\.url)).subtracting(self.entries.map(\.url)).count
+                let line: LogMessage = "folder read (\(place.rawValue, privacy: .public)\(askShare ? ", asked the share" : "", privacy: .public)): \(books) books, \(folders) folders, \(added) new, in \(ms, format: .fixed(precision: 0)) ms"
+                if byReader || ms > 1000 { log.info(line) } else { log.debug(line) }
                 FolderListingCache.keep(entries, of: folder)
                 self.apply(entries, fresh: true)
                 if self.rescan {
+                    let again = self.rescanByReader
                     self.rescan = false
-                    self.refresh()
+                    self.rescanByReader = false
+                    self.refresh(byReader: again)
+                } else {
+                    // Nothing more to read: the reader's pull is answered.
+                    let waiting = self.refreshWaiters
+                    self.refreshWaiters = [:]
+                    waiting.values.forEach { $0.resume() }
                 }
             }
         }
+    }
+
+    /// When the reader pulls to refresh: reads the folder again and returns
+    /// once the new listing is shown, so the spinner stays until then. It
+    /// returned at once before, and on a slow share the spinner snapped
+    /// back long before the listing came, as if nothing had happened
+    /// (reported 26 Nov 2026). A read that hangs (a share gone away) lets
+    /// the spinner go after 15 seconds; the listing still comes when it can.
+    func refreshByReader() async {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            let id = UUID()
+            refreshWaiters[id] = done
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [self] in
+                refreshWaiters.removeValue(forKey: id)?.resume()
+            }
+            refresh(byReader: true)
+        }
+    }
+
+    /// Reads a folder on a network share through file coordination before
+    /// listing it. iOS's SMB client keeps its own copy of each folder's
+    /// listing, and a book added from another computer may not be in it
+    /// yet; nor is the app told when one arrives (a pulled refresh did not
+    /// show a book just added, reported 26 Nov 2026). A coordinated read is
+    /// how an app asks whatever provides a folder to bring it up to date
+    /// before reading it, as the Files app's own refresh does. Not for
+    /// iCloud or other cloud providers, where a coordinated read of a
+    /// folder could download everything in it.
+    nonisolated private static func askTheShare(_ folder: URL) -> [FolderEntry] {
+        var entries: [FolderEntry]?
+        var coordinationError: NSError?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: folder, options: [],
+                                                         error: &coordinationError) { _ in
+            entries = FolderScanner.entries(in: folder)
+        }
+        if let coordinationError {
+            log.info("folder refresh: coordinated read failed (\(coordinationError.domain, privacy: .public) \(coordinationError.code))")
+        }
+        // Listed as before if the coordinated read could not be made.
+        return entries ?? FolderScanner.entries(in: folder)
     }
 
     private func apply(_ new: [FolderEntry], fresh: Bool) {

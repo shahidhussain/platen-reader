@@ -55,6 +55,12 @@ struct FolderGridView: View {
     }
 
     @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The tab row's bottom safe area (tab bar and keyboard), and the
+    /// grid's own: the grid makes room for the difference, so its last row,
+    /// and search results with the keyboard up, can be scrolled clear of
+    /// them (`roomBelow`).
+    @Environment(\.tabRowBottom) private var tabRowBottom
+    @State private var ownBottom: CGFloat = 0
 
     var body: some View {
         // Worked out once per redraw (a sort of the whole folder), not once
@@ -102,6 +108,7 @@ struct FolderGridView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
+        .roomBelow($ownBottom, tabRowBottom: tabRowBottom)
         .coverPinch(filter, sizeClass)
         .sheet(item: $infoFor) { entry in
             BookInfoView(entry: entry, info: model.covers[entry.url])
@@ -153,9 +160,11 @@ struct FolderGridView: View {
         // (SwipeBack), as does tapping the Home tab.
         .navigationBarTitleDisplayMode(.inline)
         // The search field opens from the search button (and closes with
-        // Cancel, clearing the search).
+        // Cancel, clearing the search). While it has words in it, it stays
+        // up as the results are scrolled, so what was searched for stays in
+        // sight; empty, it tucks away on scrolling as usual.
         .searchable(text: $query, isPresented: $searching,
-                    placement: .navigationBarDrawer(displayMode: .automatic),
+                    placement: .navigationBarDrawer(displayMode: query.isEmpty ? .automatic : .always),
                     prompt: Text("Title, author or file name"))
         // A note in the log of what each search found, once typing pauses,
         // to tell "not in the folder's listing yet" from "not matched".
@@ -183,7 +192,7 @@ struct FolderGridView: View {
             }
         }
         .sheet(isPresented: $showingOptions) { FolderViewOptions() }
-        .refreshable { model.refresh() }
+        .refreshable { await model.refreshByReader() }
         .onAppear {
             model.onDownloaded = openBook
             model.start()
