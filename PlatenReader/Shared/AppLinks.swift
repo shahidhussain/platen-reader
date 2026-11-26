@@ -4,20 +4,22 @@ import Foundation
 /// browser or mail app; the app itself never loads anything (spec: no
 /// network).
 ///
-/// PLACEHOLDERS until the site and the mailbox exist (asked for 22 and 24
-/// Nov 2026): change them here before release. Shipped copies keep whatever
-/// is here for good, so each should be on a domain Platen owns, with the
-/// paths below redirected on the server and the address forwarded to
-/// wherever support is read: then where they lead can change without an
-/// update.
+/// All real (27 Nov 2026): the website, the DRM guide and the privacy
+/// policy are pages of Platen Reader's section of the author's site, which
+/// keeps those addresses (and the guide's #drm anchor) for good, and the
+/// support address is the one that site gives. Shipped copies keep
+/// whatever is here for good, so change one only for an address that will
+/// stay.
 enum AppLinks {
     /// The Platen Reader website (Settings on iOS, the About window): its
     /// page on the author's site.
     static let website = URL(string: "https://shahidhussain.com/projects/platen-reader/")!
 
-    /// The guide to DRM-protected books: why Platen cannot open them, and
-    /// what to do instead. The failure screen for a DRM book links to it.
-    static let drmGuide = URL(string: "https://platenreader.org/drm")!
+    /// The guide to DRM-protected books ("Books that won't open because of
+    /// DRM" on the support page): what DRM is, why Platen cannot open such
+    /// books, and what to do instead, for readers who have never heard of
+    /// it. The failure screen for a DRM book links to it.
+    static let drmGuide = URL(string: "https://shahidhussain.com/projects/platen-reader/support/#drm")!
 
     /// The privacy policy (About, and Settings on iOS; also given to App
     /// Store Connect), on the author's site.
@@ -33,6 +35,6 @@ enum AppLinks {
     static let newIssue = repository.appendingPathComponent("issues/new")
 
     /// Where problem reports and feedback go (Report This Book, Send
-    /// Feedback).
-    static let supportEmail = "support@platenreader.org"
+    /// Feedback): the support address the website gives.
+    static let supportEmail = "platen-reader@shahidhussain.com"
 }
