@@ -464,9 +464,10 @@ final class FolderModel: NSObject, ObservableObject {
         let urls = Set(new.map(\.url))
         requested = requested.filter { urls.contains($0.key) }
         requestedCloud = requestedCloud.filter { urls.contains($0.key) }
-        covers = covers.filter { urls.contains($0.key) }
-        coverFiles = coverFiles.filter { urls.contains($0.key) }
-        titles = titles.filter { urls.contains($0.key) }
+        // (Each only if a book went: assigning one redraws the grid.)
+        if covers.keys.contains(where: { !urls.contains($0) }) { covers = covers.filter { urls.contains($0.key) } }
+        if coverFiles.keys.contains(where: { !urls.contains($0) }) { coverFiles = coverFiles.filter { urls.contains($0.key) } }
+        if titles.keys.contains(where: { !urls.contains($0) }) { titles = titles.filter { urls.contains($0.key) } }
         for entry in new where entry.kind == .book {
             if entry.isDownloaded { loadCover(entry) } else { loadCloudThumbnail(entry) }
         }
@@ -484,16 +485,23 @@ final class FolderModel: NSObject, ObservableObject {
     /// and slowly (reported 26 Nov 2026).
     private var shownRank: [String: Int] = [:]
     /// Covers asked for and not yet begun, and whether one is being made.
-    private var coversWaiting: [FolderEntry] = []
+    private var coversWaiting: [(entry: FolderEntry, key: String)] = []
     private var makingCover = false
+    /// The books whose covers have been begun, in order (for the tests).
+    private(set) var coversBegun: [URL] = []
 
     /// The order the grid shows the books in now (the view says, whenever
     /// it changes): covers not yet begun are made in it.
     func showOrder(_ urls: [URL]) {
-        // By path: the same book can come as URLs that differ in form.
+        // By path, from the text alone (`canonicalPath`): the same book can
+        // come as URLs that differ in form, and `standardizedFileURL` asks
+        // the disk, which for every book on a network share, on the main
+        // thread, held the app up for seconds at a time (device
+        // diagnostics, 26 Nov 2026).
         var rank: [String: Int] = [:]
-        for (i, url) in urls.enumerated() where rank[url.standardizedFileURL.path] == nil {
-            rank[url.standardizedFileURL.path] = i
+        for (i, url) in urls.enumerated() {
+            let key = FolderScanner.canonicalPath(url)
+            if rank[key] == nil { rank[key] = i }
         }
         shownRank = rank
     }
@@ -502,8 +510,8 @@ final class FolderModel: NSObject, ObservableObject {
         let url = entry.url
         if let asked = requested[url], asked == entry.modified { return }
         requested[url] = entry.modified
-        coversWaiting.removeAll { $0.url == url }
-        coversWaiting.append(entry)
+        coversWaiting.removeAll { $0.entry.url == url }
+        coversWaiting.append((entry, FolderScanner.canonicalPath(url)))
         makeNextCover()
     }
 
@@ -512,14 +520,16 @@ final class FolderModel: NSObject, ObservableObject {
         guard !makingCover, !coversWaiting.isEmpty else { return }
         // Left the screen: the rest are skipped, and start() asks again.
         guard active.isOn else {
-            for entry in coversWaiting { requested[entry.url] = nil }
+            for waiting in coversWaiting { requested[waiting.entry.url] = nil }
             coversWaiting = []
             return
         }
+        // Each waiting book's place, its key worked out once (from the
+        // text: see `showOrder`).
         let rank = shownRank
-        func place(_ i: Int) -> Int { rank[coversWaiting[i].url.standardizedFileURL.path] ?? .max }
-        let next = coversWaiting.indices.min { place($0) < place($1) }!
-        let url = coversWaiting.remove(at: next).url
+        let next = coversWaiting.indices.min { (rank[coversWaiting[$0].key] ?? .max) < (rank[coversWaiting[$1].key] ?? .max) }!
+        let url = coversWaiting.remove(at: next).entry.url
+        coversBegun.append(url)
         makingCover = true
         let cache = cache
         let active = active
@@ -529,8 +539,7 @@ final class FolderModel: NSObject, ObservableObject {
                 guard let self else { return }
                 self.makingCover = false
                 if let made, self.requested[url] != nil {
-                    self.covers[url] = made.info
-                    self.coverFiles[url] = made.imageURL
+                    self.publishCover(made, for: url)
                 } else if made == nil {
                     self.requested[url] = nil // skipped while away: asked again by start()
                 }
@@ -589,6 +598,40 @@ final class FolderModel: NSObject, ObservableObject {
             send(true)
             log.info("folder search: titles of \(todo.count) books read ahead of their covers")
         }
+    }
+
+    /// Covers made but not yet shown, and when they were last shown.
+    private var coversToShow: [URL: CoverCache.Entry] = [:]
+    private var lastShown: CFAbsoluteTime = 0
+    private var showScheduled = false
+
+    /// Shows a cover just made. Covers arrive several a second in a large
+    /// folder, and each change to `covers` redraws (and re-sorts) the whole
+    /// grid, which kept a phone busy enough to make scrolling lag (26 Nov
+    /// 2026): they are shown together, at most four times a second (the
+    /// first at once).
+    private func publishCover(_ made: CoverCache.Entry, for url: URL) {
+        coversToShow[url] = made
+        let wait = 0.25 - (CFAbsoluteTimeGetCurrent() - lastShown)
+        if wait <= 0 { return showCovers() }
+        guard !showScheduled else { return }
+        showScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in self?.showCovers() }
+    }
+
+    private func showCovers() {
+        showScheduled = false
+        lastShown = CFAbsoluteTimeGetCurrent()
+        let ready = coversToShow.filter { requested[$0.key] != nil }
+        coversToShow = [:]
+        guard !ready.isEmpty else { return }
+        var newCovers = covers, newFiles = coverFiles
+        for (url, made) in ready {
+            newCovers[url] = made.info
+            newFiles[url] = made.imageURL
+        }
+        covers = newCovers
+        coverFiles = newFiles
     }
 
     /// The cover of a book in iCloud only, without downloading the book.

@@ -20,8 +20,8 @@ struct ReadingControlsExplainer: View {
     let flow: ReadingFlow
     let rightToLeft: Bool
 
-    /// Must match `sideZoneFraction` in reader.js.
-    static let sideZoneFraction: CGFloat = 0.38
+    /// The click zones it shows: the reader's own (`ClickZone`).
+    static let sideZoneFraction: CGFloat = ClickZone.sideFraction
 
     private struct Zone: Identifiable {
         let id: Int

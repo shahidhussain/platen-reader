@@ -97,8 +97,7 @@ final class OfflineCopies: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.sync() }
             .store(in: &watches)
-        NetworkStatus.shared.$changes
-            .dropFirst()
+        NetworkStatus.shared.changed
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.sync() }
             .store(in: &watches)
@@ -108,10 +107,10 @@ final class OfflineCopies: ObservableObject {
     // MARK: - Finding a copy
 
     /// The copy of a favourite, if there is one on the device.
+    /// From what is known (`copied`, kept up to date by `measure`), not by
+    /// asking the disk: it is asked as Home's tiles are drawn.
     func copyURL(for item: RecentItem) -> URL? {
-        guard copied.contains(item.id) else { return nil }
-        let url = fileURL(for: item)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        copied.contains(item.id) ? fileURL(for: item) : nil
     }
 
     /// The copy of the book at `path` (as a list keeps it: Recent Books, a
@@ -123,7 +122,8 @@ final class OfflineCopies: ObservableObject {
     /// Whether `url` is one of the copies (opening one does not put it on
     /// Recent Books: the original is already there).
     nonisolated static func isCopy(_ url: URL, in directory: URL = OfflineCopies.defaultDirectory) -> Bool {
-        url.standardizedFileURL.path.hasPrefix(directory.standardizedFileURL.path + "/")
+        // From the text alone: asking the disk could wait on a share.
+        FolderScanner.canonicalPath(url).hasPrefix(FolderScanner.canonicalPath(directory) + "/")
     }
 
     private func folder(for id: RecentItem.ID) -> URL {

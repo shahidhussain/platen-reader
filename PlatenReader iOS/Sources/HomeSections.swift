@@ -87,7 +87,7 @@ struct FavouritesStrip: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await checkReach(shown, in: favourites, into: $reach) }
         }
-        .onReceive(network.$changes.dropFirst().debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in
+        .onReceive(NetworkStatus.shared.changed.debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in
             recheckAway(shown, in: $reach)
             Task { await checkReach(shown, in: favourites, into: $reach) }
         }
@@ -108,7 +108,7 @@ struct FavouritesStrip: View {
     /// As in the Favourites tab (BookShelfView.badge).
     private func badge(for item: RecentItem) -> BookTile.Badge? {
         if opening == item.id { return .downloading }
-        if offline.copyURL(for: item) != nil, reach[item.id] != .available { return nil }
+        if reach[item.id] != .available, offline.copyURL(for: item) != nil { return nil }
         switch reach[item.id] {
         case .reconnecting: return .reconnecting
         case .unavailable:

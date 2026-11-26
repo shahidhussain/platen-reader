@@ -285,13 +285,24 @@ enum LastOpenBook {
         }
     }
 
+    /// Made in the background: making a bookmark asks the file's provider,
+    /// which for a book on a network share held the main thread for over
+    /// two seconds as the book opened (device diagnostics, 26 Nov 2026).
     static func remember(_ url: URL) {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        if let data = try? url.bookmarkData() { AppDefaults.store.set(data, forKey: key) }
+        let key = key
+        queue.async {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            if let data = try? url.bookmarkData() { AppDefaults.store.set(data, forKey: key) }
+        }
     }
 
+    /// Remembering and forgetting, one after another (a book closed just
+    /// after it opened is forgotten after it is remembered).
+    private static let queue = DispatchQueue(label: "org.platenreader.last-open-book", qos: .utility)
+
     static func forget() {
-        AppDefaults.store.removeObject(forKey: key)
+        let key = key
+        queue.async { AppDefaults.store.removeObject(forKey: key) }
     }
 }

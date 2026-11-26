@@ -237,7 +237,9 @@ class ReaderBaseViewController: UIViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             if self?.pressHost == nil { self?.endPress() }
         }
+        let asked = CACurrentMediaTime()
         pressPicture { [weak self] image, glow in
+            log.info("press: picture ready in \(Int((CACurrentMediaTime() - asked) * 1000)) ms")
             guard let self, self.pressCover != nil else { return }
             guard let image, let cgImage = image.cgImage else { return self.endPress() }
             let play: () -> Void = { [weak self] in self?.playPress(cgImage, scale: image.scale, glow: glow?.cgImage) }

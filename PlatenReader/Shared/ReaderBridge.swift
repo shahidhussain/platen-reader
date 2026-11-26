@@ -49,10 +49,12 @@ enum PageTurn: String {
 enum ClickZone: String {
     case left, centre, right
 
-    /// The fraction of the width on each side that turns pages. The side
-    /// zones are wider than the centre, because most clicks are page turns.
-    /// (input.js uses the same number for clicks inside the page.)
-    static let sideFraction: CGFloat = 0.38
+    /// The fraction of the width on each side that turns pages: under a
+    /// third each, so the centre, which shows the controls, is the widest
+    /// zone and easy to hit (the reader's request, 26 Nov 2026; it was 0.38,
+    /// which left the centre a narrow strip). (input.js uses the same
+    /// number for clicks inside the page.)
+    static let sideFraction: CGFloat = 0.30
 
     /// The zone for a point `x` across a page `width` wide.
     init(x: CGFloat, width: CGFloat) {

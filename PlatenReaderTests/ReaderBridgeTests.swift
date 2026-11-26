@@ -78,6 +78,11 @@ final class ReaderMessageTests: XCTestCase {
         XCTAssertEqual(ClickZone(x: 10, width: 100), .left)
         XCTAssertEqual(ClickZone(x: 50, width: 100), .centre)
         XCTAssertEqual(ClickZone(x: 90, width: 100), .right)
+        // The centre is the widest zone (the controls are easy to show).
+        XCTAssertEqual(ClickZone(x: 33, width: 100), .centre)
+        XCTAssertEqual(ClickZone(x: 67, width: 100), .centre)
+        XCTAssertEqual(ClickZone(x: 29, width: 100), .left)
+        XCTAssertEqual(ClickZone(x: 71, width: 100), .right)
     }
 
     func testOnlyWebAndMailLinksAreOpened() {

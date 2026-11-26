@@ -347,7 +347,7 @@ struct BookShelfView: View {
             }
             // Offline, back online, or another network: books kept away
             // from the device are checked again (reconnecting meanwhile).
-            .onReceive(network.$changes.dropFirst().debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in
+            .onReceive(NetworkStatus.shared.changed.debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in
                 recheckAway(recents.items, in: $reach)
                 Task { await refresh() }
             }
@@ -381,7 +381,8 @@ struct BookShelfView: View {
     private func badge(for item: RecentItem) -> BookTile.Badge? {
         if opening == item.id { return .downloading }
         // A favourite kept on this device opens whatever its place says.
-        if offline.copyURL(forBookAt: item.path) != nil, reach[item.id] != .available { return nil }
+        // (The copy is looked for only when the book is not there.)
+        if reach[item.id] != .available, offline.copyURL(forBookAt: item.path) != nil { return nil }
         switch reach[item.id] {
         case .reconnecting:
             return .reconnecting
@@ -599,7 +600,7 @@ struct RecentFoldersView: View {
             }
             // Offline, back online, or another network: folders kept away
             // from the device are checked again (reconnecting meanwhile).
-            .onReceive(network.$changes.dropFirst().debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in
+            .onReceive(NetworkStatus.shared.changed.debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in
                 recheckAway(recents.items, in: $reach)
                 Task { await checkReach(recents.items, in: recents, into: $reach) }
             }
