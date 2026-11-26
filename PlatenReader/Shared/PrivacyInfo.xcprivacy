@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Platen Reader's privacy manifest (App Store requirement), in both apps.
+
+  No tracking and no data collected: the app sends nothing anywhere (spec:
+  no telemetry, no network; the two agreed exceptions, Sparkle's update check
+  in the Mac download build and the natural voice's one-time download, send
+  nothing about the reader).
+
+  The system interfaces Apple asks a reason for, and why Platen uses each:
+  - User defaults (CA92.1): the app's own settings, read and written only
+    by the app (AppDefaults, ReaderSettings).
+  - File timestamps (C617.1, 3B52.1): the dates of files in the app's own
+    folders (the cover cache, positions, offline copies of favourites,
+    the voice pack), and of the books and folders the reader chose, to see
+    whether a book has changed and to sort a folder by date.
+  - System boot time (35F9.1): elapsed time between events inside the app
+    (CACurrentMediaTime, timing page turns and animations); never sent off
+    the device.
+  - Disk space (E174.1): whether there is room for the natural voice before
+    it is downloaded, to tell the reader if there is not
+    (KokoroVoiceDownload).
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+				<string>3B52.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>E174.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

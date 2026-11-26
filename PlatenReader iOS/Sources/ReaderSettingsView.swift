@@ -89,6 +89,12 @@ struct ReaderSettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    Link(destination: AppLinks.privacyPolicy) {
+                        LabeledContent("Privacy Policy") {
+                            Image(systemName: "arrow.up.right")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 } footer: {
                     // A little whimsy, unattributed (Slaughterhouse-Five).
                     Text(verbatim: "Poo-tee-weet?")
