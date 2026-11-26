@@ -85,6 +85,9 @@ struct WebSettings: Equatable {
     var sideMargin: Double?
     /// Room above and below the text, in points (nil: the shell's default).
     var verticalMargin: Double?
+    /// How far in from the screen's right edge a book's ribbon hangs, clear
+    /// of a rounded corner (iOS; nil: the shell's 16 points).
+    var ribbonInset: Double?
     /// The page paints no background of its own, so a glow drawn behind the
     /// web view shows through (iOS ambient light).
     var transparent = false
@@ -112,6 +115,7 @@ struct WebSettings: Equatable {
         if nativeSwipe { payload["nativeSwipe"] = true }
         if let sideMargin { payload["sideMargin"] = sideMargin }
         if let verticalMargin { payload["verticalMargin"] = verticalMargin }
+        if let ribbonInset { payload["ribbonInset"] = ribbonInset }
         if transparent { payload["transparent"] = true }
         return payload
     }

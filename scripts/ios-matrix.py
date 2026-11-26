@@ -363,13 +363,15 @@ def rule_read_aloud(shot, report, results, arg):
 
 
 def rule_speaker_button(shot, report, results, arg):
-    """The speaker button stands at the right of the top bar, clear of the
-    screen's edge: something drawn there, against the band or the page."""
+    """The speaker button stands in the middle of the bottom bar's row of
+    buttons (contents, bookmark, speaker, layout, text), just above the home
+    indicator: something drawn there, against the band or the page."""
     if not report.get("controls"):
         return "the controls are not showing"
     scale = shot.width / report["width"]
-    top = int(54 * scale)
-    box = (shot.width - int(60 * scale), top, shot.width - int(12 * scale), top + int(44 * scale))
+    middle = shot.width // 2
+    bottom = int((report["height"] - 34) * scale)
+    box = (middle - int(22 * scale), bottom - int(44 * scale), middle + int(22 * scale), bottom)
     spread = max(ImageStat.Stat(shot.convert("RGB").crop(box)).stddev[:3])
     if spread < 8:
         return f"nothing drawn where the speaker button belongs (spread {spread:.1f})"

@@ -144,10 +144,13 @@ let here = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let output = here.appendingPathComponent("../../PlatenReader/Web/ribbon").standardizedFileURL
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 for (name, palette) in palettes.sorted(by: { $0.key < $1.key }) {
+    // Drawn at twice the pixel density each name says: the ribbon is shown
+    // larger than its 20 by 30 points (1.5 times on iOS, twice under the
+    // controls), and must stay sharp there.
     for scale in [2, 3] {
         let url = output.appendingPathComponent("ribbon-\(name)@\(scale)x.png")
         let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
-        CGImageDestinationAddImage(destination, draw(palette, scale: Double(scale)), nil)
+        CGImageDestinationAddImage(destination, draw(palette, scale: Double(scale * 2)), nil)
         CGImageDestinationFinalize(destination)
         print("wrote", url.path)
     }

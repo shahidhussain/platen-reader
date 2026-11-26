@@ -99,6 +99,16 @@ function liftOff(cfi) {
     lift.onfinish = lift.oncancel = () => ghost.remove()
 }
 
+// iOS: whether the controls are up, and where their top bar ends (points).
+let headerBottom = 0
+function setControlsVisible(on, bottom) {
+    if (bottom && Math.abs(bottom - headerBottom) > .5) {
+        headerBottom = bottom
+        scheduleRibbons()
+    }
+    ribbons.classList.toggle('with-controls', !!on)
+}
+
 // Any input during a ribbon's motion ends it at once, where it would end.
 function finishRibbonMotion() {
     for (const el of [...ribbons.querySelectorAll('.ribbon'), ...leaving.querySelectorAll('.ribbon')])
@@ -242,10 +252,22 @@ function refreshRibbons() {
             // or, in a spread, of the page's own half (the corner's ribbon
             // is 18 pixels in from its left and 20 wide).
             const edge = pages.length > 1 && page.right < innerWidth / 2 ? innerWidth / 2 : innerWidth
-            const left = beside ? page.right + 10 : scrolled ? page.right - 36 : edge - 54
+            const left = beside ? page.right + 10 : scrolled ? page.right - 16 - ribbonWidth : edge - inset - ribbonWidth - 18
             el.style.left = `${Math.round(left)}px`
             el.style.top = `${Math.round(top)}px`
             el.style.setProperty('--ribbon-height', `${ribbonHeight}px`)
+            // iOS, paginated: while the controls are up, the top bar would
+            // cover the ribbon, so it stands just below the bar (past the
+            // fade of its band), larger
+            // (twice its 20 by 30), 16 pixels in from the edge, and goes back
+            // up to the top when they go (reader's request, 25 Nov 2026).
+            if (marked && touch && !scrolled) {
+                el.classList.add('liftable')
+                const lifted = 40
+                el.style.setProperty('--lift-x', `${Math.round(edge - 16 - lifted - (left + 18))}px`)
+                el.style.setProperty("--lift-y", `${Math.round(headerBottom + 26 - top)}px`)
+                el.style.setProperty('--lift-scale', `${lifted / ribbonWidth}`)
+            }
             el.innerHTML = `<span class="ribbon">${marked ? ribbonPicture(reader.settings?.theme?.dark) : ribbonOutline}</span>`
             if (cfi) el.dataset.cfi = cfi
             el.setAttribute('aria-label', marked ? 'Remove Bookmark' : 'Bookmark This Page')
@@ -274,9 +296,15 @@ function refreshRibbons() {
         const touch = !!reader.settings?.touch
         const topEdge = !scrolled ? (touch ? 0 : 28)
             : reader.settings?.verticalMargin ? Math.max(28, reader.settings.verticalMargin - 42) : 28
-        // As long as the room above the text allows, up to 30 pixels.
+        // As long as the room above the text allows, up to 30 pixels: 45
+        // on iOS (half as big again, to be seen at a glance), hanging far
+        // enough in from the edge to clear the screen's rounded corner
+        // (`ribbonInset`, from the app).
         const textTop = parseFloat(reader.view.renderer.getAttribute?.('margin')) || 60
-        const ribbonHeight = scrolled ? 30 : Math.max(16, Math.min(30, textTop - topEdge - 8))
+        const fullHeight = touch ? 45 : 30
+        const ribbonHeight = scrolled ? fullHeight : Math.max(16, Math.min(fullHeight, textTop - topEdge - 8))
+        const ribbonWidth = ribbonHeight * 2 / 3
+        const inset = reader.settings?.ribbonInset ?? 16
         if (marks.length) {
             anyMarked ||= page === leadingPage(pages)
             const roomBeside = innerWidth - page.right >= 30
@@ -318,4 +346,4 @@ function toggleBookmark() {
     else post('addBookmark', bookmarkPayload(page))
 }
 
-export { pagesOnScreen, ribbons, scheduleRibbons, setBookmarkList, setRibbonMotion, toggleBookmark }
+export { pagesOnScreen, ribbons, scheduleRibbons, setBookmarkList, setControlsVisible, setRibbonMotion, toggleBookmark }

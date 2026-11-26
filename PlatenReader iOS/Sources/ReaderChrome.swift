@@ -40,10 +40,15 @@ final class ReaderChrome {
          close: @escaping () -> Void, readAloud: ReadAloudButtonActions? = nil, sidebarClosed: @escaping () -> Void) {
         self.owner = owner
         self.state = state
+        // The speaker button is in the bottom bar, in the middle of its
+        // row, with the other things a reader does to the book; the top
+        // bar is Close and the title (reader's request, 25 Nov 2026).
+        var actions = actions
+        if let readAloud { actions.readAloud = readAloud }
         bottom = UIHostingController(rootView: ReaderBottomBar(
             state: state, insets: insets,
             bar: OverlayBar(state: state, actions: actions, sidebarActions: sidebarActions, part: .bottomBar)))
-        top = UIHostingController(rootView: ReaderTopBar(state: state, insets: insets, close: close, readAloud: readAloud))
+        top = UIHostingController(rootView: ReaderTopBar(state: state, insets: insets, close: close))
 
         // When the contents popover closes, the hide countdown starts again.
         state.$sidebarVisible
@@ -62,6 +67,10 @@ final class ReaderChrome {
             .sink { [weak self] open in if !open { self?.restartHideTimer() } }
             .store(in: &cancellables)
     }
+
+    /// Where the top bar's buttons and title end (the band's fade below them
+    /// left out), in the reader's view.
+    var headerBottom: CGFloat { max(0, top.view.frame.maxY - 20) }
 
     /// Adds the bars to the reader's view, hidden.
     func install(in root: UIView) {
@@ -215,8 +224,6 @@ struct ReaderTopBar: View {
     @ObservedObject var state: ReaderState
     @ObservedObject var insets: ChromeInsets
     let close: () -> Void
-    /// The speaker button's actions; nil where the reader cannot read aloud.
-    var readAloud: ReadAloudButtonActions?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -230,7 +237,9 @@ struct ReaderTopBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Close Book"))
 
-            VStack(spacing: 1) {
+            // Beside Close, left-aligned: with one button only, a centred
+            // title sat oddly apart from it.
+            VStack(alignment: .leading, spacing: 1) {
                 Text(state.title)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
@@ -241,15 +250,9 @@ struct ReaderTopBar: View {
                         .lineLimit(1)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.trailing, 12)
             .accessibilityElement(children: .combine)
-
-            // As wide as Close, so the title is centred on the screen.
-            if let readAloud {
-                ReadAloudButton(phase: state.readAloud, actions: readAloud)
-            } else {
-                Color.clear.frame(width: 44, height: 44)
-            }
         }
         .padding(.top, insets.edges.top)
         .padding(.leading, insets.edges.leading)

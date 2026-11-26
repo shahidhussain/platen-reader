@@ -11,8 +11,12 @@ import UIKit
 /// (`liftOff`); turning onto a bookmarked page shows it simply there. The
 /// timings are PlatenMotion.Ribbon's (PlatenPress.swift).
 final class BookmarkRibbonView: UIView {
-    /// The size it is drawn at (points): the picture's 20 by 30.
-    static let size = CGSize(width: 20, height: 30)
+    /// The size it is drawn at (points): half as big again as the
+    /// picture's 20 by 30, to be seen at a glance.
+    static let size = CGSize(width: 30, height: 45)
+    /// Its size while the controls are up, below the top bar: twice the
+    /// picture's.
+    static let liftedSize = CGSize(width: 40, height: 60)
 
     /// The ribbon itself, hinged at its top edge (its anchor), so it folds
     /// and swings about the page's edge without moving the view's frame.

@@ -450,7 +450,12 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
     func readPage() { call("readPage") }
     /// iOS: the controls are up (or not). Their location line covers the
     /// page number, so the page number steps aside meanwhile.
-    func setControlsVisible(_ visible: Bool) { call("setControlsVisible", visible) }
+    /// The controls came up or went (iOS). `headerBottom`: where the top
+    /// bar ends, in points, so a bookmark's ribbon can stand just below it
+    /// while they are up (it would be hidden under the bar at the top).
+    func setControlsVisible(_ visible: Bool, headerBottom: Double = 0) {
+        call("setControlsVisible", visible, headerBottom)
+    }
     /// Tells the page whether VoiceOver is on (it then follows page turns).
     func setVoiceOver(_ on: Bool) { call("setVoiceOver", on) }
 

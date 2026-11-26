@@ -56,7 +56,7 @@ foliate-view::part(filter) {
 #ribbons-leaving .corner { pointer-events: none; }
 #ribbons .corner, #ribbons-leaving .corner {
     position: absolute;
-    width: 40px;
+    width: calc(var(--ribbon-height, 30px) * 2 / 3 + 20px);
     height: calc(var(--ribbon-height, 30px) + 8px);
     padding: 0 0 0 18px;
     margin: 0;
@@ -82,6 +82,18 @@ foliate-view::part(filter) {
     height: 100%;
     -webkit-user-drag: none;
     user-select: none;
+}
+/* iOS: while the controls are up, a ribbon stands just below the top bar,
+   larger, and goes back up when they go (bookmarks.js sets the move). */
+#ribbons .corner.liftable {
+    transform-origin: 18px 0;
+    transition: transform 300ms cubic-bezier(.2, .8, .2, 1);
+}
+#ribbons.with-controls .corner.liftable {
+    transform: translate(var(--lift-x), var(--lift-y)) scale(var(--lift-scale));
+}
+@media (prefers-reduced-motion: reduce) {
+    #ribbons .corner.liftable { transition: none; }
 }
 /* The unmarked corner: only the ribbon's outline, faintly, on hover. */
 .corner:not(.marked) .ribbon svg {
