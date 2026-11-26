@@ -687,27 +687,28 @@ struct RecentFoldersView: View {
             } else {
                 FolderRowPicture(item: item, gone: gone)
             }
+            // Two lines whatever the state, so a row never changes size as
+            // the folders are checked (a third line for "Reconnecting…" made
+            // the list jump at launch; device testing, 25 Nov 2026).
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
+                // Reconnecting: said in the title ("Reconnecting Comics…").
+                Text(state == .reconnecting ? String(localized: "Reconnecting \(item.name)…") : item.name)
                     .foregroundStyle(gone ? .secondary : .primary)
-                // The path, cut at the start if long: its end (the folder
-                // and those just above it) is what tells folders apart.
-                Text(item.locationText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.head)
-                // Said only when the folder cannot be reached (when it was
-                // last opened is not shown: it told the reader little).
-                if state == .unavailable {
-                    Text(kind == .network ? "Not connected" : "Not available")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                } else if state == .reconnecting {
-                    Text("Reconnecting…")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                // The path, cut at the start if long: its end (the folder
+                // and those just above it) is what tells folders apart. When
+                // the folder cannot be reached, that is said in its place.
+                Group {
+                    if state == .unavailable {
+                        Text(kind == .network ? "Not connected" : "Not available")
+                    } else {
+                        Text(item.locationText)
+                    }
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.head)
             }
             Spacer(minLength: 8)
             if !editMode.isEditing { // the drag handle stands there instead
