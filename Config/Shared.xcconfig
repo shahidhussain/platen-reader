@@ -24,7 +24,7 @@ PRODUCT_MODULE_NAME = PlatenReader
 // release with something new. Meanwhile the third number goes up by one with
 // every change made (each request's commit), so a build on a test device can
 // be matched to it: 0.8.1 is the first of these.
-MARKETING_VERSION = 0.8.78
+MARKETING_VERSION = 0.8.79
 // The build number. Every upload to App Store Connect needs a higher one
 // than the last upload for that platform, so it is never set by hand here:
 // - iOS, uploaded from Xcode (Product > Archive, then Distribute App): leave
