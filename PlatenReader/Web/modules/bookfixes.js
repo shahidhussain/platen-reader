@@ -329,6 +329,59 @@ function fitWideTables(doc) {
             table.style.setProperty('width', '100%', 'important')
 }
 
+// Pictures that reach past the right-hand edge of their page. "No wider
+// than the page" (layout.js, foliate-js) is a width, but a picture can start
+// some way in: a paragraph's first-line indent, a margin or padding round
+// it. Then the full-width picture ran past its page into the next one, and
+// a sliver of it showed down that page's left side (picture books with a
+// picture and a caption on each page, device testing, 26 Nov 2026). Once
+// laid out, each such picture is narrowed to end at its page's edge (its
+// height follows), and foliate-js re-paginates. Pictures still loading are
+// looked at when they arrive.
+function fitOverflowingPictures(doc) {
+    const root = doc.documentElement
+    const style = getComputedStyle(root)
+    const pageWidth = parseFloat(style.columnWidth)
+    if (!pageWidth || !doc.body) return
+    const gap = parseFloat(style.columnGap) || 0
+    const origin = root.getBoundingClientRect().left + (parseFloat(style.paddingLeft) || 0)
+    const fit = picture => {
+        const rect = picture.getBoundingClientRect()
+        if (rect.width < 1) return
+        // The page (column) it starts on, and that page's right-hand edge.
+        const page = Math.max(0, Math.floor((rect.left - origin + 1) / (pageWidth + gap)))
+        const edge = origin + page * (pageWidth + gap) + pageWidth
+        const over = rect.right - edge
+        if (over <= 1) return
+        picture.style.setProperty('max-width', `${Math.max(1, Math.floor(rect.width - over))}px`, 'important')
+        picture.style.setProperty('height', 'auto', 'important')
+    }
+    for (const picture of doc.body.querySelectorAll('img, svg, video')) {
+        if (picture.tagName === 'IMG' && !picture.complete) {
+            picture.addEventListener('load', () => fit(picture), { once: true })
+            continue
+        }
+        fit(picture)
+    }
+}
+
+// How many pictures reach past their page's right-hand edge (for the
+// robustness corpus: none should).
+function overflowingPictures(doc) {
+    const root = doc.documentElement
+    const style = getComputedStyle(root)
+    const pageWidth = parseFloat(style.columnWidth)
+    if (!pageWidth || !doc.body) return 0
+    const gap = parseFloat(style.columnGap) || 0
+    const origin = root.getBoundingClientRect().left + (parseFloat(style.paddingLeft) || 0)
+    return [...doc.body.querySelectorAll('img, svg, video')].filter(picture => {
+        const rect = picture.getBoundingClientRect()
+        if (rect.width < 1) return false
+        const page = Math.max(0, Math.floor((rect.left - origin + 1) / (pageWidth + gap)))
+        return rect.right - (origin + page * (pageWidth + gap) + pageWidth) > 1
+    }).length
+}
+
 // Ragged right (Justify Text off): paragraphs the book justifies end their
 // lines where their words do instead. Only justified text changes (centred
 // or right-aligned lines stay as the book has them), so each element's own
@@ -356,4 +409,4 @@ function applyJustification(doc, justify) {
     }
 }
 
-export { applyBodyTextSize, applyJustification, auditColours, ensureReadableColours, fitLonePicture, fitWideTables, normaliseBodyTextSize, rescalePublisherFontSizes }
+export { applyBodyTextSize, applyJustification, auditColours, ensureReadableColours, fitLonePicture, fitOverflowingPictures, fitWideTables, normaliseBodyTextSize, overflowingPictures, rescalePublisherFontSizes }

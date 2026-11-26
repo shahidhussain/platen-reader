@@ -771,6 +771,23 @@ def main():
                        manifest_extra=['<item id="pic" href="images/plate.png" media-type="image/png"/>'],
                        extra_files=[("OEBPS/images/plate.png", png(600, 800, (40, 96, 160)))]))
 
+    # A picture book made as text: on each page a picture in a paragraph
+    # that indents its first line, at the page's full width, and a caption.
+    # The indent pushed the picture past the page's edge, and a sliver of
+    # it showed down the next page's left side (device testing, 26 Nov
+    # 2026): each must end within its page (bookfixes.js).
+    spreads = "".join(
+        f'<div style="break-before: column"><p class="pic"><img src="images/scene.png" alt="Scene {n}"/></p>'
+        f'<p class="caption">Page {n} of the picture book: the monkeys jump on the bed.</p></div>'
+        for n in range(1, 5))
+    indented = xhtml("Monkeys",
+                     '<style>p { text-indent: 2.5em; } img { width: 100%; }</style>'
+                     f'<h1>Five Monkeys</h1>{spreads}')
+    made.append(simple("picture-indent.epub", "Five Monkeys",
+                       [("ch1.xhtml", indented)],
+                       manifest_extra=['<item id="pic" href="images/scene.png" media-type="image/png"/>'],
+                       extra_files=[("OEBPS/images/scene.png", png(800, 600, (200, 120, 60)))]))
+
     # Read aloud: a book in French (dc:language fr) is read with Apple's
     # French voice, never offered the English natural voice.
     french = ("<h1>Le premier chapitre</h1>"
