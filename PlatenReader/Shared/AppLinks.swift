@@ -11,8 +11,9 @@ import Foundation
 /// wherever support is read: then where they lead can change without an
 /// update.
 enum AppLinks {
-    /// The Platen Reader website (Settings on iOS, the About window).
-    static let website = URL(string: "https://platenreader.org")!
+    /// The Platen Reader website (Settings on iOS, the About window): its
+    /// page on the author's site.
+    static let website = URL(string: "https://shahidhussain.com/projects/platen-reader/")!
 
     /// The guide to DRM-protected books: why Platen cannot open them, and
     /// what to do instead. The failure screen for a DRM book links to it.
