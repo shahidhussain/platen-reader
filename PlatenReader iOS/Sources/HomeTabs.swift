@@ -677,11 +677,14 @@ struct RecentFoldersView: View {
     /// Why a folder cannot be reached, as far as the app can tell: offline,
     /// for one in a cloud or on a share; not on this network, for a share
     /// reached while online (the likeliest reason, though its server may
-    /// also be off or asleep); else simply not connected.
+    /// also be off or asleep); its drive, for one on a drive; else simply
+    /// not connected.
     static func unavailableReason(_ kind: StorageKind, online: Bool) -> String {
         let remote = kind == .iCloud || kind == .otherCloud || kind == .network
         if remote, !online { return String(localized: "Folder not connected while offline") }
         if kind == .network { return String(localized: "Folder not available on this network") }
+        // A drive: says what to do (plug it in).
+        if kind == .drive { return String(localized: "Drive not connected") }
         return String(localized: "Folder not connected")
     }
 

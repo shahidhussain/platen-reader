@@ -145,6 +145,17 @@ class ReaderBaseViewController: UIViewController {
         }
     }
 
+    #if DEBUG
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // PLATEN_ANIMATION_SPEED=0.1: every animation in the window runs at
+        // that speed, so a screenshot can catch one part-way (a page curl).
+        if let speed = ProcessInfo.processInfo.environment["PLATEN_ANIMATION_SPEED"].flatMap(Float.init) {
+            view.window?.layer.speed = speed
+        }
+    }
+    #endif
+
     // The status bar and home indicator are hidden while reading and come
     // back with the controls (spec, "Layout").
     override var prefersStatusBarHidden: Bool { !(chrome?.isVisible ?? false) }

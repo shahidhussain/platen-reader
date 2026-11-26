@@ -613,7 +613,9 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         let rounded = safe.bottom > 0 || safe.left > 0 || safe.right > 0
         guard rounded else { return 16 }
         let window = view.window?.bounds.size ?? view.bounds.size
-        return min(window.width, window.height) < 500 ? 60 : 26
+        // A few points of its top corner may be cut by the curve: no harm,
+        // and it sits closer to the corner (reader's request, 26 Nov 2026).
+        return min(window.width, window.height) < 500 ? 42 : 20
     }
 
     /// What differs in the page's settings on iOS:

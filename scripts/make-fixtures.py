@@ -382,11 +382,12 @@ def azw3(path, title, author, skeleton, fragment, pictures):
     open(path, "wb").write(_palm_database(title, records))
 
 
-def text_pdf(path, title, pages, doc_id="5D41402ABC4B2A76B9719D911017C592"):
+def text_pdf(path, title, pages, doc_id="5D41402ABC4B2A76B9719D911017C592", sizes=None):
     """A PDF of text pages as a printed book has them: each page is
     (header, body lines, footer), the header at the top, the footer at the
     bottom (read aloud must leave both out, and join a word hyphenated at a
-    line's end and a sentence running onto the next page)."""
+    line's end and a sentence running onto the next page). `sizes`: each
+    page's (width, height) in points, if not all US Letter."""
     objects = []
 
     def add(body):
@@ -400,13 +401,14 @@ def text_pdf(path, title, pages, doc_id="5D41402ABC4B2A76B9719D911017C592"):
     pages_obj = add(None)
     font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     page_ids = []
-    for header, body, footer in pages:
-        parts = [f"BT /F1 10 Tf 72 760 Td ({esc(header)}) Tj ET"]
-        parts.append("BT /F1 12 Tf 72 720 Td 16 TL " + " ".join(f"({esc(l)}) '" for l in body) + " ET")
-        parts.append(f"BT /F1 10 Tf 290 40 Td ({esc(footer)}) Tj ET")
+    for i, (header, body, footer) in enumerate(pages):
+        width, height = sizes[i] if sizes else (612, 792)
+        parts = [f"BT /F1 10 Tf 72 {height - 32} Td ({esc(header)}) Tj ET"]
+        parts.append(f"BT /F1 12 Tf 72 {height - 72} Td 16 TL " + " ".join(f"({esc(l)}) '" for l in body) + " ET")
+        parts.append(f"BT /F1 10 Tf {width // 2 - 16} 40 Td ({esc(footer)}) Tj ET")
         text = " ".join(parts)
         stream = add(f"<< /Length {len(text)} >>\nstream\n{text}\nendstream")
-        page_ids.append(add(f"<< /Type /Page /Parent {pages_obj} 0 R /MediaBox [0 0 612 792] "
+        page_ids.append(add(f"<< /Type /Page /Parent {pages_obj} 0 R /MediaBox [0 0 {width} {height}] "
                             f"/Contents {stream} 0 R /Resources << /Font << /F1 {font} 0 R >> >> >>"))
     objects[pages_obj - 1] = (f"<< /Type /Pages /Kids [{' '.join(f'{p} 0 R' for p in page_ids)}] "
                               f"/Count {len(page_ids)} >>")
@@ -689,6 +691,17 @@ def main():
         ("RIVER STUDIES", filler, "Page 3"),
         ("RIVER STUDIES", filler + ["The end of the study comes here."], "Page 4"),
     ])
+    made.append(p)
+
+    # Pages of different sizes (a wide one, then a small one): a page curl
+    # onto a larger page must not show it round the leaf before the curl.
+    p = os.path.join(OUT, "mixed-sizes.pdf")
+    text_pdf(p, "Mixed Sizes", [
+        ("MIXED SIZES", ["A US Letter page."], "Page 1"),
+        ("MIXED SIZES", ["A wide, square page, larger than the one before."], "Page 2"),
+        ("MIXED SIZES", ["A US Letter page again."], "Page 3"),
+        ("MIXED SIZES", ["A small page, smaller than the one before."], "Page 4"),
+    ], doc_id="3F79BB7B435B05321651DAEFD374CDC6", sizes=[(612, 792), (900, 900), (612, 792), (420, 560)])
     made.append(p)
 
     p = os.path.join(OUT, "square-pages.pdf")

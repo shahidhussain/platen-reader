@@ -9,8 +9,10 @@
 //
 //   swift design/ribbon/make-ribbon.swift
 //
-// writes PlatenReader/Web/ribbon/ribbon-{light,dark}@{2,3}x.png, which the
-// web shell (bookmarks.js) and the iOS PDF reader (BookmarkRibbonView) use.
+// writes PlatenReader/Web/ribbon/ribbon-{strip,end}-{light,dark}@{2,3}x.png
+// (a strip of cloth that repeats down the ribbon's length, and its notched
+// end), which the web shell (bookmarks.js) and the iOS PDF reader
+// (BookmarkRibbonView) put together at whatever length the ribbon has.
 // The texture comes from a fixed seed, so the files only change when this
 // script does.
 
@@ -19,8 +21,14 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// The ribbon's size in points, and the notch's depth.
-let width = 20.0, height = 30.0, notch = 6.5
+/// The ribbon is drawn in two pieces, so it can be any length without its
+/// weave or stitches being stretched: a strip of cloth that repeats down its
+/// length (`tile` points long, a whole number of ribs and stitches, so the
+/// copies meet seamlessly), and the end with its swallowtail notch. Width in
+/// points; the notch's depth; the end piece's length.
+let width = 20.0, tile = 10.0, notch = 6.5, endLength = 10.0
+/// A rib every `tile / 18` points, a stitch (and its gap) every `tile / 6`.
+let ribPitch = tile / 18, stitchPitch = tile / 6, stitchLength = 1.05
 
 struct Palette {
     var cloth: (Double, Double, Double)
@@ -43,19 +51,24 @@ struct Seeded {
     }
 }
 
-func ribbonPath(inset: Double = 0) -> CGPath {
+enum Piece: String { case strip, end }
+
+/// The outline of a piece, `length` points long: the strip is a plain
+/// rectangle; the end has the notch cut into its foot.
+func outline(_ piece: Piece, length: Double) -> CGPath {
     let path = CGMutablePath()
-    path.move(to: CGPoint(x: inset, y: 0))
-    path.addLine(to: CGPoint(x: width - inset, y: 0))
-    path.addLine(to: CGPoint(x: width - inset, y: height - inset * 0.6))
-    path.addLine(to: CGPoint(x: width / 2, y: height - notch - inset * 0.9))
-    path.addLine(to: CGPoint(x: inset, y: height - inset * 0.6))
+    path.move(to: .zero)
+    path.addLine(to: CGPoint(x: width, y: 0))
+    path.addLine(to: CGPoint(x: width, y: length))
+    if piece == .end { path.addLine(to: CGPoint(x: width / 2, y: length - notch)) }
+    path.addLine(to: CGPoint(x: 0, y: length))
     path.closeSubpath()
     return path
 }
 
-func draw(_ palette: Palette, scale: Double) -> CGImage {
-    let w = Int(width * scale), h = Int(height * scale)
+func draw(_ palette: Palette, _ piece: Piece, scale: Double) -> CGImage {
+    let length = piece == .strip ? tile : endLength
+    let w = Int(width * scale), h = Int(length * scale)
     let space = CGColorSpace(name: CGColorSpace.sRGB)!
     let context = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space,
                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
@@ -63,18 +76,19 @@ func draw(_ palette: Palette, scale: Double) -> CGImage {
     context.translateBy(x: 0, y: CGFloat(h))
     context.scaleBy(x: CGFloat(scale), y: CGFloat(-scale))
 
-    // The cloth, row by row of pixels: ribs across it (a rib every 0.55
-    // points, lighter on its crown), a little unevenness thread to thread,
-    // and darker towards the edges, as if the ribbon were slightly rounded.
+    // The cloth, row by row of pixels: ribs across it (lighter on each
+    // crown), a little unevenness thread to thread, and darker towards the
+    // edges, as if the ribbon were slightly rounded. The same seed for both
+    // pieces, so the end carries on from the strip.
     context.saveGState()
-    context.addPath(ribbonPath())
+    context.addPath(outline(piece, length: length))
     context.clip()
     var random = Seeded(state: 0x5EED)
     let pixel = 1 / scale
     let rowShade = (0..<h).map { _ in random.next() }
     for py in 0..<h {
         let y = Double(py) * pixel
-        let rib = 0.5 + 0.5 * cos(2 * .pi * y / 0.55)
+        let rib = 0.5 + 0.5 * cos(2 * .pi * y / ribPitch)
         for px in 0..<w {
             let x = Double(px) * pixel
             let across = abs(x - width / 2) / (width / 2)
@@ -88,70 +102,79 @@ func draw(_ palette: Palette, scale: Double) -> CGImage {
     }
     context.restoreGState()
 
-    // The stitching: short stitches of darker thread, 1.6 points in from
-    // the long edges and round the notch, each a small rounded dash with a
-    // highlight along it and a needle hole darkening each end, so it reads
-    // as thread sewn through rather than a dashed line.
+    // The stitching: short stitches of darker thread, 1.7 points in from
+    // the long edges (and, on the end, round the notch), each a small
+    // rounded dash with a highlight along it and a needle hole darkening
+    // each end, so it reads as thread sewn through rather than a dashed
+    // line. Down each edge they start at the same place in every tile.
     let inset = 1.7
-    let line: [CGPoint] = [
-        CGPoint(x: inset, y: 0),
-        CGPoint(x: inset, y: height - 2.2),
-        CGPoint(x: width / 2, y: height - notch - 1.55),
-        CGPoint(x: width - inset, y: height - 2.2),
-        CGPoint(x: width - inset, y: 0),
-    ]
-    let stitch = 1.05, gap = 0.62
-    var carried = 0.4 // where along the line the next stitch starts
-    for (a, b) in zip(line, line.dropFirst()) {
+    func stitches(from a: CGPoint, to b: CGPoint, startingAt first: Double) -> Double {
         let dx = b.x - a.x, dy = b.y - a.y
-        let length = (dx * dx + dy * dy).squareRoot()
-        let ux = dx / length, uy = dy / length
-        var t = carried
-        while t + stitch <= length {
+        let distance = (dx * dx + dy * dy).squareRoot()
+        let ux = dx / distance, uy = dy / distance
+        var t = first
+        while t + stitchLength <= distance {
             let start = CGPoint(x: a.x + ux * t, y: a.y + uy * t)
-            let end = CGPoint(x: a.x + ux * (t + stitch), y: a.y + uy * (t + stitch))
-            // The thread.
+            let end = CGPoint(x: a.x + ux * (t + stitchLength), y: a.y + uy * (t + stitchLength))
             context.setLineCap(.round)
             context.setLineWidth(0.5)
             context.setStrokeColor(red: palette.thread.0, green: palette.thread.1, blue: palette.thread.2, alpha: 0.95)
             context.strokeLineSegments(between: [start, end])
-            // Its sheen, along one side.
             context.setLineWidth(0.16)
             context.setStrokeColor(red: 1, green: 0.86, blue: 0.62, alpha: 0.28)
             let nx = -uy * 0.1, ny = ux * 0.1
             context.strokeLineSegments(between: [CGPoint(x: start.x + ux * 0.2 + nx, y: start.y + uy * 0.2 + ny),
                                                  CGPoint(x: end.x - ux * 0.2 + nx, y: end.y - uy * 0.2 + ny)])
-            // The needle holes.
             context.setFillColor(red: 0.2, green: 0.08, blue: 0.0, alpha: 0.35)
             for p in [start, end] {
                 context.fillEllipse(in: CGRect(x: p.x - 0.22, y: p.y - 0.22, width: 0.44, height: 0.44))
             }
-            t += stitch + gap
+            t += stitchPitch
         }
-        carried = max(0, t - length)
+        return max(0, t - distance)
     }
-
-    // The cut ends of the notch: a touch soft, never ragged (a faint
-    // lighter line along the cut, inside the edge).
-    context.setLineWidth(0.35)
-    context.setStrokeColor(red: palette.cloth.0, green: palette.cloth.1, blue: palette.cloth.2, alpha: 0.5)
-    context.strokeLineSegments(between: [CGPoint(x: 0.3, y: height - 0.4), CGPoint(x: width / 2, y: height - notch - 0.3),
-                                         CGPoint(x: width / 2, y: height - notch - 0.3), CGPoint(x: width - 0.3, y: height - 0.4)])
+    let firstStitch = 0.3
+    switch piece {
+    case .strip:
+        for x in [inset, width - inset] {
+            _ = stitches(from: CGPoint(x: x, y: 0), to: CGPoint(x: x, y: tile), startingAt: firstStitch)
+        }
+    case .end:
+        // Down one edge, round the notch and up the other.
+        let corner = endLength - 2.2, apex = endLength - notch - 1.55
+        var carried = stitches(from: CGPoint(x: inset, y: 0), to: CGPoint(x: inset, y: corner), startingAt: firstStitch)
+        carried = stitches(from: CGPoint(x: inset, y: corner), to: CGPoint(x: width / 2, y: apex), startingAt: carried)
+        carried = stitches(from: CGPoint(x: width / 2, y: apex), to: CGPoint(x: width - inset, y: corner), startingAt: carried)
+        _ = stitches(from: CGPoint(x: width - inset, y: 0), to: CGPoint(x: width - inset, y: corner), startingAt: firstStitch)
+        // The cut ends of the notch: a touch soft, never ragged (a faint
+        // lighter line along the cut, inside the edge).
+        context.setLineWidth(0.35)
+        context.setStrokeColor(red: palette.cloth.0, green: palette.cloth.1, blue: palette.cloth.2, alpha: 0.5)
+        context.strokeLineSegments(between: [
+            CGPoint(x: 0.3, y: endLength - 0.4), CGPoint(x: width / 2, y: endLength - notch - 0.3),
+            CGPoint(x: width / 2, y: endLength - notch - 0.3), CGPoint(x: width - 0.3, y: endLength - 0.4)])
+    }
     return context.makeImage()!
 }
 
 let here = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let output = here.appendingPathComponent("../../PlatenReader/Web/ribbon").standardizedFileURL
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+// The pictures of the whole ribbon from before are replaced by the pieces.
+for old in ["light", "dark"].flatMap({ n in [2, 3].map { "ribbon-\(n)@\($0)x.png" } }) {
+    try? FileManager.default.removeItem(at: output.appendingPathComponent(old))
+}
 for (name, palette) in palettes.sorted(by: { $0.key < $1.key }) {
     // Drawn at twice the pixel density each name says: the ribbon is shown
-    // larger than its 20 by 30 points (1.5 times on iOS, twice under the
-    // controls), and must stay sharp there.
-    for scale in [2, 3] {
-        let url = output.appendingPathComponent("ribbon-\(name)@\(scale)x.png")
-        let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
-        CGImageDestinationAddImage(destination, draw(palette, scale: Double(scale * 2)), nil)
-        CGImageDestinationFinalize(destination)
-        print("wrote", url.path)
+    // larger than its 20 points across (1.5 times on iOS), and must stay
+    // sharp there.
+    for piece in [Piece.strip, .end] {
+        for scale in [2, 3] {
+            let url = output.appendingPathComponent("ribbon-\(piece.rawValue)-\(name)@\(scale)x.png")
+            let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+            CGImageDestinationAddImage(destination, draw(palette, piece, scale: Double(scale * 2)), nil)
+            CGImageDestinationFinalize(destination)
+            print("wrote", url.path)
+        }
     }
 }

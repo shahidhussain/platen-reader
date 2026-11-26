@@ -478,23 +478,63 @@ final class FolderModel: NSObject, ObservableObject {
         if downloading.isEmpty { downloadTimer?.invalidate(); downloadTimer = nil }
     }
 
+    /// Where each book stands in the grid as shown (its sort, Random
+    /// included), so covers are made in that order: made in the folder's
+    /// own (file name) order, a grid in Random order filled in scattered
+    /// and slowly (reported 26 Nov 2026).
+    private var shownRank: [String: Int] = [:]
+    /// Covers asked for and not yet begun, and whether one is being made.
+    private var coversWaiting: [FolderEntry] = []
+    private var makingCover = false
+
+    /// The order the grid shows the books in now (the view says, whenever
+    /// it changes): covers not yet begun are made in it.
+    func showOrder(_ urls: [URL]) {
+        // By path: the same book can come as URLs that differ in form.
+        var rank: [String: Int] = [:]
+        for (i, url) in urls.enumerated() where rank[url.standardizedFileURL.path] == nil {
+            rank[url.standardizedFileURL.path] = i
+        }
+        shownRank = rank
+    }
+
     private func loadCover(_ entry: FolderEntry) {
         let url = entry.url
         if let asked = requested[url], asked == entry.modified { return }
         requested[url] = entry.modified
+        coversWaiting.removeAll { $0.url == url }
+        coversWaiting.append(entry)
+        makeNextCover()
+    }
+
+    /// Makes the waiting cover that comes first in the grid, one at a time.
+    private func makeNextCover() {
+        guard !makingCover, !coversWaiting.isEmpty else { return }
+        // Left the screen: the rest are skipped, and start() asks again.
+        guard active.isOn else {
+            for entry in coversWaiting { requested[entry.url] = nil }
+            coversWaiting = []
+            return
+        }
+        let rank = shownRank
+        func place(_ i: Int) -> Int { rank[coversWaiting[i].url.standardizedFileURL.path] ?? .max }
+        let next = coversWaiting.indices.min { place($0) < place($1) }!
+        let url = coversWaiting.remove(at: next).url
+        makingCover = true
         let cache = cache
         let active = active
         coverQueue.async {
-            // Left the screen: skip, and let start() ask again.
-            guard active.isOn else {
-                DispatchQueue.main.async { [weak self] in self?.requested[url] = nil }
-                return
-            }
-            let made = cache.cover(for: url)
+            let made: CoverCache.Entry? = active.isOn ? cache.cover(for: url) : nil
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.requested[url] != nil else { return }
-                self.covers[url] = made.info
-                self.coverFiles[url] = made.imageURL
+                guard let self else { return }
+                self.makingCover = false
+                if let made, self.requested[url] != nil {
+                    self.covers[url] = made.info
+                    self.coverFiles[url] = made.imageURL
+                } else if made == nil {
+                    self.requested[url] = nil // skipped while away: asked again by start()
+                }
+                self.makeNextCover()
             }
         }
     }

@@ -80,8 +80,12 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// the same as in the book reader.
     private lazy var pageTurner = PageTurnAnimator(
         host: self, pageView: pageArea,
-        snapshot: { [weak self] _, done in
+        snapshot: { [weak self] forCurl, done in
             guard let self else { return done(nil) }
+            // A curl: the pages drawn from the PDF, with the ribbon. The live
+            // page is hidden while a curl turns it underneath (a larger next
+            // page showed round the leaf), and a hidden view draws nothing.
+            if forCurl { return done(self.drawPagesOnScreen(clearAround: true, withRibbon: true)) }
             let view: UIView = self.pageArea
             // See-through around the pages, so a slide shows the glow
             // behind (a curl takes only the page itself, `curlRegion`).
@@ -182,7 +186,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         state.allowsTwoPages = true
         installChrome(in: root)
         chrome.onVisibilityChanged = { [weak self] visible in
-            // The ribbon moves below the top bar, or back to the page.
+            // The ribbon is pulled down below the top bar, or shortens again.
             UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.3, delay: 0,
                            options: [.curveEaseOut, .beginFromCurrentState]) {
                 self?.updateRibbon()
@@ -793,13 +797,13 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
         // rest of it curled in (device testing, 25 Nov 2026).
         var y = max(pageRect.minY, 0)
         if state.flow == .scrolled { y = max(y, safe.minY) }
-        // While the controls are up, the top bar would cover it: it stands
-        // just below the bar (past the fade of its band), larger, 16 points in from the edge, and goes
-        // back to the page when they go (reader's request, 25 Nov 2026).
+        // While the controls are up, the top bar would cover it: it is
+        // pulled down longer, the same width and from the same place, until
+        // its end hangs below the bar (past its band's fade), and shortens
+        // again when they go (reader's request, 26 Nov 2026).
         if let chrome, chrome.isVisible {
-            let lifted = BookmarkRibbonView.liftedSize
-            let below = pageArea.convert(CGPoint(x: 0, y: chrome.headerBottom), from: view).y + 26
-            return CGRect(x: safe.maxX - 16 - lifted.width, y: below, width: lifted.width, height: lifted.height)
+            let below = pageArea.convert(CGPoint(x: 0, y: chrome.headerBottom), from: view).y + 26 + 34
+            return CGRect(x: x, y: y, width: size.width, height: max(size.height, below - y))
         }
         return CGRect(x: x, y: y, width: size.width, height: size.height)
     }
@@ -1054,7 +1058,8 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
     /// page area is). Not a picture of PDFKit's views: those draw the room
     /// round the pages solid black.
     /// `clearAround`: see-through round the pages, over the glow.
-    private func drawPagesOnScreen(clearAround: Bool = false) -> UIImage? {
+    /// `withRibbon`: the bookmark ribbon too, where it is.
+    private func drawPagesOnScreen(clearAround: Bool = false, withRibbon: Bool = false) -> UIImage? {
         let bounds = view.bounds
         guard bounds.width > 0, let document = pdfView.document else { return nil }
         let format = UIGraphicsImageRendererFormat.preferred()
@@ -1087,9 +1092,16 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
                 cg.restoreGState()
             }
             if inverted {
+                // Round the pages too, unless that is left see-through.
+                cg.saveGState()
+                if clearAround { cg.clip(to: pages.map(\.1)) }
                 cg.setBlendMode(.difference)
                 UIColor.white.setFill()
                 UIRectFill(bounds)
+                cg.restoreGState()
+            }
+            if withRibbon, !ribbon.isHidden, let picture = ribbon.picture {
+                picture.draw(in: view.convert(ribbon.frame, from: pageArea))
             }
         }
     }
