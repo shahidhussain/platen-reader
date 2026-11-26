@@ -76,4 +76,74 @@ final class GlowBandTests: XCTestCase {
         XCTAssertTrue(GlowBand.needsBand(behind: rows, width: 20, darkTheme: false))
         XCTAssertFalse(GlowBand.needsBand(behind: Array(repeating: paper, count: 200), width: 20, darkTheme: false))
     }
+
+    // MARK: - How much band (`backing`)
+
+    /// A plain backdrop the controls read clearly against: no band.
+    func testNoBandOverACalmContrastingBackdrop() {
+        let paper = RGB(hex: "#f4ecd8")
+        let (_, opacity) = GlowBand.backing(behind: Array(repeating: paper, count: 400), width: 20,
+                                            darkTheme: false, page: paper)
+        XCTAssertEqual(opacity, 0)
+    }
+
+    /// White controls over a white picture: a solid band, in a colour that
+    /// lets them read.
+    func testASolidBandWhereItMustBe() {
+        let (colour, opacity) = GlowBand.backing(behind: Array(repeating: RGB.white, count: 400), width: 20,
+                                                 darkTheme: true, page: RGB(hex: "#1e1e20"))
+        XCTAssertGreaterThanOrEqual(opacity, 0.7)
+        XCTAssertGreaterThanOrEqual(GlowBand.contrast(colour, .white), GlowBand.neededContrast)
+        // Laid over the white, the controls read.
+        XCTAssertGreaterThanOrEqual(GlowBand.contrast(RGB.white.mixed(with: colour, opacity), .white), GlowBand.backdropContrast)
+    }
+
+    /// A mid-tone backdrop the controls nearly read against: part of a band,
+    /// neither none nor solid.
+    func testAHalfwayBandWhereTheyNearlyRead() {
+        let grey = RGB(hex: "#a8a8a8") // white reads against it at about 2.4
+        let (_, opacity) = GlowBand.backing(behind: Array(repeating: grey, count: 400), width: 20,
+                                            darkTheme: true, page: RGB(hex: "#1e1e20"))
+        XCTAssertGreaterThan(opacity, 0)
+        XCTAssertLessThan(opacity, 1)
+    }
+
+    /// Lines of the book's own text behind the controls: nearly solid, so
+    /// the text is no more than a faint shadow under them.
+    func testTextBehindIsDimmedAlmostAway() {
+        let paper = RGB(hex: "#f4ecd8"), ink = RGB(hex: "#5b4636")
+        let rows = (0..<20).flatMap { row in (0..<20).map { x in row % 2 == 0 && x % 2 == 0 ? ink : paper } }
+        let (colour, opacity) = GlowBand.backing(behind: rows, width: 20, darkTheme: false, page: paper)
+        XCTAssertGreaterThanOrEqual(opacity, 0.8)
+        XCTAssertGreaterThanOrEqual(GlowBand.contrast(colour, .black), GlowBand.neededContrast)
+    }
+
+    /// One line of text at the edge of a plain margin (the last line of a
+    /// page, just behind the location line): nearly solid, however much
+    /// plain margin is round it.
+    func testALineOfTextInAMarginStillGetsABand() {
+        let paper = RGB(hex: "#f4ecd8"), ink = RGB(hex: "#5b4636")
+        let rows = (0..<40).flatMap { row in (0..<40).map { x in row < 3 && x % 3 == 0 ? ink : paper } }
+        let (_, opacity) = GlowBand.backing(behind: rows, width: 40, darkTheme: false, page: paper)
+        XCTAssertGreaterThanOrEqual(opacity, 0.8)
+    }
+
+    /// A clean diagonal edge across a plain picture (a picture book's page)
+    /// is not detail: no band.
+    func testACleanEdgeIsNotDetail() {
+        // Two colours white reads clearly against, with a sharp edge between.
+        let light = RGB(hex: "#a04a18"), dark = RGB(hex: "#5a2410")
+        let rows = (0..<40).flatMap { row in (0..<40).map { x in x < row ? dark : light } }
+        let (_, opacity) = GlowBand.backing(behind: rows, width: 40, darkTheme: true, page: RGB(hex: "#1e1e20"))
+        XCTAssertEqual(opacity, 0)
+    }
+
+    /// The band's colour is what is behind it (a deep blue glow behind white
+    /// controls), not the page's plain colour.
+    func testTheColourComesFromWhatIsBehind() {
+        let blue = RGB(hex: "#1c2a5a")
+        let (colour, _) = GlowBand.backing(behind: Array(repeating: blue, count: 100), width: 10,
+                                           darkTheme: true, page: RGB(hex: "#000000"))
+        XCTAssertEqual(colour.hex, blue.hex)
+    }
 }

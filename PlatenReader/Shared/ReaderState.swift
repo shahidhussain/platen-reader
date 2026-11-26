@@ -91,17 +91,16 @@ final class ReaderState: ObservableObject {
     /// The page's background colour ("#rrggbb", from the theme), for the
     /// band behind the controls (`PageBand`), so no text shows behind them.
     @Published var pageColour = "#ffffff"
-    /// With ambient light (iOS): the colours of the bands behind the top and
-    /// bottom controls, taken from the glow at those edges (`GlowBand`), so
-    /// the bands blend into it; nil without a glow, when they are the
-    /// page's colour.
+    /// The bands behind the top and bottom controls (iOS), worked out from
+    /// what lies behind each (`GlowBand.backing`): its colour, from what is
+    /// behind (as the ambient glow takes its colours), nil until first
+    /// measured (the page's colour); and how opaque, from 0 (none: the
+    /// controls read clearly as they are) through part of a band to 1
+    /// (solid), as little as the controls need to read.
     @Published var topBandColour: String?
     @Published var bottomBandColour: String?
-    /// Whether the controls need a band behind them at all (iOS): false when
-    /// what is behind them already lets them read clearly
-    /// (`GlowBand.needsBand`), so no band, edge or fade is drawn.
-    @Published var topBandNeeded = true
-    @Published var bottomBandNeeded = true
+    @Published var topBandOpacity = 1.0
+    @Published var bottomBandOpacity = 1.0
 
     // Jumps: "Back to p. 87" after a jump, until the reader moves on.
     @Published var backLabel: String?

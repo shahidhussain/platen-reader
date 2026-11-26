@@ -455,7 +455,8 @@ class ReaderBaseViewController: UIViewController {
                 "landscape": view.bounds.width > view.bounds.height,
                 "controls": chrome.isVisible,
                 "topBand": state.topBandColour ?? "", "bottomBand": state.bottomBandColour ?? "",
-                "topBandNeeded": state.topBandNeeded, "bottomBandNeeded": state.bottomBandNeeded,
+                "topBandNeeded": state.topBandOpacity > 0, "bottomBandNeeded": state.bottomBandOpacity > 0,
+                "topBandOpacity": state.topBandOpacity, "bottomBandOpacity": state.bottomBandOpacity,
                 "width": view.bounds.width, "height": view.bounds.height,
             ].merging(debugReport()) { _, new in new }
             if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]) {
@@ -537,25 +538,31 @@ class ReaderBaseViewController: UIViewController {
 
     private func checkBands() {
         guard let chrome, view.bounds.width > 0 else { return }
+        let bounds = view.bounds
+        // Where the controls' text and buttons are: the top bar from below
+        // the status bar to its last line, and the bottom bar from its first
+        // line to the bottom (each without the room left for the band's
+        // fade). The status bar's strip is left out: a picture of the page
+        // can be solid black there (the Simulator), which is not on screen.
+        // Each reaches a little past the controls' text (12 points): a line
+        // of the page just beside it shows through behind it as much as one
+        // under it (the last line of a Sepia page behind the location line,
+        // 26 Nov 2026).
+        let safeTop = view.safeAreaInsets.top
+        let topArea = CGRect(x: 0, y: safeTop, width: bounds.width,
+                             height: max(0, chrome.top.view.frame.maxY - 20 + 12 - safeTop))
+        let bottomFrame = chrome.bottom.view.frame
+        let bottomArea = CGRect(x: 0, y: bottomFrame.minY + 24 - 12, width: bounds.width,
+                                height: max(0, bounds.maxY - bottomFrame.minY - 24 + 12))
+        let theme = currentTheme
+        let page = GlowBand.RGB(hex: theme.background)
+        let backdrop = theme.uiBackground
         // Scroll layout: the text keeps moving under the controls, so an
         // answer from a picture taken a moment ago goes stale (a blank
         // stretch under the title, then text scrolled up behind a
-        // see-through header; device testing, 25 Nov 2026). Always banded.
-        if state.flow == .scrolled {
-            if !state.topBandNeeded { state.topBandNeeded = true }
-            if !state.bottomBandNeeded { state.bottomBandNeeded = true }
-            return
-        }
-        let bounds = view.bounds
-        // Where the controls' text and buttons are: the top bar from the top
-        // of the screen (the status bar too) to its last line, and the
-        // bottom bar from its first line to the bottom (each without the
-        // room left for the band's fade).
-        let topArea = CGRect(x: 0, y: 0, width: bounds.width, height: max(0, chrome.top.view.frame.maxY - 20))
-        let bottomFrame = chrome.bottom.view.frame
-        let bottomArea = CGRect(x: 0, y: bottomFrame.minY + 24, width: bounds.width,
-                                height: max(0, bounds.maxY - bottomFrame.minY - 24))
-        let dark = currentTheme.isDark
+        // see-through header; device testing, 25 Nov 2026). Always solid,
+        // in the colour of what is behind.
+        let scrolling = state.flow == .scrolled
         // Sharp enough to see lines of text (each about two pixels tall).
         backdropSnapshot(width: 180) { [weak self] image in
             guard let cg = image?.cgImage else { return }
@@ -564,30 +571,38 @@ class ReaderBaseViewController: UIViewController {
             // 170 ms on the main thread in the Simulator).
             Self.bandQueue.async {
                 let scale = CGFloat(cg.width) / bounds.width
-                let pixels = Self.pixels(of: cg)
+                let pixels = Self.pixels(of: cg, over: backdrop)
                 func sample(_ area: CGRect) -> [GlowBand.RGB] {
                     let rows = max(0, Int(area.minY * scale))..<min(cg.height, Int(area.maxY * scale))
                     return rows.flatMap { y in pixels[(y * cg.width)..<((y + 1) * cg.width)] }
                 }
-                let top = GlowBand.needsBand(behind: sample(topArea), width: cg.width, darkTheme: dark)
-                let bottom = GlowBand.needsBand(behind: sample(bottomArea), width: cg.width, darkTheme: dark)
+                let top = GlowBand.backing(behind: sample(topArea), width: cg.width, darkTheme: theme.isDark, page: page)
+                let bottom = GlowBand.backing(behind: sample(bottomArea), width: cg.width, darkTheme: theme.isDark, page: page)
                 DispatchQueue.main.async {
-                    // Not an answer for a page that has since become a scroll.
-                    guard let self, self.state.flow != .scrolled else { return }
-                    if self.state.topBandNeeded != top { self.state.topBandNeeded = top }
-                    if self.state.bottomBandNeeded != bottom { self.state.bottomBandNeeded = bottom }
+                    // Not an answer for a page in another layout or theme.
+                    guard let self, (self.state.flow == .scrolled) == scrolling,
+                          self.currentTheme.background == theme.background else { return }
+                    let state = self.state
+                    if state.topBandColour != top.colour.hex { state.topBandColour = top.colour.hex }
+                    if state.bottomBandColour != bottom.colour.hex { state.bottomBandColour = bottom.colour.hex }
+                    let topOpacity = scrolling ? 1 : top.opacity, bottomOpacity = scrolling ? 1 : bottom.opacity
+                    if state.topBandOpacity != topOpacity { state.topBandOpacity = topOpacity }
+                    if state.bottomBandOpacity != bottomOpacity { state.bottomBandOpacity = bottomOpacity }
                 }
             }
         }
     }
 
-    /// Every pixel of a (small) picture, as colours.
-    private static func pixels(of image: CGImage) -> [GlowBand.RGB] {
+    /// Every pixel of a (small) picture, as colours, laid over `backdrop`
+    /// (where the picture is see-through, the page's colour shows).
+    private static func pixels(of image: CGImage, over backdrop: UIColor) -> [GlowBand.RGB] {
         let (width, height) = (image.width, image.height)
         var bytes = [UInt8](repeating: 0, count: width * height * 4)
         guard let context = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8,
                                       bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
                                       bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return [] }
+        context.setFillColor(backdrop.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         return stride(from: 0, to: bytes.count, by: 4).map {
             GlowBand.RGB(r: Double(bytes[$0]) / 255, g: Double(bytes[$0 + 1]) / 255, b: Double(bytes[$0 + 2]) / 255)
@@ -596,51 +611,11 @@ class ReaderBaseViewController: UIViewController {
 
     // MARK: - Bands over the ambient glow
 
-    /// The ambient glow on show changed (nil: none): the bands behind the
-    /// controls take its colours at the top and bottom of the screen
-    /// (GlowBand), or go back to the page's colour.
+    /// The ambient glow on show changed: the bands behind the controls are
+    /// worked out again from what is now behind them (`checkBands`), once
+    /// it has faded in (about a third of a second).
     func glowChanged(_ glow: UIImage?) {
-        // The glow fades in over about a third of a second: look after.
         scheduleBandCheck(after: 0.5)
-        guard let glow else {
-            state.topBandColour = nil
-            state.bottomBandColour = nil
-            return
-        }
-        let theme = currentTheme
-        let page = GlowBand.RGB(hex: theme.background)
-        func band(_ edge: VerticalEdge) -> String? {
-            guard let colour = Self.edgeColour(of: glow, edge, over: theme.uiBackground) else { return nil }
-            return GlowBand.colour(edge: colour, page: page, darkTheme: theme.isDark).hex
-        }
-        state.topBandColour = band(.top)
-        state.bottomBandColour = band(.bottom)
-    }
-
-    /// The average colour of a thin strip along the top or bottom of a glow
-    /// (where it is strongest), as it shows over the page's colour.
-    private static func edgeColour(of glow: UIImage, _ edge: VerticalEdge, over backdrop: UIColor) -> GlowBand.RGB? {
-        guard let cg = glow.cgImage, cg.height > 0 else { return nil }
-        let strip = max(1, cg.height / 25)
-        let rect = CGRect(x: 0, y: edge == .top ? 0 : cg.height - strip, width: cg.width, height: strip)
-        guard let part = cg.cropping(to: rect) else { return nil }
-        // Drawn small (16 × 2) and averaged: a fair mean of the strip.
-        let (width, height) = (16, 2)
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        guard let context = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8,
-                                      bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        let all = CGRect(x: 0, y: 0, width: width, height: height)
-        context.setFillColor(backdrop.cgColor)
-        context.fill(all)
-        context.interpolationQuality = .medium
-        context.draw(part, in: all)
-        var sum = (0.0, 0.0, 0.0)
-        for i in stride(from: 0, to: pixels.count, by: 4) {
-            sum.0 += Double(pixels[i]); sum.1 += Double(pixels[i + 1]); sum.2 += Double(pixels[i + 2])
-        }
-        let count = Double(width * height) * 255
-        return GlowBand.RGB(r: sum.0 / count, g: sum.1 / count, b: sum.2 / count)
     }
 }
 
