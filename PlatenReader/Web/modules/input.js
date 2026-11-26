@@ -12,8 +12,9 @@ import { closeNote, isNoteOpen, noteJustOpened } from './footnotes.js'
 // computed in window coordinates and sent to Swift, which decides what to do
 // (turn a page or toggle the overlay), so behaviour lives in one place.
 //
-// The side zones are wider than the centre: most clicks are page turns.
-const sideZoneFraction = 0.38
+// Each side zone is under a third of the width, so the centre (which shows
+// the controls) is the widest (ClickZone.sideFraction in Swift).
+const sideZoneFraction = 0.30
 
 // A press held this long is a long press or a Force Touch (Look Up), not a
 // click: acting on it would dismiss the Look Up panel it opened.

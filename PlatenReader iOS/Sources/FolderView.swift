@@ -57,10 +57,13 @@ struct FolderGridView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
+        // Worked out once per redraw (a sort of the whole folder), not once
+        // for each place that needs it.
+        let items = shown
         ScrollView {
             LazyVGrid(columns: CoverColumns.items(filter, sizeClass), alignment: .leading,
                       spacing: CoverColumns.spacing(filter, sizeClass) + 6) {
-                ForEach(shown) { entry in
+                ForEach(items) { entry in
                     Button {
                         tapped(entry)
                     } label: {
@@ -113,7 +116,7 @@ struct FolderGridView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
-            } else if model.entries.isEmpty == false, shown.isEmpty {
+            } else if model.entries.isEmpty == false, items.isEmpty {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
                     ContentUnavailableView("No Books of These Kinds", systemImage: "line.3.horizontal.decrease.circle",
                                            description: Text("Change the filter to see the other books here."))
@@ -197,7 +200,7 @@ struct FolderGridView: View {
         }
         .onDisappear { model.stop() }
         // Covers are made in the order the grid shows (Random included).
-        .onChange(of: shown.map(\.url), initial: true) { _, order in model.showOrder(order) }
+        .onChange(of: items.map(\.url), initial: true) { _, order in model.showOrder(order) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             model.refresh()
         }

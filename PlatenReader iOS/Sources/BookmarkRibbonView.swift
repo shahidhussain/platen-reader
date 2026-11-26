@@ -85,9 +85,13 @@ final class BookmarkRibbonView: UIView {
         end.image = picture("end")
     }
 
-    private static func pose(fold: Double, turn: Double) -> CATransform3D {
+    /// Its pose part-way through laying it down or lifting it off. The
+    /// perspective is weak, set from its length (ten times it, or more): a
+    /// strong one made the end tipped towards the reader look longer than
+    /// the ribbon part-way down, so it flicked past where it lands.
+    private func pose(fold: Double, turn: Double) -> CATransform3D {
         var transform = CATransform3DIdentity
-        transform.m34 = -1 / 160
+        transform.m34 = -1 / max(600, bounds.height * 10)
         transform = CATransform3DRotate(transform, turn * .pi / 180, 0, 0, 1)
         return CATransform3DRotate(transform, fold * .pi / 180, 1, 0, 0)
     }
@@ -112,11 +116,11 @@ final class BookmarkRibbonView: UIView {
             let landed = motion.layDuration / total
             let animation = CAKeyframeAnimation(keyPath: "transform")
             animation.values = [
-                Self.pose(fold: motion.layStartFold, turn: swing * motion.layStartSwing),
-                Self.pose(fold: 0, turn: 0),
-                Self.pose(fold: 0, turn: -swing * motion.settleSwing),
-                Self.pose(fold: 0, turn: swing * motion.settleSwing * 0.35),
-                Self.pose(fold: 0, turn: 0),
+                pose(fold: motion.layStartFold, turn: swing * motion.layStartSwing),
+                pose(fold: 0, turn: 0),
+                pose(fold: 0, turn: -swing * motion.settleSwing),
+                pose(fold: 0, turn: swing * motion.settleSwing * 0.35),
+                pose(fold: 0, turn: 0),
             ].map { NSValue(caTransform3D: $0) }
             let after = 1 - landed
             animation.keyTimes = [0, landed, landed + after * 0.35, landed + after * 0.7, 1].map { NSNumber(value: $0) }
@@ -141,24 +145,46 @@ final class BookmarkRibbonView: UIView {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { haptic.impactOccurred() }
     }
 
-    /// Lifted off the page: a copy of the ribbon folds back up over the top
-    /// edge, out of sight, and goes (the ribbon itself is simply hidden).
-    /// No swing. With Reduce Motion, a fade.
-    func liftOff() {
+    /// Lifted off the page: laying it down played backwards (the reader's
+    /// request, 26 Nov 2026). A copy of the ribbon folds up off the page
+    /// about its top edge to nearly end-on, swinging back out to the side
+    /// it came in from, gathering speed as it goes, and fades only at the
+    /// very end, when it is all but edge-on; the ribbon itself is simply
+    /// hidden. No settling swing. With Reduce Motion, a fade.
+    func liftOff(outerIsLeft: Bool) {
         guard !isHidden, let superview, let ghost = snapshotView(afterScreenUpdates: false) else { return }
         ghost.frame = frame
         superview.addSubview(ghost)
         let motion = PlatenMotion.Ribbon.self
-        let reduce = UIAccessibility.isReduceMotionEnabled
         ghost.layer.anchorPoint = CGPoint(x: 0.5, y: 0)
         ghost.layer.position = CGPoint(x: frame.midX, y: frame.minY)
-        UIView.animate(withDuration: reduce ? motion.reducedDuration : motion.liftDuration, delay: 0,
-                       options: [.curveEaseIn]) {
-            ghost.alpha = 0
-            if !reduce { ghost.layer.transform = Self.pose(fold: 88, turn: 0) }
-        } completion: { _ in
-            ghost.removeFromSuperview()
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { ghost.removeFromSuperview() }
+        if UIAccessibility.isReduceMotionEnabled {
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1
+            fade.toValue = 0
+            fade.duration = motion.reducedDuration
+            ghost.layer.add(fade, forKey: "lift")
+        } else {
+            let swing = outerIsLeft ? 1.0 : -1.0
+            let fold = CAKeyframeAnimation(keyPath: "transform")
+            fold.values = [pose(fold: 0, turn: 0),
+                           pose(fold: motion.layStartFold, turn: swing * motion.layStartSwing)]
+                .map { NSValue(caTransform3D: $0) }
+            fold.timingFunctions = [CAMediaTimingFunction(controlPoints: 0.7, 0, 0.85, 0.4)]
+            let fade = CAKeyframeAnimation(keyPath: "opacity")
+            fade.values = [1, 1, 0]
+            fade.keyTimes = [0, 0.8, 1]
+            let group = CAAnimationGroup()
+            group.animations = [fold, fade]
+            group.duration = motion.liftDuration
+            group.fillMode = .forwards
+            group.isRemovedOnCompletion = false
+            ghost.layer.add(group, forKey: "lift")
         }
+        ghost.layer.opacity = 0 // where it ends, once the animation is done
+        CATransaction.commit()
     }
 
     /// Any motion jumps to its end.

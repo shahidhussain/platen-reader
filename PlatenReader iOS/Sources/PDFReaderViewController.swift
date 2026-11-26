@@ -978,7 +978,8 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands, U
 
     func toggleBookmark() {
         let wasMarked = state.isPageBookmarked
-        if wasMarked { ribbon.liftOff() } // a copy folds away as it hides
+        // A copy folds away as it hides, back out to the page's outer side.
+        if wasMarked { ribbon.liftOff(outerIsLeft: visiblePages.count > 1 && ribbon.frame.midX < view.bounds.midX) }
         model?.toggleBookmark(visible: visiblePages)
         updateRibbon()
         if state.isPageBookmarked, !wasMarked {

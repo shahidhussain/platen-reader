@@ -1,4 +1,3 @@
-import Combine
 import CoreGraphics
 import PlatenCore
 import XCTest
@@ -39,16 +38,14 @@ final class FolderCoverOrderTests: XCTestCase {
         let shown = [3, 0, 5, 1, 4, 2].map { folder.appendingPathComponent(names[$0]) }
         model.showOrder(shown)
 
-        var made: [URL] = []
-        let watch = model.$covers.sink { covers in
-            for url in covers.keys where !made.contains(url) { made.append(url) }
-        }
-        defer { watch.cancel() }
         model.start()
         defer { model.stop() }
         let start = Date()
-        while made.count < names.count, Date().timeIntervalSince(start) < 10 { try? await Task.sleep(for: .milliseconds(50)) }
-        XCTAssertEqual(made.count, names.count, "every cover made")
+        while model.covers.count < names.count, Date().timeIntervalSince(start) < 10 {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(model.covers.count, names.count, "every cover made")
+        let made = model.coversBegun
         // The first one may have begun before the order was known (the view
         // says it as it appears); the rest follow the grid.
         let order = made.map(\.lastPathComponent)

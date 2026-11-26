@@ -59,6 +59,17 @@ function setRibbonMotion(motion) { ribbonMotion = { ...ribbonMotion, ...motion }
 const arriving = new Set()
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 
+// The ribbon's pose part-way through laying it down or lifting it off:
+// folded `fold` degrees about the page's top edge towards the reader, and
+// turned `turn` degrees off vertical. The perspective is weak, and set from
+// the ribbon's length (ten times it, or more): with a strong one, the end
+// tipped towards the reader looked longer than the whole ribbon part-way
+// down, and flicked past where it lands (device testing, 26 Nov 2026).
+const ribbonPose = (el, fold, turn) => {
+    const distance = Math.max(600, (el.getBoundingClientRect().height || 45) * 10)
+    return `perspective(${Math.round(distance)}px) rotateX(${fold}deg) rotate(${turn}deg)`
+}
+
 // Laying a ribbon onto its page: hinged at the page's top edge, it folds
 // down from nearly end-on (held up towards the reader) to lie flat, coming
 // in from the page's outer side, angled off vertical, and straightening as
@@ -74,7 +85,7 @@ function layDown(el, outerIsLeft) {
     const swing = outerIsLeft ? 1 : -1 // the bottom swings in from the outer side
     const total = m.layDuration + m.settleDuration
     const landed = m.layDuration / total
-    const pose = (fold, turn) => `perspective(160px) rotateX(${fold}deg) rotate(${turn}deg)`
+    const pose = (fold, turn) => ribbonPose(el, fold, turn)
     el.animate([
         { offset: 0, transform: pose(m.layStartFold, swing * m.layStartSwing), easing: 'cubic-bezier(.15,.6,.3,1)' },
         { offset: landed, transform: pose(0, 0), easing: 'ease-out' },
@@ -84,8 +95,12 @@ function layDown(el, outerIsLeft) {
     ], { duration: total * 1000 })
 }
 
-// Taking a ribbon off: the same fold in reverse, lifting off the page and
-// folding up over the top edge, out of sight. No swing.
+// Taking a ribbon off: laying it down played backwards. It lifts off the
+// page towards the reader, folding up about the top edge to nearly end-on,
+// and swings back out to the side it came in from, gathering speed as it
+// goes (no settling swing). It fades only at the very end, when it is all
+// but edge-on, so it reads as lifted away rather than faded out (the
+// reader's request, 26 Nov 2026). With Reduce Motion, a fade.
 function liftOff(cfi) {
     const el = ribbons.querySelector(`.corner.marked[data-cfi="${CSS.escape(cfi)}"]`)
     if (!el) return
@@ -93,12 +108,16 @@ function liftOff(cfi) {
     ghost.style.pointerEvents = 'none'
     leaving.append(ghost)
     const m = ribbonMotion
+    const ribbon = ghost.querySelector('.ribbon')
+    const swing = ghost.dataset.outerLeft === 'true' ? 1 : -1
     const frames = reduceMotion()
         ? [{ opacity: 1 }, { opacity: 0 }]
-        : [{ transform: 'perspective(160px) rotateX(0deg)', opacity: 1 },
-           { transform: 'perspective(160px) rotateX(88deg)', opacity: 0 }]
-    const lift = ghost.querySelector('.ribbon').animate(frames, {
-        duration: (reduceMotion() ? m.reducedDuration : m.liftDuration) * 1000, easing: 'ease-in', fill: 'forwards' })
+        : [{ offset: 0, transform: ribbonPose(ribbon, 0, 0), opacity: 1 },
+           { offset: .8, transform: ribbonPose(ribbon, m.layStartFold * .8, swing * m.layStartSwing * .8), opacity: 1 },
+           { offset: 1, transform: ribbonPose(ribbon, m.layStartFold, swing * m.layStartSwing), opacity: 0 }]
+    const lift = ribbon.animate(frames, {
+        duration: (reduceMotion() ? m.reducedDuration : m.liftDuration) * 1000,
+        easing: 'cubic-bezier(.7,0,.85,.4)', fill: 'forwards' })
     lift.onfinish = lift.oncancel = () => ghost.remove()
 }
 
@@ -278,11 +297,14 @@ function refreshRibbons() {
                 else post('addBookmark', bookmarkPayload(page))
             })
             ribbons.append(el)
+            // The outer side of the page: the left on the left-hand page of
+            // a spread, else the right (it comes in from there, and goes
+            // back out that way).
+            const outerIsLeft = pages.length > 1 && page.right < innerWidth / 2
+            el.dataset.outerLeft = String(outerIsLeft)
             if (marked && arriving.has(cfi)) {
                 arriving.delete(cfi)
-                // The outer side of the page: the left on the left-hand page
-                // of a spread, else the right.
-                layDown(el.querySelector('.ribbon'), pages.length > 1 && page.right < innerWidth / 2)
+                layDown(el.querySelector('.ribbon'), outerIsLeft)
             }
         }
         // Paginated, the ribbon hangs from the top of the screen at its
