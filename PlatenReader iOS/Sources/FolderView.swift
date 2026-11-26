@@ -55,6 +55,12 @@ struct FolderGridView: View {
     }
 
     @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The tab row's bottom safe area (tab bar and keyboard), and the
+    /// grid's own: the grid makes room for the difference, so its last row,
+    /// and search results with the keyboard up, can be scrolled clear of
+    /// them (`roomBelow`).
+    @Environment(\.tabRowBottom) private var tabRowBottom
+    @State private var ownBottom: CGFloat = 0
 
     var body: some View {
         // Worked out once per redraw (a sort of the whole folder), not once
@@ -102,6 +108,7 @@ struct FolderGridView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
+        .roomBelow($ownBottom, tabRowBottom: tabRowBottom)
         .coverPinch(filter, sizeClass)
         .sheet(item: $infoFor) { entry in
             BookInfoView(entry: entry, info: model.covers[entry.url])
