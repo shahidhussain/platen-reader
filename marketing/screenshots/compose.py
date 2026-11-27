@@ -7,7 +7,7 @@ below, on a background from palette.json), renders it with WebKit
 (render.swift) and saves the result at exactly the size App Store Connect
 asks for, without an alpha channel (it rejects transparency):
 
-  build/final/<en-GB|en-US>/<iphone|ipad>/<scene>.png
+  build/final/<en-GB|en-US>/<iphone|iphone-6.3|ipad>/<scene>.png
   build/contact-sheet.html   every final picture side by side
 
 Changing a caption means editing the scene's scene.md and running this
@@ -38,6 +38,10 @@ PAGES = os.path.join(BUILD, "pages")
 # App Store Connect's sizes (Help > Screenshot specifications): the 6.9-inch
 # iPhone and the 13-inch iPad, portrait.
 CANVAS = {"iphone": (1320, 2868), "ipad": (2064, 2752)}
+# App Store Connect may instead ask for the 6.1/6.3-inch iPhone ("medium
+# display": 1206 × 2622, as it did for 1.0.3). That is the 6.9-inch picture's
+# shape within a pixel, so each iPhone picture is also saved scaled down.
+SMALLER = {"iphone": ("iphone-6.3", (1206, 2622))}
 # The storefront spellings: en-GB as written; en-US from the *_en_US fields.
 LOCALES = {"en-GB": None, "en-US": "en_US"}
 FONTS = {"IBMPlexSans-SemiBold.ttf": 600, "IBMPlexSans-Regular.ttf": 400}
@@ -248,6 +252,12 @@ def main():
                 out = os.path.join(BUILD, "final", locale_name, device, scene["id"] + ".png")
                 render(page_path, size, out, has_device=scene.get("show") != "none")
                 outputs.setdefault((locale_name, device), []).append(out)
+                if device in SMALLER:
+                    name, smaller = SMALLER[device]
+                    small_out = os.path.join(BUILD, "final", locale_name, name, scene["id"] + ".png")
+                    os.makedirs(os.path.dirname(small_out), exist_ok=True)
+                    Image.open(out).resize(smaller, Image.LANCZOS).save(small_out)
+                    outputs.setdefault((locale_name, name), []).append(small_out)
                 print(f"  {os.path.relpath(out, HERE)}", flush=True)
     contact_sheet(outputs)
     print(f"Contact sheet: {os.path.relpath(os.path.join(BUILD, 'contact-sheet.html'), HERE)}")
