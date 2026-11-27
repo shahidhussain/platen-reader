@@ -1,8 +1,10 @@
 # Builds a signed, notarised Platen Reader for a version tag and publishes
-# it on GitHub releases.
+# it on GitHub releases as a disk image (Platen-Reader-<version>.dmg).
 #
-# Start it by pushing a tag such as v0.1.0 (the version shown in the app is
-# taken from the tag). To build an existing tag again, for example after a
+# Start it by pushing a tag such as v1.0.5 (the version shown in the app is
+# taken from the tag). A tag with a suffix, such as v1.0.5-rc1, makes a
+# pre-release for testing the download: the app inside shows 1.0.5, and the
+# release is marked as a pre-release so nobody takes it for the real one. To build an existing tag again, for example after a
 # run was lost, run it by hand: gh workflow run release.yml -f tag=v0.1.0 It needs these repository secrets (README, "Releasing"):
 #
 #   DEVELOPER_ID_P12_BASE64    the Developer ID Application certificate and
@@ -39,6 +41,8 @@ jobs:
     env:
       # The tag being released: the one pushed, or the one asked for.
       TAG: ${{ inputs.tag || github.ref_name }}
+    # (In each step: NAME is the tag without its "v", used in file names;
+    # VERSION is that without any "-rc1" style suffix, the app's version.)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,7 +72,7 @@ jobs:
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          VERSION="${TAG#v}"
+          NAME="${TAG#v}"; VERSION="${NAME%%-*}"
           xcodebuild -project PlatenReader.xcodeproj -scheme PlatenReader \
             -configuration Release -derivedDataPath build/DerivedData \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application" \
@@ -84,43 +88,58 @@ jobs:
             echo "::error::The app still has the get-task-allow entitlement"; exit 1
           fi
 
-      - name: Notarise and staple
+      - name: Notarise and staple the app, then make and notarise the disk image
         env:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          VERSION="${TAG#v}"
+          NAME="${TAG#v}"
           APP="build/DerivedData/Build/Products/Release/Platen Reader.app"
+          DMG="Platen-Reader-$NAME.dmg"
           KEY="$RUNNER_TEMP/AuthKey.p8"
           echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$KEY"
-          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/upload.zip"
+          trap 'rm -f "$KEY"' EXIT
           AUTH=(--key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
-          xcrun notarytool submit "$RUNNER_TEMP/upload.zip" "${AUTH[@]}" \
-            --wait --timeout 3h --output-format json | tee "$RUNNER_TEMP/notary.json"
-          ID=$(plutil -extract id raw "$RUNNER_TEMP/notary.json")
-          STATUS=$(plutil -extract status raw "$RUNNER_TEMP/notary.json")
-          if [ "$STATUS" != "Accepted" ]; then
-            # Apple's log says exactly what it objected to.
-            xcrun notarytool log "$ID" "${AUTH[@]}"
-            rm "$KEY"
-            exit 1
-          fi
-          rm "$KEY"
+
+          # Sends a file to Apple and waits; on refusal prints Apple's log,
+          # which says exactly what it objected to.
+          notarise() {
+            xcrun notarytool submit "$1" "${AUTH[@]}" \
+              --wait --timeout 3h --output-format json | tee "$RUNNER_TEMP/notary.json"
+            ID=$(plutil -extract id raw "$RUNNER_TEMP/notary.json")
+            STATUS=$(plutil -extract status raw "$RUNNER_TEMP/notary.json")
+            if [ "$STATUS" != "Accepted" ]; then
+              xcrun notarytool log "$ID" "${AUTH[@]}"
+              exit 1
+            fi
+          }
+
+          # The app first, so the copy inside the image carries its own
+          # ticket (it then opens offline even after being copied out).
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/upload.zip"
+          notarise "$RUNNER_TEMP/upload.zip"
           xcrun stapler staple "$APP"
           spctl --assess --type execute --verbose "$APP"
-          # The download: the stapled app, zipped.
-          ditto -c -k --keepParent "$APP" "Platen-Reader-$VERSION.zip"
-          shasum -a 256 "Platen-Reader-$VERSION.zip" | tee "Platen-Reader-$VERSION.zip.sha256"
+
+          # Then the image around it: signed, notarised and stapled too, so
+          # opening the download gives no warning either.
+          scripts/make-dmg.sh "$APP" "$DMG" "Developer ID Application"
+          notarise "$DMG"
+          xcrun stapler staple "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose "$DMG"
+          shasum -a 256 "$DMG" | tee "$DMG.sha256"
 
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${TAG#v}"
-          gh release create "$TAG" --verify-tag \
-            "Platen-Reader-$VERSION.zip" "Platen-Reader-$VERSION.zip.sha256" \
-            --title "Platen Reader $VERSION" --generate-notes
+          NAME="${TAG#v}"
+          # A suffixed tag (v1.0.5-rc1) is a test of the download, not a release.
+          case "$NAME" in *-*) PRE=--prerelease ;; *) PRE= ;; esac
+          gh release create "$TAG" --verify-tag $PRE \
+            "Platen-Reader-$NAME.dmg" "Platen-Reader-$NAME.dmg.sha256" \
+            --title "Platen Reader $NAME" --generate-notes
 
       - name: Remove the temporary keychain
         if: always()
