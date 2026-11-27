@@ -6,8 +6,8 @@ import Foundation
 ///
 /// All real (27 Nov 2026): the website, the DRM guide and the privacy
 /// policy are pages of Platen Reader's section of the author's site, which
-/// keeps those addresses (and the guide's #drm anchor) for good, and the
-/// support address is the one that site gives. Shipped copies keep
+/// keeps those addresses (and the guide's #drm anchor) for good, and every
+/// email goes to the one support address. Shipped copies keep
 /// whatever is here for good, so change one only for an address that will
 /// stay.
 enum AppLinks {
@@ -35,6 +35,6 @@ enum AppLinks {
     static let newIssue = repository.appendingPathComponent("issues/new")
 
     /// Where problem reports and feedback go (Report This Book, Send
-    /// Feedback): the support address the website gives.
-    static let supportEmail = "platen-reader@shahidhussain.com"
+    /// Feedback): the one address all of Platen's email goes to.
+    static let supportEmail = "platen@shahidhussain.com"
 }
