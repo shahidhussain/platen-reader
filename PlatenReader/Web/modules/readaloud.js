@@ -26,6 +26,15 @@
 //   foliate annotations, drawn on its overlay as search results are, so the
 //   book's own markup is never changed (the CSS Highlight API left stale
 //   marks behind in WebKit's column layout).
+// - Pictures. A picture between paragraphs (a plate, a page of a picture
+//   book, a cover) goes to Swift among the sentences as a picture
+//   ({ mark, picture: true }). When the voice reaches it, Swift asks
+//   `picture(cfi)`: the page turns to it, and if that page has no words,
+//   reading stays there a moment (ReadAloudController.pictureLinger)
+//   before going on. Before, reading turned straight past a page with no
+//   words, or held on one with no voice until it was turned by hand (the
+//   reader asked for the pause, 27 Nov 2026). Reading started on a page
+//   with no words stays on it the same moment first.
 // - `stop` takes the underline away.
 
 import { reader } from './state.js'
@@ -53,6 +62,12 @@ let following = true
 // Where the text has got to: the section being read ahead, its document and
 // its TTS. (Not necessarily the section on screen.)
 let cursor = null
+// Where the text sent so far ends: its document and a range collapsed to
+// that point, so pictures between it and the next block are found.
+let sentSoFar = null
+// The page last stayed on for a picture (a picture page is stayed on once,
+// however many pictures it has).
+let lingeredOn = null
 // The sentence highlighted now, as a foliate annotation.
 let highlighted = null
 let drawing = false
@@ -198,6 +213,45 @@ function paragraphStart(page) {
     return range
 }
 
+// A picture that stands on its own between the words: an <img>, <svg> or
+// <video> not inside a paragraph with words of its own (a drop capital, a
+// symbol in a line of text). Whether its page has words is only known
+// once it is on screen (`picture`).
+function standsAlone(el) {
+    if (el.parentElement?.closest('svg')) return false
+    const block = el.closest('p, li, blockquote, h1, h2, h3, h4, h5, h6, dd, dt, td, th, pre')
+    return !block || !/[\p{L}\p{N}]/u.test(block.textContent)
+}
+
+// The pictures standing alone in `doc` between two points (ranges collapsed
+// to them; null: its start, or its end), as items for Swift.
+function picturesBetween(doc, index, from, to) {
+    if (!doc?.body) return []
+    const span = doc.createRange()
+    try {
+        if (from) span.setStart(from.startContainer, from.startOffset); else span.setStart(doc.body, 0)
+        if (to) span.setEnd(to.startContainer, to.startOffset); else span.setEnd(doc.body, doc.body.childNodes.length)
+    } catch { return [] }
+    const found = []
+    for (const el of doc.querySelectorAll('img, svg, video')) {
+        if (!standsAlone(el)) continue
+        try { if (!span.intersectsNode(el)) continue } catch { continue }
+        try {
+            const at = doc.createRange()
+            at.selectNode(el)
+            found.push({ mark: reader.view.getCFI(index, at), picture: true })
+        } catch {}
+    }
+    return found
+}
+
+// A range collapsed to a range's start (or end).
+function pointOf(range, atEnd = false) {
+    const point = range.cloneRange()
+    point.collapse(!atEnd)
+    return point
+}
+
 // Sends about BATCH sentences, or what is left of the book. `page`: reading
 // starts on this page (the first call only).
 async function sendMore(page) {
@@ -206,10 +260,21 @@ async function sendMore(page) {
     let pageStart = page ? page.cloneRange() : null
     if (pageStart) pageStart.collapse(true)
     let fromRange = page ? paragraphStart(page) : null
+    // Pictures are looked for from the page reading starts on.
+    if (page) sentSoFar = { doc: page.startContainer.ownerDocument, index: cursor.index, point: pointOf(page) }
     while (active && sent < BATCH) {
         const ssml = await nextSSML(fromRange)
         fromRange = null
-        if (!ssml) { if (active) post('readAloudEnd'); return }
+        if (!ssml) {
+            // Pictures after the last words of the book.
+            if (sentSoFar) {
+                const pictures = picturesBetween(sentSoFar.doc, sentSoFar.index, sentSoFar.point, null)
+                if (pictures.length) post('readAloudBlock', { lang: null, sentences: pictures })
+                sentSoFar = null
+            }
+            if (active) post('readAloudEnd')
+            return
+        }
         const block = parseBlock(ssml)
         const ranges = rangesOf(cursor.tts, block.sentences.map(s => s.mark).filter(m => m != null))
         const sentences = block.sentences
@@ -225,9 +290,45 @@ async function sendMore(page) {
         // against it (a page can begin after a whole paragraph has ended).
         if (!sentences.length) continue
         pageStart = null
-        post('readAloudBlock', { lang: block.lang, sentences })
+        // The pictures between the words sent before and these: the rest of
+        // the last chapter's, then this one's up to its first words.
+        const firstRange = ranges.get(block.sentences.find(s => s.text && /[\p{L}\p{N}]/u.test(s.text))?.mark)
+        const doc = cursor.doc
+        let pictures = []
+        if (sentSoFar && sentSoFar.doc !== doc) {
+            pictures = picturesBetween(sentSoFar.doc, sentSoFar.index, sentSoFar.point, null)
+            sentSoFar = null
+        }
+        if (firstRange) pictures = pictures.concat(picturesBetween(doc, cursor.index, sentSoFar?.point ?? null, pointOf(firstRange)))
+        const lastRange = [...ranges.values()].pop()
+        if (lastRange) sentSoFar = { doc, index: cursor.index, point: pointOf(lastRange, true) }
+        post('readAloudBlock', { lang: block.lang, sentences: pictures.concat(sentences) })
         sent += sentences.length
     }
+}
+
+// Whether the page showing has no words on it (a picture, or blank).
+function pageHasNoWords() {
+    const range = reader.view?.lastLocation?.range
+    if (!range) return false
+    return !/[\p{L}\p{N}]/u.test(range.toString())
+}
+
+// Swift has reached a picture in the reading: turn to it, and answer
+// whether the page it is on has no words (then reading stays there a
+// moment). Each picture page is stayed on once.
+async function picture(cfi) {
+    if (!active || !following || !cfi) return false
+    clearHighlight()
+    const shown = await showSentence(cfi)
+    if (!shown) return false
+    // The turn is reported a moment later.
+    await new Promise(resolve => setTimeout(resolve, 120))
+    if (!pageHasNoWords()) return false
+    const page = reader.view.lastLocation?.cfi ?? null
+    if (page && page === lingeredOn) return false
+    lingeredOn = page
+    return true
 }
 
 // Begins at the first sentence on the current page.
@@ -235,10 +336,16 @@ async function start() {
     following = true
     active = true
     wordsComing = false
+    sentSoFar = null
+    lingeredOn = null
     clearHighlight()
     const shown = onScreen()
     cursor = shown ? await cursorAt(shown.index) : null
     if (!cursor) return post('readAloudEnd')
+    // Started on a page with no words (a picture, a cover): it is stayed on
+    // a moment before reading goes on to the words.
+    const here = reader.view.lastLocation?.cfi
+    if (here && pageHasNoWords()) post('readAloudBlock', { lang: null, sentences: [{ mark: here, picture: true }] })
     return sendMore(reader.view.lastLocation?.range ?? null)
 }
 
@@ -401,6 +508,7 @@ function stop() {
     active = false
     clearTimeout(sentenceTimer)
     cursor = null
+    sentSoFar = null
     clearHighlight()
 }
 
@@ -449,6 +557,28 @@ function sentences(count = 4) {
     return 'sentences: ' + found.join(' | ')
 }
 
+// For checks: the pictures reading would stop at in the chapter on screen
+// (those standing alone between the words), as "pictures: <count>".
+function pictures() {
+    const shown = onScreen()
+    if (!shown?.doc?.body) return 'none'
+    const tts = new TTS(shown.doc, textWalker, () => {}, 'sentence')
+    let count = 0, after = null
+    let ssml = tts.start()
+    for (let i = 0; i < 500 && ssml; i++) {
+        const block = parseBlock(ssml)
+        const ranges = rangesOf(tts, block.sentences.map(s => s.mark).filter(m => m != null))
+        const all = [...ranges.values()]
+        if (all.length) {
+            count += picturesBetween(shown.doc, shown.index, after, pointOf(all[0])).length
+            after = pointOf(all[all.length - 1], true)
+        }
+        ssml = tts.next()
+    }
+    count += picturesBetween(shown.doc, shown.index, after, null).length
+    return 'pictures: ' + count
+}
+
 // For checks: how the first block read from the page on screen compares
 // with the page's start (each sentence: its start and end against it, and
 // what would be read of it).
@@ -472,4 +602,4 @@ function probeStart() {
     }).join(' | ')
 }
 
-export const readAloud = { start, more, mark, word, stop, hold, parseBlock, preview, sentences, probeStart }
+export const readAloud = { start, more, mark, word, picture, pictures, stop, hold, parseBlock, preview, sentences, probeStart }

@@ -414,10 +414,12 @@ window.platen = {
     readAloudMore: () => readAloud.more(),
     readAloudMark: name => readAloud.mark(name),
     readAloudWord: (name, start, length) => readAloud.word(name, start, length),
+    readAloudPicture: cfi => readAloud.picture(cfi),
     readAloudStop: () => readAloud.stop(),
     readAloudHold: () => readAloud.hold(),
     readAloudPreview: () => readAloud.preview(),
     readAloudSentences: count => readAloud.sentences(count),
+    readAloudPictures: () => readAloud.pictures(),
     readAloudProbeStart: () => readAloud.probeStart(),
     measureText,
     // How many pictures on the chapters laid out reach past their page's

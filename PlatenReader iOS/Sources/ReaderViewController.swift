@@ -400,6 +400,13 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost, UIG
         UIView.animate(withDuration: fade) { self.ambient.alpha = 1 }
     }
 
+    /// Read aloud stays a moment on a picture page only while the app is in
+    /// front (in the background, at the lock screen, it reads straight on:
+    /// a pause in the audio there could let iOS suspend the app).
+    var sessionShowsPage: Bool {
+        view.window?.windowScene?.activationState == .foregroundActive
+    }
+
     func sessionShowPicture(_ picture: ReaderMessage.Picture) {
         guard let image = UIImage(data: picture.data) else { return }
         // A picture, not text: drop any selection WebKit's own long press
