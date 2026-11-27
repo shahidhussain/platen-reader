@@ -45,3 +45,7 @@ The screenshots are seen worldwide, so a book shown open must be public domain e
 
 - Mac screenshots at 16:10 (the Mac's `scripts/run-debug.sh` has its own hooks).
 - An App Store preview video, recorded from the same scenes with `simctl io recordVideo`.
+
+## Header and search results picture
+
+`python3 make-header.py` (after `build.sh`) makes the product page header for iOS and iPadOS 27: `build/header/header.png`, 5244 × 2950, flat RGB. It shows the icon, "Platen Reader", scene 04's phrase and a Jane Eyre page taken from the iPad capture, with everything in the area both App Store crops keep (21:9 header, 3:2 search). `preview-21x9.png` and `preview-3x2.png` show each crop with that area outlined in red.
