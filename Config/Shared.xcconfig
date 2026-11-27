@@ -14,17 +14,15 @@ PRODUCT_BUNDLE_IDENTIFIER = org.platenreader.PlatenReader
 PRODUCT_NAME = Platen Reader
 PRODUCT_MODULE_NAME = PlatenReader
 
-// The version counts towards 1.0, the launch (the spec's "Decisions made"):
-// the Mac app as a DMG with Sparkle, and the iOS app on the App Store. 0.1
-// was the first Mac release (M1, November 2026). 0.8 (18 Nov 2026): the Mac
-// reader is close to complete, PDFs are in, and the iOS app reads books and
-// PDFs with its own home screen; still to come are the DMG, Sparkle, the
-// VoiceOver pass and App Store submission. 0.9 marks the release candidates
-// (TestFlight and the last Mac betas). Bump the second number for each
-// release with something new. Meanwhile the third number goes up by one with
-// every change made (each request's commit), so a build on a test device can
-// be matched to it: 0.8.1 is the first of these.
-MARKETING_VERSION = 0.8.79
+// The version. 1.0.0 (27 Nov 2026) is the launch (the spec's "Decisions
+// made"): the iOS app on the App Store, then the Mac app as a DMG with
+// Sparkle. Before it, 0.1 was the first Mac release (M1, November 2026) and
+// 0.8.x the run-up (0.8.1 to 0.8.79; build 0.8.79 went to TestFlight only).
+// Bump the second number for each release with something new. Meanwhile the
+// third number goes up by one with every change made (each request's
+// commit), so a build on a test device can be matched to it; gaps between
+// the versions that reach the App Store are fine.
+MARKETING_VERSION = 1.0.0
 // The build number. Every upload to App Store Connect needs a higher one
 // than the last upload for that platform, so it is never set by hand here:
 // - iOS, uploaded from Xcode (Product > Archive, then Distribute App): leave
