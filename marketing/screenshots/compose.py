@@ -14,9 +14,9 @@ Changing a caption means editing the scene's scene.md and running this
 again; nothing is captured again.
 
 Fonts: IBM Plex Sans, as on the website (shahidhussain.com uses it for its
-headings). Put IBMPlexSans-SemiBold.ttf and IBMPlexSans-Regular.ttf (SIL Open
-Font License, github.com/IBM/plex) in fonts/; without them the captions fall
-back to the system font, and the script says so.
+headings), from fonts/ (github.com/IBM/plex, SIL Open Font License:
+fonts/OFL.txt). Without them the captions fall back to the system font, and
+the script says so.
 
 Device frames: a drawn frame stands in until Apple's bezels (Apple Design
 Resources) are put in bezels/ (see README.md).

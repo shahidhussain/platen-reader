@@ -13,7 +13,7 @@ The results are in `build/final/<en-GB|en-US>/<iphone|ipad>/` at App Store Conne
 
 1. **Capture** (`capture.py`). Two simulators of its own, "Platen Screenshots iPhone" and "Platen Screenshots iPad" (made if missing, erased at every run, shut down at the end; the simulators used day to day are never touched). The sample books are copied into the app as the folders in `library.json`, and read aloud's natural voice from `build/kokoro-pack` (`scripts/make-kokoro-pack.py`), so nothing is downloaded. Each scene is set up through the Debug build's own hooks (`PlatenReader iOS/Sources/DebugHooks.swift`): `PLATEN_FOLDER_PATH`, `PLATEN_ADD_FAVOURITES`, `PLATEN_OPEN_PATH` and the `PLATEN_STEPS` steps for theme, layout, turning sideways, ambient light, the controls and read aloud. The script waits for the app's `@shot:ready` picture and then saves the whole screen with `simctl`, status bar included (9:41, full signal and battery).
    - On the iPad, the installed copy is marked full screen (`UIRequiresFullScreen`), as iPadOS lets only a full-screen app turn itself sideways; the window's resize handle is painted over. Neither changes how Platen looks.
-2. **Compose** (`compose.py`, `render.swift`). Each picture is an HTML page (caption, framed screenshot, background from `palette.json`) drawn by WebKit and saved at the exact size.
+2. **Compose** (`compose.py`, `render.swift`). Each picture is an HTML page (caption, framed screenshot, background from `palette.json`) drawn by WebKit and saved at the exact size. The captions are set in IBM Plex Sans, as the website's headings are (`fonts/`, from github.com/IBM/plex, SIL Open Font License: `fonts/OFL.txt`).
 
 ## Scenes
 
@@ -39,7 +39,6 @@ The screenshots are seen worldwide, so a book shown open must be public domain e
 
 ## Still to add
 
-- **Fonts:** the captions use IBM Plex Sans, as the website does. Put `IBMPlexSans-SemiBold.ttf` and `IBMPlexSans-Regular.ttf` (SIL Open Font License, from github.com/IBM/plex) in `fonts/`; until then the system font stands in.
 - **Device frames:** a drawn frame stands in for Apple's. If you prefer Apple's own, download from Apple Design Resources (Product Bezels) the iPhone 17 Pro Max (or newer) portrait PNG and the iPad Pro 13-inch (M5 or M4) portrait and landscape PNGs into `bezels/`.
 
 ## Later
