@@ -1,5 +1,5 @@
 {
-  "_about": "The folders copied into the screenshot simulator's Documents, as the reader's own folders on Home. Each maps a folder name (as Home shows it) to books in the sample library (marketing/sample-library, not committed). Only books that may be shown: see README.md, 'Which books may be shown'. Home lists folders newest first, so they are connected last to first: the first here is shown at the top. An entry may be [book, name]: the copy is given that name (a PDF's file name is the title shown under its cover).",
+  "_about": "The folders copied into the screenshot simulator's Documents, as the reader's own folders on Home. Each maps a folder name (as Home shows it) to books in the sample library (marketing/sample-library, not committed). Only books that may be shown: see README.md, 'Which books may be shown'. Home lists folders newest first, so they are connected last to first: the first here is shown at the top. An entry may be [book, name]: the copy is given that name (a PDF's file name is the title shown under its cover), or [book, name, title]: a PDF copy is also given that title, which the reader's bar shows.",
   "Classics": [
     "classics/Charlotte Bronte - Jane Eyre.epub",
     "classics/bram-stoker_dracula.epub",
@@ -59,7 +59,8 @@
     ],
     [
       "picture books/Shahid Hussain - Zoe and Zephy.pdf",
-      "Zoe and Zephy.pdf"
+      "Zoe and Zephy.pdf",
+      "Zoe and Zephy"
     ]
   ]
 }

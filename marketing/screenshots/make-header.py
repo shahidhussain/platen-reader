@@ -32,7 +32,7 @@ SIZE = (5244, 2950)
 # Laid out at half size in CSS pixels; WebKit draws at 2× on a Retina Mac.
 CSS = (SIZE[0] // 2, SIZE[1] // 2)
 
-PHRASE = "Easily read books,<br>or have Platen read to you."
+PHRASE = "Easily read books,<br>or have the app read to you."
 
 def crops():
     """The 21:9 and 3:2 crops of the full picture, centred, in its pixels."""

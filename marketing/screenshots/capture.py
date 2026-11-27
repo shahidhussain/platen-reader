@@ -172,12 +172,16 @@ def install(udid, app, library):
     for name, books in folders.items():
         os.makedirs(os.path.join(documents, name), exist_ok=True)
         for book in books:
-            # "path", or ["path", "name to give the copy"].
-            book, copy_name = (book, os.path.basename(book)) if isinstance(book, str) else book
-            source = os.path.join(library, book)
+            # "path", or ["path", "name to give the copy"], or with a third
+            # item, the title to give a PDF copy (shown in the reader's bar).
+            book = [book, os.path.basename(book)] if isinstance(book, str) else book
+            source = os.path.join(library, book[0])
             if not os.path.exists(source):
-                sys.exit(f"Missing from the sample library: {book}")
-            shutil.copy(source, os.path.join(documents, name, copy_name))
+                sys.exit(f"Missing from the sample library: {book[0]}")
+            copy = os.path.join(documents, name, book[1])
+            shutil.copy(source, copy)
+            if len(book) > 2:
+                subprocess.run(["swift", os.path.join(HERE, "set-pdf-title.swift"), copy, book[2]], check=True)
     pack = os.path.join(ROOT, "build", "kokoro-pack")
     if not os.path.isdir(pack):
         # The worktree may not have one; use the main checkout's.
