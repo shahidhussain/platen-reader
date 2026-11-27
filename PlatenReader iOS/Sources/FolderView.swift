@@ -352,25 +352,30 @@ private struct FolderTitle: ToolbarContent {
     let maxWidth: CGFloat
 
     var body: some ToolbarContent {
+        // (The iOS 26 modifier only where the SDK has it: CI builds with an
+        // older Xcode, as GlassSurface does.)
+        #if compiler(>=6.2)
         if #available(iOS 26, *) {
-            item.sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .topBarLeading) { title }
+                .sharedBackgroundVisibility(.hidden)
         } else {
-            item
+            ToolbarItem(placement: .topBarLeading) { title }
         }
+        #else
+        ToolbarItem(placement: .topBarLeading) { title }
+        #endif
     }
 
-    private var item: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Text(verbatim: name)
-                .font(.headline)
-                .lineLimit(1)
-                // Its whole width (a bar item is otherwise squeezed to a
-                // few letters), up to what the buttons leave: a long name
-                // ends in "…" short of them.
-                .frame(maxWidth: maxWidth, alignment: .leading)
-                .fixedSize(horizontal: true, vertical: false)
-                .accessibilityAddTraits(.isHeader)
-        }
+    private var title: some View {
+        Text(verbatim: name)
+            .font(.headline)
+            .lineLimit(1)
+            // Its whole width (a bar item is otherwise squeezed to a few
+            // letters), up to what the buttons leave: a long name ends in
+            // "…" short of them.
+            .frame(maxWidth: maxWidth, alignment: .leading)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
