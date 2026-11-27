@@ -410,7 +410,34 @@ final class RecentList: ObservableObject {
     nonisolated static func resolve(_ item: RecentItem, mounting: Bool = true) -> URL? {
         var stale = false
         let options: URL.BookmarkResolutionOptions = mounting ? [.withoutUI] : [.withoutUI, .withoutMounting]
-        return try? URL(resolvingBookmarkData: item.bookmark, options: options, bookmarkDataIsStale: &stale)
+        guard let url = try? URL(resolvingBookmarkData: item.bookmark, options: options, bookmarkDataIsStale: &stale) else {
+            return nil
+        }
+        // A link that leads to another kind of storage is not the item
+        // (see `isPlausibleMove`): it is taken as not reachable, rather than
+        // followed to some other folder.
+        let path = FolderScanner.canonicalPath(url)
+        guard isPlausibleMove(from: item.path, to: path) else {
+            let was = StoragePlace(path: item.path).kind.rawValue, now = StoragePlace(path: path).kind.rawValue
+            log.info("recents: a saved \(was, privacy: .public) item's link led to \(now, privacy: .public) storage; not followed")
+            return nil
+        }
+        return url
+    }
+
+    /// Whether an item saved at `old` can really have moved to `new`. Within
+    /// one kind of storage, yes (an app's own folder moves when the app is
+    /// updated; a share is mounted at a new place each time), and between
+    /// iCloud and this device (moved in Files). But not onto or off a
+    /// network share or a drive: a bookmark that resolves there is not the
+    /// same folder. An iCloud folder's bookmark was seen to resolve to a
+    /// network share's folder of the same name, and the iCloud folder then
+    /// vanished from Home, merged into the share's (reported 27 Nov 2026).
+    nonisolated static func isPlausibleMove(from old: String, to new: String) -> Bool {
+        let was = StoragePlace(path: old).kind, now = StoragePlace(path: new).kind
+        guard was != now else { return true }
+        let elsewhere: Set<StorageKind> = [.network, .drive]
+        return !elsewhere.contains(was) && !elsewhere.contains(now)
     }
 
     /// Whether the item can be reached now, and where it is: its bookmark
@@ -536,11 +563,21 @@ final class RecentList: ObservableObject {
     func found(_ id: RecentItem.ID, at url: URL) {
         let path = FolderScanner.canonicalPath(url)
         guard let i = items.firstIndex(where: { $0.id == id }), Self.key(items[i].path) != path else { return }
+        let was = StoragePlace(path: items[i].path).kind.rawValue, now = StoragePlace(path: path).kind.rawValue
+        guard Self.isPlausibleMove(from: items[i].path, to: path) else {
+            log.info("recents: a saved \(was, privacy: .public) item was found on \(now, privacy: .public) storage; kept where it was")
+            return
+        }
+        // (Kinds only in the log, never names: it goes in the diagnostics.)
+        log.info("recents: a saved item moved (\(was, privacy: .public) to \(now, privacy: .public))")
         items[i].path = path
         let place = StoragePlace(path: path)
         if items[i].storage != .network { items[i].storage = place.kind; items[i].location = place.location }
         let merged = Self.merged(items, byHand: isOrderedByHand)
         for gone in items where !merged.contains(where: { $0.id == gone.id }) { removeCover(of: gone) }
+        if merged.count < items.count {
+            log.info("recents: \(items.count - merged.count) \(self.kind.rawValue, privacy: .public) entries merged into one at the same place")
+        }
         items = merged
         save()
     }
