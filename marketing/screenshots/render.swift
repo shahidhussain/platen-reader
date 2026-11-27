@@ -37,10 +37,24 @@ final class Renderer: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // Fonts load after the page itself: wait for them, then a moment
-        // more for the pictures to be drawn.
-        webView.evaluateJavaScript("document.fonts.ready.then(() => true)") { _, _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.snapshot() }
+        // Fonts and pictures load after the page itself. Wait until the
+        // fonts are ready and every picture is decoded, then a moment for
+        // them to be drawn. (callAsyncJavaScript waits for the `await`s;
+        // evaluateJavaScript would not wait for a promise, and the large
+        // iPad screenshots were sometimes not drawn yet: empty frames. Not
+        // requestAnimationFrame: WebKit pauses it in a window off screen.)
+        let wait = """
+            await document.fonts.ready;
+            await Promise.all([...document.images].map(i => i.decode()));
+            await new Promise(r => setTimeout(r, 300));
+            return [...document.images].every(i => i.complete && i.naturalWidth > 0);
+            """
+        webView.callAsyncJavaScript(wait, arguments: [:], in: nil, in: .page) { result in
+            guard case .success(let value) = result, value as? Bool == true else {
+                self.fail("a picture did not load: \(result)")
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.snapshot() }
         }
     }
 

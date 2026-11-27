@@ -29,7 +29,7 @@ import shutil
 import subprocess
 import sys
 
-from PIL import Image   # Pillow, as scripts/ios-matrix.py uses
+from PIL import Image, ImageStat   # Pillow, as scripts/ios-matrix.py uses
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUILD = os.path.join(HERE, "build")
@@ -182,17 +182,32 @@ p {{ font-weight: 400; font-size: {body_size}px; line-height: 1.32; opacity: 0.8
 """
 
 
-def render(page_path, size, out):
-    """WebKit's picture of the page, scaled to exactly `size`, flattened."""
+def render(page_path, size, out, has_device=True):
+    """WebKit's picture of the page, scaled to exactly `size`, flattened.
+    A picture whose device frame came out empty is made again (twice at
+    most), then the run stops, so an empty frame is never handed on."""
     os.makedirs(os.path.dirname(out), exist_ok=True)
     snapshot = out + ".snapshot.png"
-    subprocess.run(["swift", os.path.join(HERE, "render.swift"), page_path, str(size[0]), str(size[1]), snapshot],
-                   check=True, capture_output=True)
-    picture = Image.open(snapshot).convert("RGB")   # no alpha channel
-    if picture.size != size:
-        picture = picture.resize(size, Image.LANCZOS)
-    picture.save(out)
-    os.remove(snapshot)
+    for attempt in range(3):
+        subprocess.run(["swift", os.path.join(HERE, "render.swift"), page_path, str(size[0]), str(size[1]), snapshot],
+                       check=True, capture_output=True)
+        picture = Image.open(snapshot).convert("RGB")   # no alpha channel
+        if picture.size != size:
+            picture = picture.resize(size, Image.LANCZOS)
+        os.remove(snapshot)
+        if not has_device or not frame_is_empty(picture):
+            picture.save(out)
+            return
+        print(f"  (empty frame in {os.path.basename(out)}, drawing it again)", flush=True)
+    sys.exit(f"{out}: the screenshot inside the frame would not draw")
+
+
+def frame_is_empty(picture):
+    """True when the middle of the picture, where the screenshot sits, is
+    one flat colour (the frame's, with nothing drawn in it)."""
+    w, h = picture.size
+    middle = picture.crop((int(w * 0.3), int(h * 0.45), int(w * 0.7), int(h * 0.75)))
+    return max(ImageStat.Stat(middle).stddev) < 3
 
 
 def contact_sheet(outputs):
@@ -231,7 +246,7 @@ def main():
                 with open(page_path, "w", encoding="utf-8") as f:
                     f.write(page(scene, device, locale, palette))
                 out = os.path.join(BUILD, "final", locale_name, device, scene["id"] + ".png")
-                render(page_path, size, out)
+                render(page_path, size, out, has_device=scene.get("show") != "none")
                 outputs.setdefault((locale_name, device), []).append(out)
                 print(f"  {os.path.relpath(out, HERE)}", flush=True)
     contact_sheet(outputs)
