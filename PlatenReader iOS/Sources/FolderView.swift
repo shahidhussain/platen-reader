@@ -61,6 +61,8 @@ struct FolderGridView: View {
     /// them (`roomBelow`).
     @Environment(\.tabRowBottom) private var tabRowBottom
     @State private var ownBottom: CGFloat = 0
+    /// The view's width, for the title's room in the bar.
+    @State private var width: CGFloat = 390
 
     var body: some View {
         // Worked out once per redraw (a sort of the whole folder), not once
@@ -109,6 +111,7 @@ struct FolderGridView: View {
             .padding(.vertical, 12)
         }
         .roomBelow($ownBottom, tabRowBottom: tabRowBottom)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .coverPinch(filter, sizeClass)
         .sheet(item: $infoFor) { entry in
             BookInfoView(entry: entry, info: model.covers[entry.url])
@@ -155,9 +158,14 @@ struct FolderGridView: View {
         .animation(.easeOut(duration: 0.3), value: model.coverProgress.done < model.coverProgress.total)
         .navigationTitle(folder.lastPathComponent)
         // The title sits in the bar with the buttons, so the grid gets the
-        // space. iOS's own Back button is at the top left (long-press it for
-        // the whole way back); a swipe across the page goes back too
-        // (SwipeBack), as does tapping the Home tab.
+        // space, and to the left, beside the Back button, as the book's own
+        // title is in the reader (the reader asked, 27 Nov 2026): the bar's
+        // own centred title is left empty, and the folder's name is the
+        // first item on the left (`FolderTitle`). The navigation title is
+        // still set, for the Back button's menu. iOS's own
+        // Back button is at the top left (long-press it for the whole way
+        // back); a swipe across the page goes back too (SwipeBack), as does
+        // tapping the Home tab.
         .navigationBarTitleDisplayMode(.inline)
         // The search field opens from the search button (and closes with
         // Cancel, clearing the search). While it has words in it, it stays
@@ -178,6 +186,8 @@ struct FolderGridView: View {
             logSearch()
         }
         .toolbar {
+            ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
+            FolderTitle(name: folder.lastPathComponent, maxWidth: max(80, width - 250))
             ToolbarItem(placement: .topBarTrailing) {
                 Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
             }
@@ -329,6 +339,38 @@ extension View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { options.columns = next }
             }
         )
+    }
+}
+
+/// The folder's name at the left of the bar, beside the Back button (as
+/// plain text: on iOS 26, without the glass a bar item is given). The
+/// bar's own centred title is hidden (`.principal`, empty).
+private struct FolderTitle: ToolbarContent {
+    let name: String
+    /// The most it may take: the bar's width less the Back button and the
+    /// two buttons on the right.
+    let maxWidth: CGFloat
+
+    var body: some ToolbarContent {
+        if #available(iOS 26, *) {
+            item.sharedBackgroundVisibility(.hidden)
+        } else {
+            item
+        }
+    }
+
+    private var item: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Text(verbatim: name)
+                .font(.headline)
+                .lineLimit(1)
+                // Its whole width (a bar item is otherwise squeezed to a
+                // few letters), up to what the buttons leave: a long name
+                // ends in "…" short of them.
+                .frame(maxWidth: maxWidth, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
+                .accessibilityAddTraits(.isHeader)
+        }
     }
 }
 

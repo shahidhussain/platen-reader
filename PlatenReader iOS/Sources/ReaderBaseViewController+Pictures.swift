@@ -1,7 +1,8 @@
 import UIKit
 
-/// Saving and sharing a picture from a book or a PDF: a long press on it
-/// shows Save to Photos, Save to Files and Share. The book reader finds the
+/// Viewing, saving and sharing a picture from a book or a PDF: a long press
+/// on it shows View Image (`PictureViewer`), Save to Photos, Save to Files
+/// and Share. The book reader finds the
 /// picture in the page (`platen.pictureAt` in input.js) and has its own
 /// bytes; the PDF reader draws it from the page.
 extension ReaderBaseViewController {
@@ -15,6 +16,10 @@ extension ReaderBaseViewController {
         highlight(rect, in: view)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        // On its own, filling the screen; a tap brings the page back.
+        sheet.addAction(UIAlertAction(title: String(localized: "View Image"), style: .default) { [weak self] _ in
+            self?.present(PictureViewer(image: image, name: name, origin: view.convert(rect, to: nil)), animated: false)
+        })
         sheet.addAction(UIAlertAction(title: String(localized: "Save to Photos"), style: .default) { [weak self] _ in
             self?.saveToPhotos(image)
         })
