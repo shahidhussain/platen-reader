@@ -16,5 +16,10 @@ Config/Local.xcconfig
 bugreports/
 
 # App Store screenshots: the sample books, and everything the pipeline makes
-marketing/sample-library/
+# marketing/ is kept out of git (the store pictures, the sample books, notes),
+# all but the screenshot pipeline in marketing/screenshots.
+marketing/*
+!marketing/screenshots/
 marketing/screenshots/build/
+# Design references kept beside the docs, not in git.
+docs/*.pdf
