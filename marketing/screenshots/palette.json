@@ -1,0 +1,7 @@
+{
+  "_about": "The set's colours, from the app icon (Honey: #f4cf7e to #e0a24c, design/icon/make-icons.py). Each scene takes the entry with its number; `background:` in a scene.md overrides the top colour. top and bottom make a soft vertical gradient; ink is the caption colour; frame is the device's edge.",
+  "01": {"top": "#f7dfa6", "bottom": "#eebb63", "ink": "#3b2810", "frame": "#1d1a16"},
+  "02": {"top": "#fbefd3", "bottom": "#f3d9a0", "ink": "#3b2810", "frame": "#1d1a16"},
+  "03": {"top": "#f6e2c8", "bottom": "#e9b98a", "ink": "#3b2810", "frame": "#1d1a16"},
+  "04": {"top": "#5b3d1b", "bottom": "#2e1f0e", "ink": "#fbefd3", "frame": "#1d1a16"}
+}

@@ -110,6 +110,17 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let folder = env["PLATEN_FOLDER_PATH"] {
             home.showChosenFolder(URL(fileURLWithPath: folder, isDirectory: true))
         }
+        // Testing: PLATEN_ADD_FAVOURITES marks books as favourites (see
+        // DebugHooks.swift). The newest favourite is shown first, and the
+        // list keeps times to the second, so each is dated a second before
+        // the one named before it: the first one named leads the row.
+        if let list = env["PLATEN_ADD_FAVOURITES"] {
+            for (index, path) in list.split(separator: "|").enumerated() {
+                let url = URL(fileURLWithPath: String(path))
+                if !Favourites.contains(url) { Favourites.list.addBook(url) }
+                Favourites.list.opened(url, now: Date(timeIntervalSinceNow: -Double(index)))
+            }
+        }
         // Testing: PLATEN_OPEN_PATH opens a book straight away (see
         // DebugHooks.swift).
         if let path = env["PLATEN_OPEN_PATH"], debugBook {

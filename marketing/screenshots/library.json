@@ -1,0 +1,66 @@
+{
+  "_about": "The folders copied into the screenshot simulator's Documents, as the reader's own folders on Home. Each maps a folder name (as Home shows it) to books in the sample library (marketing/sample-library, not committed). Only books that may be shown: see README.md, 'Which books may be shown'. Home lists folders newest first, so they are connected last to first: the first here is shown at the top. An entry may be [book, name]: the copy is given that name (a PDF's file name is the title shown under its cover), or [book, name, title]: a PDF copy is also given that title, which the reader's bar shows.",
+  "Classics": [
+    "classics/Charlotte Bronte - Jane Eyre.epub",
+    "classics/bram-stoker_dracula.epub",
+    "classics/mary-shelley_frankenstein.epub",
+    "classics/oscar-wilde_the-picture-of-dorian-gray.epub",
+    "classics/Arthur Conan Doyle - The Adventures of Sherlock Holm.epub",
+    "classics/Oscar Wilde - The Importance of Being Earnest.epub",
+    "classics/Algernon Blackwood - The Wendigo.epub",
+    "classics/Heart of Darkness - Joseph Conrad.epub",
+    "classics/Franz Kafka - The Metamorphosis.epub",
+    "classics/The+Trial+-+Franz+Kafka.epub",
+    "classics/Voltaire - Candide.epub",
+    "classics/Niccolo Machiavelli - The Prince.epub",
+    "classics/alexandre-dumas_the-count-of-monte-cristo_chapman-and-hall.epub",
+    "classics/Yevgeny Zamyatin - We.epub"
+  ],
+  "Science Fiction": [
+    "scifi/The+Tunnel+Under+the+World+-+Frederik+Pohl.epub",
+    "scifi/EE Doc Smith - Triplanetary.epub"
+  ],
+  "Picture Books": [
+    [
+      "picture books/Brendon ONeill - Lory Dory.pdf",
+      "Lory Dory.pdf"
+    ],
+    [
+      "picture books/Liesl Jobson - A Fish And A Gift.pdf",
+      "A Fish and a Gift.pdf"
+    ],
+    [
+      "picture books/Mary-Anne Hampton - I Want To.pdf",
+      "I Want To.pdf"
+    ],
+    [
+      "picture books/Helen Brain - A Day Out.pdf",
+      "A Day Out.pdf"
+    ],
+    [
+      "picture books/Fred Strydom - Is There Anyone Like Me.pdf",
+      "Is There Anyone Like Me.pdf"
+    ],
+    [
+      "picture books/Marie-Louise Rouget - Zandi and Birdy Monster.pdf",
+      "Zandi and Birdy Monster.pdf"
+    ],
+    [
+      "picture books/Nicola Rijsdijk - A Tiny Seed.pdf",
+      "A Tiny Seed.pdf"
+    ],
+    [
+      "picture books/Phumle April - A Trip To The Tap.pdf",
+      "A Trip to the Tap.pdf"
+    ],
+    [
+      "picture books/Thea Nicole de Klerk - A Dancers Tale.pdf",
+      "A Dancer’s Tale.pdf"
+    ],
+    [
+      "picture books/Shahid Hussain - Zoe and Zephy.pdf",
+      "Zoe and Zephy.pdf",
+      "Zoe and Zephy"
+    ]
+  ]
+}
