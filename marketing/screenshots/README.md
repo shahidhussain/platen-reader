@@ -48,4 +48,4 @@ The screenshots are seen worldwide, so a book shown open must be public domain e
 
 ## Header and search results picture
 
-`python3 make-header.py` (after `build.sh`) makes the product page header for iOS and iPadOS 27: `build/header/header.png`, 5244 × 2950, flat RGB. It shows the icon, "Platen Reader", scene 04's phrase and a Jane Eyre page taken from the iPad capture, with everything in the area both App Store crops keep (21:9 header, 3:2 search). `preview-21x9.png` and `preview-3x2.png` show each crop with that area outlined in red.
+`python3 make-header.py` (after `build.sh`) makes the product page header for iOS and iPadOS 27: `build/header/header.png`, 5244 × 2950, flat RGB. It shows the icon, "Platen Reader" and a phrase on dark brown, beside an iPad reading Zoe and Zephy (captured first with `capture.py --device ipad --scenes header-scenes`), with everything in the area both App Store crops keep (21:9 header, 3:2 search). `preview-21x9.png` and `preview-3x2.png` show each crop with that area outlined in red.

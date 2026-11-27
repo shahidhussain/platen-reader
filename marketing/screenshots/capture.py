@@ -82,8 +82,8 @@ def read_scene(folder):
     return scene
 
 
-def scenes(only=None):
-    root = os.path.join(HERE, "scenes")
+def scenes(only=None, root=None):
+    root = root or os.path.join(HERE, "scenes")
     found = [read_scene(os.path.join(root, name)) for name in sorted(os.listdir(root))
              if os.path.isfile(os.path.join(root, name, "scene.md"))]
     return [s for s in found if not only or only in s["id"]]
@@ -336,6 +336,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--device", choices=list(DEVICES), action="append")
     parser.add_argument("--only")
+    parser.add_argument("--scenes", help="a folder of scenes other than scenes/ (header-scenes/ for make-header.py)")
     parser.add_argument("--library", default=os.environ.get(
         "PLATEN_SAMPLE_LIBRARY", os.path.join(HERE, "..", "sample-library")))
     parser.add_argument("--app", default=APP)
@@ -352,7 +353,7 @@ def main():
         fresh_boot(udid)
         try:
             container, folders = install(udid, args.app, library)
-            for scene in scenes(args.only):
+            for scene in scenes(args.only, args.scenes and os.path.abspath(args.scenes)):
                 out = os.path.join(BUILD, "raw", device, scene["id"] + ".png")
                 show = scene.get("show")
                 print(f" {scene['id']} ({show})", flush=True)

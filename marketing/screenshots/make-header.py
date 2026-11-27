@@ -6,11 +6,13 @@ The App Store crops it to 21:9 for the header and to 3:2 in search results,
 so everything that matters sits in the area both crops keep (the middle
 4425 × 2247), with a margin; the edges are background only.
 
-What it shows: the app icon, "Platen Reader" and one short phrase, beside a
-real page of Jane Eyre (public domain) as the app shows it, being lowered
-onto the glass (the platen press). The page comes from the iPad capture of
-scene 02 (build/raw/ipad/02-voice.png), cropped to the words alone, so run
-build.sh first.
+What it shows: on dark brown, the app icon, "Platen Reader" and one phrase,
+beside an iPad reading Zoe and Zephy (page 15, light, ambient light on, the
+controls showing). That page is captured from the app first:
+
+  python3 capture.py --device ipad --scenes header-scenes --library <sample-library>
+
+which saves build/raw/ipad/header.png (the scene is header-scenes/header).
 
 Usage: python3 make-header.py
 Writes build/header/header.png and two previews of the crops, with the
@@ -30,13 +32,7 @@ SIZE = (5244, 2950)
 # Laid out at half size in CSS pixels; WebKit draws at 2× on a Retina Mac.
 CSS = (SIZE[0] // 2, SIZE[1] // 2)
 
-PHRASE = "Just you and the book"   # scene 04's headline
-
-# The crop of the page capture (in its own 2064 × 2752 pixels): from
-# "I only remind you…" to "…it will now be a shrine.", the text column and
-# its margins, with no controls and no read-aloud mark.
-PAGE_CROP = (390, 795, 1674, 2380)
-
+PHRASE = "Easily read books,<br>or have Platen read to you."
 
 def crops():
     """The 21:9 and 3:2 crops of the full picture, centred, in its pixels."""
@@ -55,37 +51,35 @@ def page_html():
     # The safe area, in CSS pixels, less a margin.
     _, _, safe = crops()
     left, top, right, bottom = (v / 2 for v in safe)
-    margin = 90
+    margin = 70
+    # The iPad, portrait, as tall as the safe area allows.
+    screen_h = bottom - top - 2 * margin - 40
+    screen_w = screen_h * 2064 / 2752
+    bezel = screen_w * 0.03
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 @font-face {{ font-family: 'IBM Plex Sans'; font-weight: 600; src: url('../fonts/IBMPlexSans-SemiBold.ttf'); }}
 @font-face {{ font-family: 'IBM Plex Sans'; font-weight: 400; src: url('../fonts/IBMPlexSans-Regular.ttf'); }}
 html, body {{ margin: 0; width: {w}px; height: {h}px; overflow: hidden; }}
 body {{
-  /* The Honey icon's colours, as in the screenshots (palette.json 01). */
-  background: radial-gradient(ellipse 70% 80% at 62% 50%, #fbe7b8 0%, #f4cf7e 45%, #e0a24c 100%);
-  font-family: 'IBM Plex Sans', -apple-system, sans-serif; color: #3b2810;
+  /* Dark brown, as on the closing screenshot (palette.json 04), so the
+     Honey icon stands out; a warm glow behind the iPad. */
+  background: radial-gradient(ellipse 45% 70% at 68% 50%, #7a5326 0%, #4a3115 45%, #2a1c0c 100%);
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif; color: #fbefd3;
 }}
 .stage {{ position: absolute; left: {left + margin}px; top: {top + margin}px;
   width: {right - left - 2 * margin}px; height: {bottom - top - 2 * margin}px;
   display: flex; align-items: center; justify-content: space-between; }}
 .words {{ display: flex; flex-direction: column; align-items: flex-start; }}
-.icon {{ width: 250px; height: 250px; border-radius: 56px;
-  box-shadow: 0 14px 40px rgba(59, 40, 16, 0.35); margin-bottom: 64px; }}
-h1 {{ font-weight: 600; font-size: 168px; line-height: 1; letter-spacing: -3px; margin: 0 0 36px; }}
-p {{ font-weight: 400; font-size: 84px; line-height: 1.1; margin: 0; color: #5a3d17; }}
-/* The glass, and the page coming down onto it. */
-.press {{ position: relative; width: 760px; height: 960px; }}
-.glass {{ position: absolute; inset: 0; border-radius: 34px;
-  background: linear-gradient(150deg, rgba(255,255,255,0.55), rgba(255,255,255,0.18));
-  border: 3px solid rgba(255,255,255,0.7);
-  box-shadow: inset 0 0 0 1px rgba(59,40,16,0.08), 0 30px 80px rgba(59,40,16,0.18); }}
-.page {{ position: absolute; left: 44px; top: 44px; right: 44px; bottom: 44px;
-  background: #fff url('page.png') center / contain no-repeat; border-radius: 10px;
-  transform: translate(-26px, -34px) scale(1.035);
-  box-shadow: 18px 38px 60px rgba(59,40,16,0.30), 0 2px 6px rgba(59,40,16,0.15); }}
+.icon {{ width: 240px; height: 240px; border-radius: 54px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.5); margin-bottom: 60px; }}
+h1 {{ font-weight: 600; font-size: 168px; line-height: 1; letter-spacing: -3px; margin: 0 0 40px; }}
+p {{ font-weight: 400; font-size: 76px; line-height: 1.18; margin: 0; color: #f4cf7e; }}
+.device {{ padding: {bezel:.1f}px; background: #1d1a16; border-radius: {bezel * 2.2:.1f}px;
+  box-shadow: 0 0 0 3px #3a332b, 0 40px 100px rgba(0, 0, 0, 0.55); flex: none; }}
+.device img {{ display: block; width: {screen_w:.1f}px; height: {screen_h:.1f}px; border-radius: {bezel * 1.2:.1f}px; }}
 </style></head><body><div class="stage">
 <div class="words"><img class="icon" src="icon.png"><h1>Platen Reader</h1><p>{PHRASE}</p></div>
-<div class="press"><div class="glass"></div><div class="page"></div></div>
+<div class="device"><img src="page.png"></div>
 </div></body></html>
 """
 
@@ -97,13 +91,13 @@ def outline(picture, box, colour, width=14):
 
 
 def main():
-    raw = os.path.join(BUILD, "raw", "ipad", "02-voice.png")
+    raw = os.path.join(BUILD, "raw", "ipad", "header.png")
     icon = os.path.join(HERE, "..", "..", "PlatenReader iOS", "Sources", "Assets.xcassets",
                         "AppIcon.appiconset", "AppIcon-1024.png")
     if not os.path.exists(raw):
         sys.exit(f"{raw} is missing: run build.sh first")
     os.makedirs(OUT, exist_ok=True)
-    Image.open(raw).convert("RGB").crop(PAGE_CROP).save(os.path.join(OUT, "page.png"))
+    Image.open(raw).convert("RGB").save(os.path.join(OUT, "page.png"))
     Image.open(icon).convert("RGB").save(os.path.join(OUT, "icon.png"))
     html_path = os.path.join(OUT, "header.html")
     with open(html_path, "w", encoding="utf-8") as f:
