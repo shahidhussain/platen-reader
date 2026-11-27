@@ -14,3 +14,7 @@ samples/
 Config/Local.xcconfig
 # Screen recordings and screenshots of bugs, for hand testing.
 bugreports/
+
+# App Store screenshots: the sample books, and everything the pipeline makes
+marketing/sample-library/
+marketing/screenshots/build/

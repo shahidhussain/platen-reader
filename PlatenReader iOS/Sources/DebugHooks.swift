@@ -16,6 +16,10 @@ import UIKit
 /// - `PLATEN_FOLDER_PATH=<path>` chooses the folder the home screen shows
 ///   as covers, as "Choose Folder…" would (a folder inside the app's
 ///   container, for the same reason).
+/// - `PLATEN_ADD_FAVOURITES=<path>|<path>|…` marks those books as
+///   favourites, as a cover's long-press menu would, without the heart's
+///   animation; the first named is shown first (marketing/screenshots,
+///   which sets up the Home screen this way).
 /// - `PLATEN_PRESS_FREEZE=<0…1>` holds the platen press (PlatenPress.swift)
 ///   still at that point and leaves it up, to look at its poses
 ///   (run-ios-debug.sh passes it on).

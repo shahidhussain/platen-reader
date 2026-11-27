@@ -272,6 +272,13 @@ final class StorageAndFilterTests: XCTestCase {
         let ownFolder = StoragePlace(path: "/var/mobile/Containers/Data/Application/ABCD/Documents/Library Books")
         XCTAssertEqual(ownFolder, StoragePlace(kind: .device, location: "On My iPhone/Platen Reader/Library Books"))
 
+        // On an iPad, as Files says it (the app sets this at launch).
+        let saved = StoragePlace.thisDevice
+        StoragePlace.thisDevice = "On My iPad"
+        XCTAssertEqual(StoragePlace(path: "/var/mobile/Containers/Data/Application/ABCD/Documents/Library Books"),
+                       StoragePlace(kind: .device, location: "On My iPad/Platen Reader/Library Books"))
+        StoragePlace.thisDevice = saved
+
         XCTAssertEqual(StoragePlace(path: "/Volumes/both/books").kind, .drive)
         XCTAssertEqual(StoragePlace(path: "/Users/me/Library/CloudStorage/Dropbox/Books").kind, .otherCloud)
     }

@@ -86,10 +86,15 @@ enum StorageKind: String, Codable, Sendable {
 ///   server's name is not in the path; `RecentList` adds it when it can.
 /// - External drives: `…/LiveFiles/com.apple.filesystems.userfsd/…` (and
 ///   other LiveFiles file systems); on the Mac, `/Volumes/<name>/…`.
-/// - This device: On My iPhone (`…/File Provider Storage/…`), or an app's
+/// - This device: On My iPhone or iPad (`…/File Provider Storage/…`), or an app's
 ///   own folder (`…/Containers/Data/Application/<id>/Documents/…`).
 /// - Other providers (Dropbox, Google Drive…): `…/CloudStorage/<name>/…`.
 struct StoragePlace: Equatable, Sendable {
+    /// What Files calls this device's own storage: "On My iPhone", or "On
+    /// My iPad". The iOS app sets it at launch (AppDelegate), as shared code
+    /// cannot ask UIKit which device it is on.
+    nonisolated(unsafe) static var thisDevice = String(localized: "On My iPhone")
+
     var kind: StorageKind
     /// The path as the reader would say it, ending in the folder itself.
     var location: String
@@ -118,9 +123,9 @@ struct StoragePlace: Equatable, Sendable {
         } else if parts.first == "Volumes", parts.count > 1 {
             self.init(kind: .drive, location: Array(parts.dropFirst()).joined(separator: "/"))
         } else if let rest = after("File Provider Storage") {
-            self.init(kind: .device, location: join(String(localized: "On My iPhone"), rest))
+            self.init(kind: .device, location: join(Self.thisDevice, rest))
         } else if let i = parts.firstIndex(of: "Application"), parts.count > i + 2, parts[i + 2] == "Documents" {
-            self.init(kind: .device, location: join(String(localized: "On My iPhone"), ["Platen Reader"] + parts.dropFirst(i + 3)))
+            self.init(kind: .device, location: join(Self.thisDevice, ["Platen Reader"] + parts.dropFirst(i + 3)))
         } else if let rest = after("CloudStorage") {
             self.init(kind: .otherCloud, location: rest.joined(separator: "/"))
         } else {
