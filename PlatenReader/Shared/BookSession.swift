@@ -43,6 +43,10 @@ protocol BookSessionHost: AnyObject {
     /// taps lightly as it lands).
     func sessionBookmarkAdded()
     func sessionOpenExternalLink(_ url: URL)
+    /// Whether the page can be seen now (iOS: the app is in front), so read
+    /// aloud may stay a moment on a picture page; in the background it
+    /// reads straight on.
+    var sessionShowsPage: Bool { get }
 }
 
 // Most hooks are optional: a reader implements the ones it has a use for.
@@ -56,6 +60,7 @@ extension BookSessionHost {
     func sessionShowPicture(_ picture: ReaderMessage.Picture) {}
     func sessionShowLonePicture(_ data: Data?) {}
     func sessionPageText(_ text: String, speak: Bool) {}
+    var sessionShowsPage: Bool { true }
 }
 
 /// One open book, for both apps: reading the file, the saved position and
@@ -326,10 +331,10 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
             #if DEBUG
             // Testing only (book text never goes in the diagnostics): where
             // reading begins, after a start or a turn by hand.
-            if readAloudFirstBlock, let first = block.sentences.first {
+            if readAloudFirstBlock, let first = block.sentences.first(where: { !$0.isPicture }) {
                 log.notice("step result: reads from: \(String(first.text.prefix(60)), privacy: .public)")
+                readAloudFirstBlock = false
             }
-            readAloudFirstBlock = false
             #endif
             readAloud?.receive(block)
 
@@ -491,6 +496,7 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
         controller.onNothingToRead = { [weak self] in self?.state.readAloudFoundNoText += 1 }
         controller.mark = { [weak self] name in self?.call("readAloudMark", name) }
         controller.markWord = { [weak self] name, start, length in self?.call("readAloudWord", name, start, length) }
+        controller.showPicture = { [weak self] name, answer in self?.readAloudShowPicture(name, answer: answer) }
         readAloud = controller
         controller.start()
         state.readAloud = .starting
@@ -505,6 +511,18 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
     func stopReadAloud() {
         guard let readAloud else { return }
         readAloud.stop()
+    }
+
+    /// Read aloud has reached a picture between the words: the page turns
+    /// to it and says whether that page has no words (then reading stays a
+    /// moment). Not while the page cannot be seen (`sessionShowsPage`): in the
+    /// background reading goes straight on.
+    private func readAloudShowPicture(_ cfi: String, answer: @escaping (Bool) -> Void) {
+        guard isOpenInPage, let webView, host?.sessionShowsPage ?? true else { return answer(false) }
+        webView.callAsyncJavaScript("return await platen.readAloudPicture(cfi)", arguments: ["cfi": cfi],
+                                    in: nil, in: .page) { result in
+            answer(((try? result.get()) as? Bool) ?? false)
+        }
     }
 
     private func readAloudEnded() {

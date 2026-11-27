@@ -10,6 +10,10 @@ import NaturalLanguage
 struct ReadAloudSentence: Equatable, Sendable {
     var mark: String?
     var text: String
+    /// Not words but a picture between them (`text` empty): reading turns
+    /// to it, and if its page has no words, stays there a moment before
+    /// going on (`ReadAloudController.showPicture`).
+    var isPicture = false
 }
 
 /// A block of the book (a paragraph, a heading) as the shell sends it.
@@ -233,6 +237,21 @@ final class ReadAloudController {
     /// Reading reached the end without a single sentence to speak (a
     /// scanned PDF: pictures of pages, with no text in them).
     var onNothingToRead: (() -> Void)?
+    /// Reading has reached a picture between the words: the page turns to
+    /// it and answers whether that page has no words to read (call the
+    /// handler once). If none, reading goes straight on; if so, it waits
+    /// `pictureLinger` first, so a picture page (a plate, a page of a
+    /// picture book, a cover) is seen rather than skipped past, or held on
+    /// with no voice until the reader turns it by hand (asked for 27 Nov
+    /// 2026). Unset: pictures are passed over.
+    var showPicture: ((String, @escaping (Bool) -> Void) -> Void)?
+
+    /// How long a page with only a picture on it stays before reading goes
+    /// on.
+    nonisolated static let pictureLinger: TimeInterval = 2
+    /// The longest the page is waited for when asked about a picture (in the
+    /// background the page does not answer: reading goes on).
+    nonisolated static let pictureAnswerTimeout: TimeInterval = 1
 
     private var queued: [Int: ReadAloudSentence] = [:]
     private var order: [Int] = []
@@ -243,14 +262,38 @@ final class ReadAloudController {
     private var nextID = 0
     private var awaitingBlock = false
     private var reachedEnd = false
+    /// The sentences handed to the voice so far (those after a picture not
+    /// yet shown wait: `feed`).
+    private var given: Set<Int> = []
+    /// A picture is being shown (the page asked, or the linger running):
+    /// nothing more is given to the voice until it is done.
+    private var atPicture = false
+    /// The linger ended while reading was paused: it goes on at resume.
+    private var pictureDoneWhilePaused = false
+    /// Bumped by stop and skips, so a picture's late answer or linger from
+    /// before is ignored.
+    private var pictureGeneration = 0
+    /// The pictures (by generation) whose answer has come.
+    private var answeredPicture: Set<Int> = []
+    /// Whether any words (not pictures) were ever given to read.
+    private var anyWords = false
 
     /// This controller's lookahead (`lookahead`, smaller in the tests).
     let lookaheadCount: Int
 
-    init(engine: SpeechEngine, language: String, lookahead: Int = ReadAloudController.lookahead) {
+    /// This controller's linger on a picture page, and wait for the page's
+    /// answer (`pictureLinger`, `pictureAnswerTimeout`; shorter in the tests).
+    let lingerTime: TimeInterval
+    let answerTimeout: TimeInterval
+
+    init(engine: SpeechEngine, language: String, lookahead: Int = ReadAloudController.lookahead,
+         lingerTime: TimeInterval = ReadAloudController.pictureLinger,
+         answerTimeout: TimeInterval = ReadAloudController.pictureAnswerTimeout) {
         self.engine = engine
         self.language = language
         lookaheadCount = lookahead
+        self.lingerTime = lingerTime
+        self.answerTimeout = answerTimeout
         engine.onStart = { [weak self] id in self?.started(id) }
         engine.onFinish = { [weak self] id in self?.finished(id) }
         engine.onWord = { [weak self] id, range in
@@ -271,16 +314,83 @@ final class ReadAloudController {
         guard phase != .off else { return }
         awaitingBlock = false
         if block.isParagraph, !block.sentences.isEmpty { paragraphCount += 1 }
-        let items = block.sentences.map { sentence -> (id: Int, text: String) in
+        var items: [(id: Int, text: String)] = []
+        for sentence in block.sentences {
             let id = nextID
             nextID += 1
             if block.isParagraph { paragraphOf[id] = paragraphCount }
             queued[id] = sentence
             order.append(id)
-            return (id, sentence.text)
+            items.append((id, sentence.text))
+            if !sentence.isPicture { anyWords = true }
         }
         guard !items.isEmpty else { return askForMore() }
-        engine.enqueue(items, language: language)
+        feed()
+        if order.count <= lookaheadCount { askForMore() }
+    }
+
+    /// Hands the voice the sentences in order that it does not have yet, up
+    /// to the first picture still to be shown (those after it wait for it),
+    /// and shows that picture once nothing before it is left to speak.
+    private func feed() {
+        var toSpeak: [(id: Int, text: String)] = []
+        for id in order {
+            guard let sentence = queued[id] else { continue }
+            if sentence.isPicture { break }
+            if given.insert(id).inserted { toSpeak.append((id, sentence.text)) }
+        }
+        if !toSpeak.isEmpty { engine.enqueue(toSpeak, language: language) }
+        if let first = order.first, queued[first]?.isPicture == true, !atPicture { reachPicture(first) }
+    }
+
+    /// Reading has come to the picture `id` (nothing before it is left to
+    /// speak): the page turns to it, and reading goes on after it, at once
+    /// or after the linger.
+    private func reachPicture(_ id: Int) {
+        guard let sentence = queued[id] else { return }
+        atPicture = true
+        if phase == .starting { phase = .playing }
+        pictureGeneration += 1
+        let generation = pictureGeneration
+        guard let showPicture, let mark = sentence.mark else { return pictureAnswered(id, linger: false, generation) }
+        showPicture(mark) { [weak self] linger in
+            Task { @MainActor in self?.pictureAnswered(id, linger: linger, generation) }
+        }
+        // No answer in time (the page asleep in the background): on at once.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(self?.answerTimeout ?? 1))
+            self?.pictureAnswered(id, linger: false, generation)
+        }
+    }
+
+    /// The page's answer about the picture `id` (or the time-out's, whichever
+    /// comes first): on at once, or after the linger.
+    private func pictureAnswered(_ id: Int, linger: Bool, _ generation: Int) {
+        guard generation == pictureGeneration, atPicture, !answeredPicture.contains(generation) else { return }
+        answeredPicture.insert(generation)
+        guard linger else { return leavePicture(id) }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(self?.lingerTime ?? 2))
+            guard let self, generation == self.pictureGeneration else { return }
+            self.leavePicture(id)
+        }
+    }
+
+    /// Done with the picture `id`: what was held back goes to the voice (up
+    /// to the next picture).
+    private func leavePicture(_ id: Int) {
+        if phase == .paused {
+            pictureDoneWhilePaused = true
+            return
+        }
+        atPicture = false
+        queued[id] = nil
+        order.removeAll { $0 == id }
+        if order.isEmpty {
+            if reachedEnd { stop() } else { phase = .starting; askForMore() }
+            return
+        }
+        feed()
         if order.count <= lookaheadCount { askForMore() }
     }
 
@@ -290,7 +400,7 @@ final class ReadAloudController {
         reachedEnd = true
         guard order.isEmpty else { return }
         // Nothing was ever given to the voice: there is no text to read.
-        let nothingRead = nextID == 0 && heard.isEmpty
+        let nothingRead = !anyWords && heard.isEmpty
         stop()
         if nothingRead { onNothingToRead?() }
     }
@@ -305,10 +415,16 @@ final class ReadAloudController {
         guard phase == .paused else { return }
         engine.resume()
         phase = order.isEmpty ? .starting : .playing
+        // The picture's linger ended while paused: on from it now.
+        if pictureDoneWhilePaused, let first = order.first, queued[first]?.isPicture == true {
+            pictureDoneWhilePaused = false
+            leavePicture(first)
+        }
     }
 
     func stop() {
         engine.stop()
+        forgetPictures()
         queued.removeAll()
         order.removeAll()
         heard.removeAll()
@@ -365,10 +481,24 @@ final class ReadAloudController {
         readFromQueue()
     }
 
+    /// Any picture being shown is let go, and nothing is held back for one
+    /// (the voice is about to be given the queue afresh, or stopped).
+    private func forgetPictures() {
+        pictureGeneration += 1
+        atPicture = false
+        pictureDoneWhilePaused = false
+        given.removeAll()
+    }
+
     /// Reading goes on (or starts again, if paused) from the first sentence
-    /// queued, after a skip.
+    /// queued, after a skip. (Pictures are passed over: the reader is
+    /// moving through the book themselves.)
     private func readFromQueue() {
+        forgetPictures()
+        for id in order where queued[id]?.isPicture == true { queued[id] = nil }
+        order.removeAll { queued[$0] == nil }
         let items = order.compactMap { id in queued[id].map { (id: id, text: $0.text) } }
+        given.formUnion(items.map(\.id))
         guard !items.isEmpty else {
             if reachedEnd { stop() } else { phase = .starting; askForMore() }
             return
@@ -380,7 +510,7 @@ final class ReadAloudController {
     }
 
     /// The sentences queued and not yet finished, in order (for tests).
-    var pendingTexts: [String] { order.compactMap { queued[$0]?.text } }
+    var pendingTexts: [String] { order.compactMap { queued[$0] }.filter { !$0.isPicture }.map(\.text) }
 
     private func askForMore() {
         guard !awaitingBlock, !reachedEnd, phase != .off else { return }
@@ -403,8 +533,12 @@ final class ReadAloudController {
             if heard.count > 80 { paragraphOf[heard.removeFirst().id] = nil }
         }
         queued[id] = nil
+        given.remove(id)
         order.removeAll { $0 == id }
-        if order.isEmpty {
+        if let first = order.first, queued[first]?.isPicture == true {
+            // Everything before a picture has been spoken: show it.
+            if !atPicture { reachPicture(first) }
+        } else if order.isEmpty {
             if reachedEnd { stop() } else if phase == .playing { phase = .starting; askForMore() }
         }
     }

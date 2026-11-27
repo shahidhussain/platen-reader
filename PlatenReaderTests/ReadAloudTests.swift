@@ -275,6 +275,118 @@ final class ReadAloudTests: XCTestCase {
 }
 
 /// A speech engine that speaks when told to, for the tests.
+// MARK: - Pictures between the words
+
+/// Read aloud stays a moment on a page with only a picture on it, then
+/// reads on (asked for 27 Nov 2026; readaloud.js sends the pictures).
+@MainActor
+final class ReadAloudPictureTests: XCTestCase {
+    private func picture(_ mark: String) -> ReadAloudSentence { ReadAloudSentence(mark: mark, text: "", isPicture: true) }
+    private func words(_ mark: String, _ text: String) -> ReadAloudSentence { ReadAloudSentence(mark: mark, text: text) }
+
+    private func controller(_ engine: FakeEngine) -> ReadAloudController {
+        let controller = ReadAloudController(engine: engine, language: "en", lookahead: 2, lingerTime: 0.2, answerTimeout: 0.5)
+        controller.requestNext = {}
+        return controller
+    }
+
+    private func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+
+    func testAPicturePageIsStayedOnThenReadingGoesOn() async {
+        let engine = FakeEngine()
+        let controller = controller(engine)
+        var shown: [String] = []
+        controller.showPicture = { mark, answer in shown.append(mark); answer(true) }
+        controller.start()
+        controller.receive(ReadAloudBlock(language: "en", sentences: [words("a", "Before the plate."), picture("plate"),
+                                                                       words("b", "After the plate.")]))
+        // Only the words before the picture go to the voice.
+        XCTAssertEqual(engine.texts, ["Before the plate."])
+        engine.startNext()
+        engine.finishCurrent()
+        XCTAssertEqual(shown, ["plate"], "the page turns to the picture")
+        await wait(0.05)
+        XCTAssertEqual(engine.texts, ["Before the plate."], "still on the picture page")
+        XCTAssertEqual(controller.phase, .playing)
+        await wait(0.4)
+        XCTAssertEqual(engine.texts, ["Before the plate.", "After the plate."], "then on to the words after it")
+    }
+
+    func testAPictureBesideWordsIsPassedStraightOver() async {
+        let engine = FakeEngine()
+        let controller = controller(engine)
+        controller.showPicture = { _, answer in answer(false) }
+        controller.start()
+        controller.receive(ReadAloudBlock(language: "en", sentences: [words("a", "One."), picture("pic"), words("b", "Two.")]))
+        engine.startNext()
+        engine.finishCurrent()
+        await wait(0.05)
+        XCTAssertEqual(engine.texts, ["One.", "Two."])
+    }
+
+    func testStartingOnAPicturePageStaysOnItFirst() async {
+        let engine = FakeEngine()
+        let controller = controller(engine)
+        var shown: [String] = []
+        controller.showPicture = { mark, answer in shown.append(mark); answer(true) }
+        controller.start()
+        controller.receive(ReadAloudBlock(language: "en", sentences: [picture("cover")]))
+        controller.receive(ReadAloudBlock(language: "en", sentences: [words("a", "Chapter One.")]))
+        XCTAssertEqual(shown, ["cover"])
+        XCTAssertEqual(engine.texts, [], "nothing read while the cover is shown")
+        await wait(0.4)
+        XCTAssertEqual(engine.texts, ["Chapter One."])
+    }
+
+    func testNoAnswerFromThePageReadsOn() async {
+        let engine = FakeEngine()
+        let controller = controller(engine)
+        controller.showPicture = { _, _ in } // the page asleep (the app in the background)
+        controller.start()
+        controller.receive(ReadAloudBlock(language: "en", sentences: [picture("plate"), words("a", "After.")]))
+        XCTAssertEqual(engine.texts, [])
+        await wait(0.7)
+        XCTAssertEqual(engine.texts, ["After."])
+    }
+
+    func testPausedOnAPictureReadingGoesOnAtResume() async {
+        let engine = FakeEngine()
+        let controller = controller(engine)
+        controller.showPicture = { _, answer in answer(true) }
+        controller.start()
+        controller.receive(ReadAloudBlock(language: "en", sentences: [picture("plate"), words("a", "After.")]))
+        controller.pause()
+        await wait(0.4)
+        XCTAssertEqual(engine.texts, [], "paused: still on the picture")
+        controller.resume()
+        XCTAssertEqual(engine.texts, ["After."])
+    }
+
+    func testSkippingPassesOverPictures() {
+        let engine = FakeEngine()
+        let controller = controller(engine)
+        controller.showPicture = { _, _ in }
+        controller.start()
+        controller.receive(ReadAloudBlock(language: "en", sentences: [words("a", "One."), picture("plate"),
+                                                                       words("b", "Two."), words("c", "Three.")]))
+        engine.startNext()
+        controller.skip(by: 1)
+        XCTAssertEqual(controller.pendingTexts, ["Two.", "Three."])
+        XCTAssertEqual(Array(engine.texts.suffix(2)), ["Two.", "Three."])
+    }
+
+    func testABookOfPicturesAloneHasNothingToRead() {
+        let engine = FakeEngine()
+        let controller = controller(engine)
+        var nothing = 0
+        controller.onNothingToRead = { nothing += 1 }
+        controller.showPicture = { _, answer in answer(false) }
+        controller.start()
+        controller.endReached()
+        XCTAssertEqual(nothing, 1)
+    }
+}
+
 @MainActor
 private final class FakeEngine: SpeechEngine {
     var onStart: ((Int) -> Void)?

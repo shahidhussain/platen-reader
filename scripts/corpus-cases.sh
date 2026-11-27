@@ -43,6 +43,11 @@ check cover-page.epub         "'lone:'+platen.view.renderer.getContents()[0].doc
 # counts as a picture-only page (the page before it, text, does not).
 check picture-indent.epub     "platen.next();platen.next();'overflow:'+platen.pictureOverflow()" "overflow:0"
 check plate-page.epub         "${NARROW}platen.view.goTo(0);'before:'+platen.pagePicture();platen.next();'plate:'+platen.pagePicture()" "plate:true" "before:true"
+# Read aloud stops a moment on a page that is one picture (27 Nov 2026):
+# the plate between the paragraphs is found, and each picture-book page's
+# picture (in a paragraph with no words of its own).
+check plate-page.epub         "platen.view.goTo(0);platen.readAloudPictures()" "pictures: 1"
+check picture-indent.epub     "platen.readAloudPictures()"            "pictures: 4"
 # Body text set at 75% by the book still comes out at the size chosen.
 check small-body-text.epub    "(d=>'body:'+(Math.abs(parseFloat(getComputedStyle(d.querySelector('p')).fontSize)-platen.fontSize())<0.1))(platen.view.renderer.getContents()[0].doc)" "body:true"
 # PDF (PDFKit): its pages and its outline as Contents.

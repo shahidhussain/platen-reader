@@ -324,6 +324,10 @@ enum ReaderMessage: Equatable {
             self = .log(string("message") ?? "")
         case "readAloudBlock":
             let sentences = (body["sentences"] as? [[String: Any]] ?? []).compactMap { item -> ReadAloudSentence? in
+                // A picture between the words: its place, no text.
+                if item["picture"] as? Bool == true, let mark = item["mark"] as? String {
+                    return ReadAloudSentence(mark: mark, text: "", isPicture: true)
+                }
                 guard let text = item["text"] as? String, !text.isEmpty else { return nil }
                 return ReadAloudSentence(mark: item["mark"] as? String, text: text)
             }
