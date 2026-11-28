@@ -15,6 +15,9 @@ extension ReaderViewController {
     func animateTurn(_ command: PageTurn) {
         let paginated = state.flow == .paginated || state.isFixedLayout
         guard paginated, settings.pageTurnStyle == .curl, !reducedMotion, imageZoom == nil else {
+            // The page animates this turn itself: a picture shown full size
+            // goes back to the page first, so it moves with it.
+            releaseLonePictureForTurn()
             return session.turnPlainly(command)
         }
         // Which way the leaf travels on screen.
@@ -33,6 +36,7 @@ extension ReaderViewController {
                 previous.removeFromSuperview()
                 pageTurn = nil
             }
+            releaseLonePictureForTurn()
             return session.turnPlainly(command)
         }
 
@@ -45,18 +49,20 @@ extension ReaderViewController {
         turnGeneration += 1
         let generation = turnGeneration
 
-        // 1. Snapshot the page as it is (A).
-        webView.takeSnapshot(with: nil) { [weak self] before, _ in
+        // 1. Snapshot the page as it is (A), as the reader sees it: with its
+        // glow, and a picture-only page's picture.
+        pageSnapshot { [weak self] before in
             // Overtaken by a newer turn: that one has already moved the page.
             guard let self, generation == self.turnGeneration else { return }
-            guard let a = before?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            guard let a = before else {
                 self.session.turnPlainly(command) // no snapshot: turn without the curl
                 return
             }
             // 2. Cover the page with A, then turn the real page instantly.
             let overlay = PageTurnView(frame: self.webView.frame)
             overlay.autoresizingMask = [.width, .height]
-            self.view.addSubview(overlay, positioned: .above, relativeTo: self.webView)
+            // (Over the picture-only page's picture too, which is in A.)
+            self.view.addSubview(overlay, positioned: .above, relativeTo: self.lonePictureView)
             overlay.cover(with: a)
             self.pageTurn = overlay
             let remove = { [weak self, weak overlay] in
@@ -66,13 +72,15 @@ extension ReaderViewController {
             self.session.turnInstantly(command) { moved, columns in
                 guard generation == self.turnGeneration, moved else { return remove() }
                 let twoPages = columns >= 2
-                // 3. Snapshot the new page (B) and animate from A to B.
-                self.webView.takeSnapshot(with: nil) { after, _ in
-                    guard generation == self.turnGeneration,
-                          let b = after?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return remove() }
+                // 3. Snapshot the new page (B), once a picture-only page's
+                // picture is on show, and animate from A to B.
+                self.settleLonePicture {
+                self.pageSnapshot { after in
+                    guard generation == self.turnGeneration, let b = after else { return remove() }
                     log.debug("page turn: animating (\(twoPages ? "two pages" : "one page", privacy: .public))")
                     overlay.run(before: a, after: b, direction: leafMovesLeft ? .towardLeft : .towardRight,
                                 twoPages: twoPages, completion: remove)
+                }
                 }
             }
         }

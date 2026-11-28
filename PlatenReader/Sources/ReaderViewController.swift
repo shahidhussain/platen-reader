@@ -31,6 +31,19 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost {
     /// When the last page turn was asked for, to spot rapid key presses.
     var lastTurnRequest: TimeInterval = 0
     private var voiceOverObservation: NSKeyValueObservation?
+    /// Behind the page: a soft glow of its own colours (Ambient Light, as on
+    /// iOS; ReaderViewController+Glow), with the page see-through.
+    let ambient = PassThroughImageView()
+    var ambientWork: DispatchWorkItem?
+    /// The glow's edge mask, made for one window size.
+    var ambientMask: (size: CGSize, image: CGImage)?
+    /// The theme (its page colour) the glow on show was made in.
+    var glowTheme: String?
+    /// A page that is only a picture, shown full size over the page (as on
+    /// iOS; the page hides its own, smaller copy).
+    let lonePictureView = PassThroughImageView()
+    /// A turn waiting for a picture-only page's picture (settleLonePicture).
+    var lonePictureWaiter: (() -> Void)?
 
     init(document: BookDocument) {
         let state = ReaderState()
@@ -56,6 +69,12 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost {
         let root = ReaderRootView()
         root.wantsLayer = true
 
+        // The glow lies behind the page, filling the window.
+        ambient.translatesAutoresizingMaskIntoConstraints = false
+        ambient.imageScaling = .scaleAxesIndependently
+        ambient.isHidden = true
+        root.addSubview(ambient)
+
         webView = ReaderWebView(frame: .zero, configuration: session.makeConfiguration())
         webView.allowsMagnification = false
         webView.allowsBackForwardNavigationGestures = false
@@ -65,13 +84,31 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost {
         webView.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(webView)
 
+        // A picture-only page's picture, full size, over the page.
+        lonePictureView.translatesAutoresizingMaskIntoConstraints = false
+        lonePictureView.imageScaling = .scaleProportionallyUpOrDown
+        lonePictureView.wantsLayer = true
+        lonePictureView.isHidden = true
+        lonePictureView.setAccessibilityElement(false)
+        root.addSubview(lonePictureView)
+
         // VoiceOver reads the book through this stand-in, not the web view.
         bookPage.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(bookPage)
         root.hiddenFromAccessibility = webView
         webView.accessibilityStandIn = bookPage
 
+        let pictureMargin: CGFloat = 16
         NSLayoutConstraint.activate([
+            ambient.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            ambient.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            ambient.topAnchor.constraint(equalTo: root.topAnchor),
+            ambient.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            // Clear of the title bar at the top (the window's safe area).
+            lonePictureView.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: pictureMargin),
+            lonePictureView.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -pictureMargin),
+            lonePictureView.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: pictureMargin),
+            lonePictureView.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -pictureMargin),
             webView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             webView.topAnchor.constraint(equalTo: root.topAnchor),
@@ -112,6 +149,12 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost {
     override func applySettings() {
         super.applySettings()
         session.pushSettings()
+        updateAmbient()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        updateAmbient(layoutOnly: true) // the glow's edges follow the window's size
     }
 
     override func savePositionNow() { session.savePositionNow() }
@@ -167,6 +210,7 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost {
         #endif
         reportLayoutToSettings()
         view.window?.subtitle = state.chapter
+        updateAmbient()
     }
 
     func sessionDidJump() {

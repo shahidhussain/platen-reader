@@ -47,6 +47,9 @@ check plate-page.epub         "${NARROW}platen.view.goTo(0);'before:'+platen.pag
 # the plate between the paragraphs is found, and each picture-book page's
 # picture (in a paragraph with no words of its own).
 check plate-page.epub         "platen.view.goTo(0);platen.readAloudPictures()" "pictures: 1"
+# A picture-only page is shown full size natively (iOS, and the Mac since
+# 28 Nov 2026): the page's own copy is hidden once Swift has the picture.
+check plate-page.epub         "${NARROW}platen.view.goTo(0);platen.next();(d=>'copy:'+getComputedStyle(d.querySelector('img, svg')).visibility)(platen.view.renderer.getContents()[0].doc)" "copy:hidden"
 check picture-indent.epub     "platen.readAloudPictures()"            "pictures: 4"
 # Body text set at 75% by the book still comes out at the size chosen.
 check small-body-text.epub    "(d=>'body:'+(Math.abs(parseFloat(getComputedStyle(d.querySelector('p')).fontSize)-platen.fontSize())<0.1))(platen.view.renderer.getContents()[0].doc)" "body:true"

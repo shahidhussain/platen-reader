@@ -52,8 +52,13 @@ final class HomeWindowController: NSWindowController, NSWindowDelegate {
         // again.) Where the reader left it, and its size; centred the
         // first time.
         window.setContentSize(NSSize(width: 980, height: 660))
-        if !window.setFrameUsingName("Home") { window.center() }
-        window.setFrameAutosaveName("Home")
+        // (Automated runs, PLATEN_TEST_HOME, neither use nor save it.)
+        if ProcessInfo.processInfo.environment["PLATEN_TEST_HOME"] != nil {
+            window.center()
+        } else {
+            if !window.setFrameUsingName("Home") { window.center() }
+            window.setFrameAutosaveName("Home")
+        }
     }
 
     @available(*, unavailable)

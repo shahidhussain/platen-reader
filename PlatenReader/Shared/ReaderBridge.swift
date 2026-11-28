@@ -93,6 +93,9 @@ struct WebSettings: Equatable {
     /// The page paints no background of its own, so a glow drawn behind the
     /// web view shows through (iOS ambient light).
     var transparent = false
+    /// A page that is just one picture is sent to Swift to show full size
+    /// natively (the Mac; iOS does it because of `touch`).
+    var lonePictures = false
 
     /// As the plain values WebKit can pass to JavaScript.
     var payload: [String: Any] {
@@ -119,6 +122,7 @@ struct WebSettings: Equatable {
         if let verticalMargin { payload["verticalMargin"] = verticalMargin }
         if let ribbonInset { payload["ribbonInset"] = ribbonInset }
         if transparent { payload["transparent"] = true }
+        if lonePictures { payload["lonePictures"] = true }
         return payload
     }
 }

@@ -38,7 +38,12 @@ final class ReaderWindowController: NSWindowController, NSWindowDelegate {
         window.setContentSize(NSSize(width: 900, height: 780))
         // Remember the size of the last window; new windows cascade from it.
         shouldCascadeWindows = true
-        windowFrameAutosaveName = "PlatenReaderWindow"
+        // (Not in automated runs, PLATEN_TEST_HOME: a size saved from the
+        // reader's own use, a full-screen-wide window say, changed the layout
+        // the corpus checks see, 28 Nov 2026. They start at 900 by 780.)
+        if ProcessInfo.processInfo.environment["PLATEN_TEST_HOME"] == nil {
+            windowFrameAutosaveName = "PlatenReaderWindow"
+        }
         if window.frame.origin == .zero { window.center() }
     }
 
