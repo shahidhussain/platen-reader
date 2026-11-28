@@ -595,11 +595,10 @@ struct TypographyPopover: View {
                 lineSpacingPicker.disabled(state.isFixedLayout)
             }
             appearancePicker
-            if state.isPDF {
-                // The glow of the page's own colours filling the window
-                // around it (PDFs on the Mac; books too on iOS).
-                Toggle("Ambient Light", isOn: $settings.ambientLight)
-            }
+            // The glow of the page's own colours around it (books and PDFs,
+            // as on iOS; not in the Black theme, whose point is a black
+            // screen).
+            Toggle("Ambient Light", isOn: $settings.ambientLight)
         }
         .formStyle(.grouped)
         .frame(width: 360)

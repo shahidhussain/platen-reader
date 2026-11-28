@@ -132,12 +132,14 @@ function pagePicture(doc) {
 }
 
 // The picture-only page on screen, if there is one (and native display is
-// in use: one page across, paginated, not fixed layout, on iOS). `picture`
+// in use: one page across, paginated, not fixed layout, on iOS, and on the
+// Mac, which asks for it with `lonePictures`). `picture`
 // is the img or svg element; `key` names it within the book.
 function currentLonePicture() {
     const r = reader.view?.renderer
     const { doc, index } = r?.getContents?.()[0] ?? {}
-    const usable = reader.settings?.touch && !reader.isFixedLayout && reader.settings?.flow !== 'scrolled'
+    const usable = (reader.settings?.touch || reader.settings?.lonePictures) && !reader.isFixedLayout
+        && reader.settings?.flow !== 'scrolled'
         && (r?.feet?.length ?? 1) === 1
     if (!usable || !doc) return { r, doc, index, picture: null, key: null }
     const picture = doc.documentElement.classList.contains('platen-lone-picture')
@@ -396,6 +398,14 @@ window.platen = {
     pictureAt,
     // iOS, during a page turn: is the new page a picture-only page?
     lonePictureState,
+    // The Mac, before a turn foliate animates itself (Slide, None): the
+    // page's own copy of the picture shows again, so it moves with the page,
+    // and the picture is sent afresh if the reader comes back to it.
+    releaseLonePicture: () => {
+        showPageCopy()
+        lonePictureKey = null
+        lonePictureSent = null
+    },
     // Whether the page on screen is one picture and nothing else, whatever
     // the platform (the corpus checks it on the Mac, which has no native
     // picture view).

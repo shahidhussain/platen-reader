@@ -570,6 +570,13 @@ final class BookSession: NSObject, ReaderCommands, ReadAloudSource, WKScriptMess
         }
     }
 
+    /// Before a turn that the page animates itself (the Mac's Slide and
+    /// None): the picture shown full size natively goes back to the page.
+    func releaseLonePicture() {
+        guard isOpenInPage, let webView else { return }
+        webView.callAsyncJavaScript("platen.releaseLonePicture()", arguments: [:], in: nil, in: .page)
+    }
+
     /// Where a fixed-layout book's pages are on screen (one, or two in a
     /// spread), in the web view's coordinates: the area the ambient glow is
     /// made from (iOS). Empty for other books.
