@@ -29,11 +29,13 @@ compiled in or started, and the menu item and setting do not show.
 
 ## Setting up (once)
 
-1. **Add the package.** In Xcode: File › Add Package Dependencies…, enter
-   `https://github.com/sparkle-project/Sparkle`, rule *Up to Next Major
-   Version* from 2.6.0, and add the **Sparkle** library to the
-   **PlatenReader** (Mac) target only, not PlatenReader iOS. Build once.
-   Commit the project change and `Package.resolved` (or tell Claude to).
+1. **Add the package** (done 28 Nov 2026: Sparkle 2.10.1, Mac target only).
+   In Xcode: File › Add Package Dependencies…,
+   `https://github.com/sparkle-project/Sparkle`, *Up to Next Major Version*
+   from 2.6.0, the **Sparkle** library on the **PlatenReader** (Mac) target
+   only. The release workflow signs Sparkle's helpers again with the
+   Developer ID before notarising (as Sparkle asks of builds made outside
+   Xcode's Archive).
 2. **Make the signing keys.** Sparkle's tool comes with the package:
 
    ```sh

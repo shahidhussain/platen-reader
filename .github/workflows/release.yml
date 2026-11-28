@@ -84,6 +84,21 @@ jobs:
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             build
           APP="build/DerivedData/Build/Products/Release/Platen Reader.app"
+          # Sparkle's helpers (the updater, its installer and downloader) are
+          # signed again with our Developer ID, hardened runtime and a
+          # timestamp, innermost first, then the app itself, as Sparkle's
+          # documentation asks of builds made outside Xcode's Archive:
+          # notarisation refuses them otherwise.
+          FW="$APP/Contents/Frameworks/Sparkle.framework"
+          if [ -d "$FW" ]; then
+            SIGN=(codesign --force --sign "Developer ID Application" --options runtime --timestamp)
+            "${SIGN[@]}" "$FW/Versions/B/XPCServices/Installer.xpc"
+            "${SIGN[@]}" --preserve-metadata=entitlements "$FW/Versions/B/XPCServices/Downloader.xpc"
+            "${SIGN[@]}" "$FW/Versions/B/Autoupdate"
+            "${SIGN[@]}" "$FW/Versions/B/Updater.app"
+            "${SIGN[@]}" "$FW"
+            "${SIGN[@]}" --preserve-metadata=entitlements "$APP"
+          fi
           codesign --verify --deep --strict --verbose=2 "$APP"
           # Xcode adds get-task-allow (debugger access) unless told not to
           # (the setting above), and Apple refuses to notarise an app with it.

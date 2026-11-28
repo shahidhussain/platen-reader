@@ -77,14 +77,25 @@ struct AcknowledgementsView: View {
         #endif
     }
 
-    /// One row per component, in two groups: what is in the app, and what
-    /// is in the voice pack.
+    /// One row per component, in groups: what is in the app, what is in
+    /// the Mac download alone (Sparkle; shown only there), and what is in the
+    /// voice pack.
     @ViewBuilder private var rows: some View {
         Section {
             ForEach(list.components.filter { $0.shipped == "app" }) { row($0) }
         } header: {
             Text("In the App")
         }
+        #if os(macOS)
+        let download = list.components.filter { $0.shipped == "mac-download" }
+        if !download.isEmpty {
+            Section {
+                ForEach(download) { row($0) }
+            } header: {
+                Text("In the Mac Download")
+            }
+        }
+        #endif
         Section {
             ForEach(list.components.filter { $0.shipped == "voice" }) { row($0) }
         } header: {
