@@ -4,6 +4,14 @@
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 APP="$ROOT/build/DerivedData/Build/Products/Debug/Platen Reader.app/Contents/MacOS/Platen Reader"
+# The app's own data (settings, reading positions, Home's lists) goes to a
+# throwaway place, so a run never adds the fixtures to your Recent Books or
+# reads your settings. Set PLATEN_TEST_HOME yourself to keep it between runs.
+if [ -z "${PLATEN_TEST_HOME:-}" ]; then
+    PLATEN_TEST_HOME=$(mktemp -d "${TMPDIR:-/tmp}/platen-debug.XXXXXX")
+    trap 'rm -rf "$PLATEN_TEST_HOME"' EXIT
+fi
+export PLATEN_TEST_HOME
 mkdir -p "$ROOT/build/snaps"
 pkill -f "Platen Reader.app/Contents/MacOS" 2>/dev/null; sleep 0.5
 /usr/bin/log stream --level info --style compact --predicate 'subsystem == "Platen Reader"' > "$ROOT/build/app.log" 2>&1 &

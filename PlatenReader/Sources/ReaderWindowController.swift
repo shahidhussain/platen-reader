@@ -56,11 +56,14 @@ final class ReaderWindowController: NSWindowController, NSWindowDelegate {
         #endif
         readerViewController?.savePositionNow()
         readerViewController?.readAloudStarter.stop()
-        // There is always a window: when the last book closes, the welcome
-        // window comes back.
+        // A folder on show reads itself again (the book may have been moved
+        // or deleted meanwhile).
+        NotificationCenter.default.post(name: .platenFolderShouldRefresh, object: nil)
+        // There is always a window: when the last book closes, Home comes
+        // back.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             if NSDocumentController.shared.documents.isEmpty, !AppDelegate.isQuitting {
-                WelcomeWindowController.shared.show()
+                HomeWindowController.shared.show()
             }
         }
     }

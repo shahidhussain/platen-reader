@@ -1,105 +1,92 @@
-# A folder view for the Mac: plan
+# Home on the Mac
 
-Status: agreed (28 Nov 2026), not started. Asked for after the first DMG
-test, when the Mac's welcome window turned out to have no "Choose Folder…"
-(the iOS one does). Target: 1.1, after the Mac 1.0 download ships.
+Status: built (28 Nov 2026, version 1.0.7). Asked for after the first DMG
+test, when the Mac's welcome window turned out to have no "Choose Folder…";
+then widened the same day to "pretty much up to par with the iOS version".
+The spec's decision is "Home on the Mac".
 
 ## What it is
 
-The iOS home screen's folder view, made a Mac window: choose a folder and
-see its books as a grid of covers, folders inside it first, search and
-filter by kind, and double-click to read. It is still not a library:
-nothing is imported, copied or catalogued, and the folder on disk is the
-only truth ("Files are the library", the spec's first principle). Finder
-stays a perfectly good way in; this is a nicer one for people who keep
-their books in one or two folders.
+The iOS home screen, as a Mac window. It is still not a library: nothing
+is imported, copied or catalogued, and the folders on disk are the only
+truth ("Files are the library", the spec's first principle). The lists it
+keeps are the iOS ones (docs/per-book-data.md, "Recents (iOS and Mac)").
 
-## How it looks (the Mac's own idiom, not the iPhone's tabs)
+## How it looks
 
-One window, **Home**, with a sidebar (SwiftUI `NavigationSplitView`), as in
-Finder, Music and Notes:
+One window, **Home** (`PlatenReader/Sources/HomeWindow.swift`), with a
+sidebar, as in Books, Music and Finder:
 
-- **Sidebar:** Home (the welcome: Open Book…, Open Folder…, the formats),
-  Recent Books, and then each chosen folder by name, with its storage
-  (iCloud, this Mac, a share, a drive) as a small icon. Right-click a folder
-  to remove it or show it in Finder; + at the bottom adds one; folders can
-  be dragged in from Finder.
-- **Detail:** the folder's covers, sized by a slider in the toolbar (the
-  Finder's icon-size control), sub-folders first; a toolbar search field
-  (⌘F) for file name, title and author; the kind filter and the sort in a
-  toolbar menu. A path bar under the grid, or the window's title menu,
-  steps back up to the folder chosen.
-- **Opening a book:** double-click or Return opens it in its own book
-  window, as every book opens now (`NSDocument`); the Home window stays.
-  Space shows Quick Look, as in Finder. Arrow keys move through the covers.
-  Drag a cover out to Finder or Mail as the file itself.
-- **Recent Books** on the Mac is the system's own list (`NSDocumentController`
-  recent documents, the same as File › Open Recent), shown as covers. No new
-  list is stored for it.
+- **Sidebar:** Home, Favourites and Recent Books (the iOS tabs, in their
+  order), then **Folders**: each folder the reader chose, with an icon for
+  where it is kept (this Mac, iCloud Drive, a share, a drive). A folder that
+  cannot be reached is greyed, with the reason as its tooltip. Folders can be
+  dragged into an order; right-click to show one in Finder or remove it; +
+  at the foot adds one.
+- **Home:** the folders as rows (each with its fan of covers and its path,
+  `~/…` for the home folder), then the first favourites (up to six on the
+  Mac, at a steady size) with See All. Clicking a folder opens it inside
+  Home, with Back.
+- **A folder:** its covers, sub-folders first. The search field (title,
+  author or file name) is in the toolbar, as in Finder; View Options (order,
+  kinds shown, words under each cover) is the filter button. The covers are
+  sized rather than counted, so a wider window fits more: a pinch on the
+  trackpad makes them bigger or smaller.
+- **Favourites and Recent Books:** covers, as on iOS; a book that cannot be
+  reached is greyed and says why.
+- **A cover's right-click menu:** Add to (or Remove from) Favourites, Get
+  Info, Show in Finder; in the lists, Remove.
+- **Opening a book:** a click opens it in its own window, as every book has
+  always opened (`NSDocument`); Home stays. It joins Recent Books as it opens
+  (`BookDocument`), whichever way it was opened.
 
 ## When it shows
 
-- At launch, when no book is reopened: the Home window instead of today's
-  welcome window. Before any folder is chosen it shows Home, which is the
-  welcome as it is now plus "Open Folder…", so a first launch looks the same.
-- From the menus: **File › Open Folder…** (⇧⌘O) and **Window › Home**
-  (⇧⌘H, as Finder uses for the home folder), at any time.
-- Closing it is fine; it is never the app's only way in.
+- At launch, when no book is reopened. Before anything has been opened or
+  chosen it is the welcome alone (Open Book…, Choose Folder…, the formats),
+  as on iOS; it replaces the old welcome window.
+- When the last book window closes.
+- **File › Open Folder…** (⇧⌘O) and **Window › Home** (⇧⌘H).
 
-## What is reused, and what is new
+## How it is built
 
-Most of the work is already shared and platform-neutral in
-`PlatenReader/Shared` (it compiles into the Mac app today, unused):
+The iOS home screen's views moved into `PlatenReader/Shared` and are used by
+both apps; each app supplies only its frame and its `HomeActions`:
 
-| Reused as is | `FolderModel`, `FolderScanner`, `FolderListingCache`, `CoverImages` (covers as `CGImage`, Quick Look thumbnails), `BookTypeFilter`, `FolderSort`, `FolderSearch`, `RecentList`, `StoragePlace` and the new move guard, `CoverLook` |
+| Shared | `HomeViews.swift` (`HomeNavigation`, `HomeActions`, the reach checks, `BookShelfView` for Favourites and Recent Books, `RecentFoldersView` for Home), `FolderView.swift` (the folder grid, tiles, View Options, `CoverColumns`), `HomeSections.swift`, `Favourites.swift`, `FolderCoverFan.swift`, `BookInfoView.swift`, `OfflineSettingsSection.swift`, and `HomePlatform.swift`, the few platform differences in one place |
 |---|---|
-| Moved to Shared, split by platform | `FolderView.swift` (661 lines; its one iOS tie is the foreground notification) and the cover cell from `FolderCoverFan.swift`; iOS-only modifiers (the search drawer, pull-to-refresh, the tab row's room below) move into a `+UIKit` file |
-| New, Mac only | `HomeWindow.swift` (the window, the sidebar, menus, Quick Look, drag out), File › Open Folder… and Window › Home in `MainMenu`, the launch decision in the app delegate, the welcome window folded into Home |
-| Left out on the Mac | Favourites and offline copies (iOS answers to files that may not be on the phone; a Mac's iCloud Drive keeps files itself), Book Info sheet (Finder's Get Info does it) |
+| iOS only | `HomeTabs.swift` (the sliding tab row and its tab bar), `HomeViewController`, `Favourites+UIKit.swift` (the taps when a favourite is marked), `BookWindows` (iPad windows) |
+| Mac only | `HomeWindow.swift` (the window, the sidebar, the Open panels, Show in Finder), the menu items in `MainMenu`, the launch and last-window-closed decisions in `AppDelegate` and `ReaderWindowController`, Keep Favourites on This Mac in Settings › Advanced |
 
-## Rules this touches (decisions needed)
+What differs on the Mac, and why:
 
-1. **Per-book data: agreed 28 Nov 2026.** The Mac keeps the list of
-   folders chosen (names, paths, bookmarks, in `recents/folders.json`), as
-   iOS does; Recent Books needs nothing stored. Recorded in the spec's
-   "Decisions made" and in per-book-data.md ("On the Mac").
-2. **The sandbox, later.** The direct download is not sandboxed, so a
-   chosen folder can be read again at the next launch without asking. The
-   Mac App Store build will be: folder bookmarks are therefore made with
-   `.withSecurityScope` on the Mac from the start, and access is opened and
-   closed around each read, so nothing changes when the sandbox arrives.
-3. **Launch.** "Launching never lands in a file browser" stays true: a book
-   left open still reopens directly; the Home window is what shows when
-   there is no book, in place of the welcome.
+- **No edit mode.** Folders are dragged into order and removed from their
+  menu at any time, as Mac lists work; the order of Home's two sections is
+  the iOS one (Folders, then Favourites) unless changed on iOS.
+- **No haptics, no "Open in New Window".** Every book already opens in its
+  own window.
+- **Bookmarks are security-scoped** (`RecentList.bookmark(for:)`), so the
+  lists keep working when the Mac App Store build is sandboxed.
+- **Cover sizes** come from the window's width (`CoverColumns.macCoverWidth`).
 
-## Phases
+## Checking it
 
-1. **Share the folder view** (about a day). Move `FolderView` and the cover
-   cell into Shared with the iOS parts split off; the iOS app must look and
-   behave exactly as before (`scripts/ios-matrix.py`, the folder hooks in
-   `run-ios-debug.sh`).
-2. **The Home window** (two to three days). Sidebar, grid, search, filter,
-   sort, size slider, opening books, Open Folder…, Window › Home, the launch
-   decision; the welcome folded in. A Debug hook, `PLATEN_FOLDER_PATH` as on
-   iOS, opens a folder in Home for `run-debug.sh` snapshots.
-3. **Recent folders and Recent Books on the Mac** (a day). Security-scoped
-   bookmarks, the move guard, folders on shares and drives that are not
-   mounted shown as unavailable (as on iOS), Recent Books from the system's
-   list.
-4. **Finder manners** (a day). Quick Look on Space, drag out, Show in
-   Finder, arrow keys and type-to-select, VoiceOver names for covers and
-   folders, Reduce Motion.
-5. **Checks and docs.** Tests in `PlatenReaderTests` for anything new in
-   Shared (the bookmark options, the launch decision if it is shared logic);
-   a UI test that opens a fixture folder and a book from it; spec, README,
-   per-book-data.md and the welcome's strings. A version bump per change, as
-   always.
+- `PLATEN_FOLDER_PATH=<folder>` opens Home on that folder at launch;
+  `PLATEN_HOME_BOOKS` and `PLATEN_HOME_FAVOURITES` (paths separated by `|`)
+  fill the lists, and `PLATEN_HOME_TAB=home|favourites|books` picks the part
+  (Debug builds, with `PLATEN_TEST_HOME`). With `PLATEN_SNAPSHOT_DIR`, Home
+  is saved as `home-window-…png`, and again as `home-settled-…png` once the
+  covers have loaded (snapshots of Home are taken from the window server, as
+  its sidebar does not draw offscreen).
+- `PlatenReaderTests/MacHomeTests.swift` covers what differs on the Mac.
 
-About a week in all, most of it in phase 2.
+## Not yet done
 
-## Open questions for you
-
-- One Home window, or one per folder (Finder's ⌘N)? The plan says one:
-  simpler, and it is a reader, not a file manager.
-- Should the Mac app remember that Home was open at quit and bring it back,
-  alongside reopened books? The plan says yes.
+- A volume on a share mounted in `/Volumes` shows as a drive until it has
+  been opened once (the path alone cannot tell; `RecentList.refinePlace`
+  learns it).
+- Keyboard: Return to open the selected cover, and arrow keys between
+  covers (the grid is clickable, not yet a selectable collection), Space for
+  Quick Look, and dragging a cover out to Finder.
+- View › Bigger and Smaller Covers in the menu (⌘+ and ⌘− are the reader's
+  text size).

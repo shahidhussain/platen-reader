@@ -53,6 +53,9 @@
     "Favourites kept on this device: %lld (%@)." : {
 
     },
+    "Favourites kept on this Mac: %lld (%@)." : {
+
+    },
     "Folder not available on this network" : {
 
     },
@@ -63,6 +66,9 @@
 
     },
     "Keep Favourites on This Device" : {
+
+    },
+    "Keep Favourites on This Mac" : {
 
     },
     "Privacy Policy" : {
@@ -213,6 +219,9 @@
 
     },
     "Check your connection and try again from Settings › Read Aloud." : {
+
+    },
+    "Choose" : {
 
     },
     "Choose a folder of books to find it here." : {
@@ -500,6 +509,9 @@
     "Looking for books…" : {
 
     },
+    "macOS updates a file’s last-accessed date only now and then, so it can be well behind." : {
+
+    },
     "Made by Shahid Hussain" : {
 
     },
@@ -587,6 +599,9 @@
     "On My iPhone" : {
 
     },
+    "On My Mac" : {
+
+    },
     "On this device" : {
 
     },
@@ -594,6 +609,9 @@
 
     },
     "Open Book…" : {
+
+    },
+    "Open Folder…" : {
 
     },
     "Open in New Window" : {
@@ -844,6 +862,9 @@
 
     },
     "Show Controls" : {
+
+    },
+    "Show in Finder" : {
 
     },
     "Show pages left in chapter" : {

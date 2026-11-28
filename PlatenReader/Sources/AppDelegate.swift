@@ -45,16 +45,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The on-device record of how the app has been running, for problem
         // reports (DiagnosticLog; it holds no book titles or file names).
         DiagnosticLog.shared.start()
+        // What Home calls this Mac's own storage (iOS says "On My iPhone").
+        StoragePlace.thisDevice = String(localized: "On My Mac")
+        // Favourites kept elsewhere are copied to this Mac (and copies of
+        // books no longer favourites deleted), as on iOS; looked at again
+        // each time the app comes to the front.
+        OfflineCopies.shared.start()
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil,
+                                               queue: .main) { _ in
+            MainActor.assumeIsolated { OfflineCopies.shared.sync() }
+        }
         // If nothing was opened from Finder and no windows were restored,
-        // show the welcome window with its Open button.
+        // show Home (the welcome, the first time).
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            if NSDocumentController.shared.documents.isEmpty, NSApp.windows.allSatisfy({ !$0.isVisible }) {
-                WelcomeWindowController.shared.show()
-                #if DEBUG
-                // Design checks: the welcome window, as a snapshot.
-                DebugHooks.snapshotWindows(name: "welcome")
-                #endif
+            #if DEBUG
+            // PLATEN_FOLDER_PATH=<folder>: Home opens on that folder, as if
+            // just chosen (DebugHooks.swift).
+            if let folder = ProcessInfo.processInfo.environment["PLATEN_FOLDER_PATH"] {
+                HomeWindowController.shared.showChosen(folder: URL(fileURLWithPath: folder))
             }
+            DebugHooks.seedHome()
+            #endif
+            if NSDocumentController.shared.documents.isEmpty, NSApp.windows.allSatisfy({ !$0.isVisible }) {
+                HomeWindowController.shared.show()
+            }
+            #if DEBUG
+            // Design checks: Home (or the welcome), as a snapshot.
+            if NSDocumentController.shared.documents.isEmpty {
+                DebugHooks.snapshotWindows(name: "home")
+                // Again once the covers have had time to load.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { DebugHooks.snapshotWindows(name: "home-settled") }
+            }
+            #endif
         }
     }
 
@@ -74,8 +96,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// File › Open Folder… (⇧⌘O): a folder of books, shown in Home.
+    @objc func openFolder(_ sender: Any?) {
+        HomeWindowController.shared.chooseFolder()
+    }
+
+    /// Window › Home (⇧⌘H).
+    @objc func showHome(_ sender: Any?) {
+        HomeWindowController.shared.show()
+    }
+
     /// Set once the app starts quitting, so closing book windows on the way
-    /// out does not bring the welcome window back.
+    /// out does not bring Home back.
     static var isQuitting = false
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -87,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if !hasVisibleWindows { WelcomeWindowController.shared.show() }
+        if !hasVisibleWindows { HomeWindowController.shared.show() }
         return false
     }
 

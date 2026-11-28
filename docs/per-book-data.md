@@ -37,7 +37,7 @@ Platen stores one JSON file per book:
 - Writes are atomic: Platen writes a temporary file and renames it over the old one. Saves after page turns are debounced by 0.75 s; closing the window saves immediately.
 - Settings > Advanced > Clear deletes the whole `books` folder.
 
-## Recents (iOS)
+## Recents (iOS and Mac)
 
 At the reader's request (15 Nov 2026), the iOS home screen keeps short lists for its tabs: Recent Books, the Home tab's folders (only folders the reader chose, not ones browsed into), and, at the reader's request (21 Nov 2026), Favourites (books marked from a cover's long-press menu, in a folder or in Recent Books):
 
@@ -50,11 +50,11 @@ At the reader's request (15 Nov 2026), the iOS home screen keeps short lists for
 
 Each entry has an `id`, a `bookmark` (the system's reference to the file or folder, which keeps permission to read it and is how it is found again), its `name`, the `path` it was at (to recognise it when opened again, and to show which folder it is in; never used to open it), `lastOpened`, and for books the `title` and `author` and whether a copy of the cover is kept (`hasCover`, a small JPEG in `covers/`, so the list shows it even when the book cannot be reached). At most 60 recent books and folders are kept, newest first (favourites are not trimmed). A long press on an item removes it, with its cover copy; nothing else about the book is touched.
 
-### On the Mac (planned for 1.1)
+### On the Mac
 
-At the reader's request (28 Nov 2026), the Mac's Home window (docs/mac-folder-view-plan.md) keeps the list of folders the reader chooses, in the same `recents/folders.json` and in the same form. Nothing else from this section is kept on the Mac: Recent Books there is the system's own recent-documents list (File › Open Recent), and there are no favourites or cover copies. On the Mac the bookmarks are made security-scoped, so the list keeps working when the Mac App Store build is sandboxed.
+At the reader's request (28 Nov 2026), the Mac has the same home screen (its Home window; docs/mac-folder-view-plan.md) and keeps the same lists, in the same files and the same form: Recent Books (a book joins it as it opens, from Finder, Home or File › Open), the folders the reader chose, and Favourites, with the cover copies. Favourites kept elsewhere are copied to the Mac too ("Offline copies" below; Settings › Advanced › Keep Favourites on This Mac). The Mac's own File › Open Recent menu is the system's, as before. On the Mac the bookmarks are made security-scoped, so the lists keep working when the Mac App Store build is sandboxed. Automated runs (`scripts/run-debug.sh`, the corpus checks) keep all of this in a throwaway place (`PLATEN_TEST_HOME`).
 
-## Offline copies of favourites (iOS)
+## Offline copies of favourites (iOS and Mac)
 
 At the reader's request (25 Nov 2026), a favourite kept somewhere other than this device (iCloud Drive or another cloud, a network share, a drive) is copied to the device, so it can be read offline or away from the share:
 

@@ -48,7 +48,7 @@ To run the core tests: `swift test --package-path PlatenCore`. To check the robu
 - One **Appearance** setting: Automatic, Light, Sepia, Dark or Black (for OLED screens).
 - One **Layout** setting: One Page (⌘1), Two Pages (⌘2) or Scroll (⌘3). Layout and line width have their own popover in the controls; Aa holds text and appearance.
 - Contents, bookmarks and search open in a popover from the Contents button. A bookmark button sits in the controls.
-- A welcome window with an Open Book… button at launch; one running copy of the app; ⌘W closes the front window whatever has focus.
+- A Home window, as on iOS: a sidebar of Home (your folders, then favourites), Favourites and Recent Books, with your folders under them; folders as grids of covers with search and filters; File › Open Folder… and Window › Home. Before anything is opened it is the welcome, with Open Book… and Choose Folder…; one running copy of the app; ⌘W closes the front window whatever has focus.
 - The click-zone explainer shows for the first five books opened. A note explains when Two Pages shows one page because the window is narrow.
 - `scripts/check-corpus.sh` opens every fixture and checks the result (30 of 30 pass); `scripts/check-corpus-ios.sh` does the same in the iOS Simulator. CI runs it on every pull request, along with the core unit and timing tests, unit tests of the code the two apps share (`PlatenReaderTests`), both app builds, and UI tests (`PlatenReaderUITests`: opening a book, turning pages, one versus two pages, and a bookmark and position surviving reopening). UI tests use a throwaway settings and positions folder (`PLATEN_TEST_HOME`), never your own.
 
