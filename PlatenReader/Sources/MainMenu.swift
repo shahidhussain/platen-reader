@@ -43,6 +43,12 @@ enum MainMenu {
         let name = String(localized: "Platen Reader")
         let menu = NSMenu(title: name)
         menu.addItem(item(String(localized: "About \(name)"), #selector(AppDelegate.showAbout(_:)), ""))
+        // The download build's updates (Sparkle; not in App Store builds).
+        if Updates.shared.isAvailable {
+            let check = item(String(localized: "Check for Updates…"), #selector(Updates.checkForUpdates(_:)))
+            check.target = Updates.shared
+            menu.addItem(check)
+        }
         menu.addItem(.separator())
         let settings = item(String(localized: "Settings…"), #selector(AppDelegate.showSettings(_:)), ",")
         menu.addItem(settings)

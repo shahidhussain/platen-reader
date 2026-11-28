@@ -294,6 +294,26 @@ private struct ReadAloudSettingsView: View {
     }
 }
 
+/// Check for updates automatically (Sparkle, on by default), and a Check Now
+/// button.
+private struct UpdatesSettingsSection: View {
+    @State private var automatic = Updates.shared.checksAutomatically
+
+    var body: some View {
+        Section {
+            Toggle("Check for updates automatically", isOn: $automatic)
+                .onChange(of: automatic) { _, on in Updates.shared.checksAutomatically = on }
+            LabeledContent("Updates") {
+                Button("Check Now") { Updates.shared.checkForUpdates(nil) }
+            }
+        } footer: {
+            Text("About once a day, Platen Reader asks its website whether there is a newer version. Nothing about you or your Mac is sent.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
 private struct AdvancedSettingsView: View {
     @State private var confirmClear = false
 
@@ -315,6 +335,8 @@ private struct AdvancedSettingsView: View {
             }
             // Favourites kept elsewhere copied to this Mac (as on iOS).
             OfflineSettingsSection()
+            // The download build's updates (Sparkle; not in App Store builds).
+            if Updates.shared.isAvailable { UpdatesSettingsSection() }
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)

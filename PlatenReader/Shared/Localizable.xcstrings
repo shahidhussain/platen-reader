@@ -110,6 +110,9 @@
     "About DRM-Protected Books" : {
 
     },
+    "About once a day, Platen Reader asks its website whether there is a newer version. Nothing about you or your Mac is sent." : {
+
+    },
     "About Platen Reader" : {
 
     },
@@ -219,6 +222,15 @@
 
     },
     "Change the filter to see the other books here." : {
+
+    },
+    "Check for updates automatically" : {
+
+    },
+    "Check for Updates…" : {
+
+    },
+    "Check Now" : {
 
     },
     "Check your connection and try again from Settings › Read Aloud." : {
@@ -447,6 +459,9 @@
 
     },
     "In the App" : {
+
+    },
+    "In the Mac Download" : {
 
     },
     "In the Natural Voice Download" : {
@@ -1021,6 +1036,9 @@
 
     },
     "Untitled" : {
+
+    },
+    "Updates" : {
 
     },
     "Version %@" : {

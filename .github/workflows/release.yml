@@ -14,6 +14,9 @@
 #   ASC_KEY_P8_BASE64          an App Store Connect API key (.p8), base64
 #   ASC_KEY_ID                 that key's ID
 #   ASC_ISSUER_ID              the issuer ID shown above the list of keys
+#   SPARKLE_ED_PRIVATE_KEY     Sparkle's private EdDSA key (generate_keys -x;
+#                              docs/updates.md). Optional: without it the
+#                              release has no appcast, and no update is offered
 #
 # Notarisation is Apple scanning the app and vouching for it, so that macOS
 # opens it without a warning; stapling attaches that ticket to the app so it
@@ -81,6 +84,21 @@ jobs:
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             build
           APP="build/DerivedData/Build/Products/Release/Platen Reader.app"
+          # Sparkle's helpers (the updater, its installer and downloader) are
+          # signed again with our Developer ID, hardened runtime and a
+          # timestamp, innermost first, then the app itself, as Sparkle's
+          # documentation asks of builds made outside Xcode's Archive:
+          # notarisation refuses them otherwise.
+          FW="$APP/Contents/Frameworks/Sparkle.framework"
+          if [ -d "$FW" ]; then
+            SIGN=(codesign --force --sign "Developer ID Application" --options runtime --timestamp)
+            "${SIGN[@]}" "$FW/Versions/B/XPCServices/Installer.xpc"
+            "${SIGN[@]}" --preserve-metadata=entitlements "$FW/Versions/B/XPCServices/Downloader.xpc"
+            "${SIGN[@]}" "$FW/Versions/B/Autoupdate"
+            "${SIGN[@]}" "$FW/Versions/B/Updater.app"
+            "${SIGN[@]}" "$FW"
+            "${SIGN[@]}" --preserve-metadata=entitlements "$APP"
+          fi
           codesign --verify --deep --strict --verbose=2 "$APP"
           # Xcode adds get-task-allow (debugger access) unless told not to
           # (the setting above), and Apple refuses to notarise an app with it.
@@ -130,6 +148,50 @@ jobs:
           spctl --assess --type open --context context:primary-signature --verbose "$DMG"
           shasum -a 256 "$DMG" | tee "$DMG.sha256"
 
+      - name: Sign the update and write the appcast
+        # Sparkle (docs/updates.md): the disk image is signed with the
+        # project's EdDSA key, and appcast.xml says it is the latest version.
+        # Not for a test of the download (a suffixed tag), nor without the key.
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          NAME="${TAG#v}"; VERSION="${NAME%%-*}"
+          case "$NAME" in *-*) echo "A test release: no appcast."; exit 0 ;; esac
+          if [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then echo "::warning::No SPARKLE_ED_PRIVATE_KEY: no appcast."; exit 0; fi
+          # Sparkle's signing tool comes with the package Xcode fetched.
+          SIGN=$(find build/DerivedData/SourcePackages/artifacts -name sign_update -type f -perm -u+x | head -1)
+          if [ -z "$SIGN" ]; then echo "::error::sign_update not found (is the Sparkle package in the project?)"; exit 1; fi
+          KEY="$RUNNER_TEMP/sparkle.key"
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$KEY"
+          DMG="Platen-Reader-$NAME.dmg"
+          # Prints: sparkle:edSignature="…" length="…"
+          ATTRIBUTES=$("$SIGN" --ed-key-file "$KEY" "$DMG")
+          rm "$KEY"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/$DMG"
+          NOTES="https://github.com/${GITHUB_REPOSITORY}/releases/tag/$TAG"
+          DATE=$(LC_ALL=C date -u "+%a, %d %b %Y %H:%M:%S +0000")
+          MINIMUM=$(xcodebuild -project PlatenReader.xcodeproj -scheme PlatenReader -showBuildSettings 2>/dev/null \
+            | awk '/ MACOSX_DEPLOYMENT_TARGET = / { print $3; exit }')
+          # One item, the latest: Sparkle offers it to any older copy.
+          cat > appcast.xml <<XML
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>Platen Reader</title>
+              <item>
+                <title>Platen Reader $VERSION</title>
+                <pubDate>$DATE</pubDate>
+                <sparkle:version>$GITHUB_RUN_NUMBER</sparkle:version>
+                <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>${MINIMUM:-14.0}</sparkle:minimumSystemVersion>
+                <sparkle:releaseNotesLink>$NOTES</sparkle:releaseNotesLink>
+                <enclosure url="$URL" type="application/octet-stream" $ATTRIBUTES />
+              </item>
+            </channel>
+          </rss>
+          XML
+          cat appcast.xml
+
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -137,8 +199,11 @@ jobs:
           NAME="${TAG#v}"
           # A suffixed tag (v1.0.5-rc1) is a test of the download, not a release.
           case "$NAME" in *-*) PRE=--prerelease ;; *) PRE= ;; esac
-          gh release create "$TAG" --verify-tag $PRE \
-            "Platen-Reader-$NAME.dmg" "Platen-Reader-$NAME.dmg.sha256" \
+          # The appcast, when one was made, goes with it: upload it to the
+          # website (docs/updates.md, "Each release").
+          FILES=("Platen-Reader-$NAME.dmg" "Platen-Reader-$NAME.dmg.sha256")
+          [ -f appcast.xml ] && FILES+=(appcast.xml)
+          gh release create "$TAG" --verify-tag $PRE "${FILES[@]}" \
             --title "Platen Reader $NAME" --generate-notes
 
       - name: Remove the temporary keychain

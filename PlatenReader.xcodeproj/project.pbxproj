@@ -12,6 +12,7 @@
 		A1B2C3D4E5F6000000000029 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000006 /* Web */; };
 		A1B2C3D4E5F600000000002A /* PlatenCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000002B /* PlatenCore */; };
 		A1B2C3D4E5F600000000004C /* PlatenCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000004B /* PlatenCore */; };
+		F72762AB30BA878300A367A3 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F72762AA30BA878300A367A3 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +71,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1B2C3D4E5F600000000000F /* PlatenCore in Frameworks */,
+				F72762AB30BA878300A367A3 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -165,6 +167,7 @@
 			name = PlatenReader;
 			packageProductDependencies = (
 				A1B2C3D4E5F6000000000010 /* PlatenCore */,
+				F72762AA30BA878300A367A3 /* Sparkle */,
 			);
 			productName = PlatenReader;
 			productReference = A1B2C3D4E5F6000000000009 /* Platen Reader.app */;
@@ -262,6 +265,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A1B2C3D4E5F6000000000011 /* XCLocalSwiftPackageReference "PlatenCore" */,
+				F72762A930BA878300A367A3 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A1B2C3D4E5F6000000000003 /* Products */;
@@ -608,6 +612,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		F72762A930BA878300A367A3 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.10.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		A1B2C3D4E5F6000000000010 /* PlatenCore */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -620,6 +635,11 @@
 		A1B2C3D4E5F600000000004B /* PlatenCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PlatenCore;
+		};
+		F72762AA30BA878300A367A3 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F72762A930BA878300A367A3 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,5 +1,5 @@
 {
-  "_about": "Every third-party component in Platen Reader, the one list both THIRD_PARTY_LICENSES.md and the apps' Acknowledgements are made from (scripts/make-acknowledgements.py). Add or change a component here, put its licence text in Licenses/texts/, and run the script. 'shipped' is 'app' (inside the macOS and iOS apps) or 'voice' (in the natural-voice pack, downloaded only when the reader asks).",
+  "_about": "Every third-party component in Platen Reader, the one list both THIRD_PARTY_LICENSES.md and the apps' Acknowledgements are made from (scripts/make-acknowledgements.py). Add or change a component here, put its licence text in Licenses/texts/, and run the script. 'shipped' is 'app' (inside the macOS and iOS apps), 'mac-download' (in the direct-download Mac app only, not the App Store builds) or 'voice' (in the natural-voice pack, downloaded only when the reader asks).",
   "components": [
     {
       "name": "foliate-js",
@@ -120,6 +120,16 @@
       "included": "In the natural-voice pack (cmudict.dict), downloaded only when the reader asks; pronounces words the Misaki lexicons lack.",
       "shipped": "voice",
       "text": "BSD-2-Clause-cmudict.txt"
+    },
+    {
+      "name": "Sparkle",
+      "version": "2.10.1 (Swift package)",
+      "licence": "MIT",
+      "notice": "Copyright (c) 2006-2013 Andy Matuschak, and the other Sparkle authors named in its licence. Sparkle's licence also carries the notices of the external code it includes.",
+      "source": "https://github.com/sparkle-project/Sparkle",
+      "included": "Swift package linked into the direct-download Mac app only (not the App Store builds); checks for and installs updates (PlatenReader/Sources/Updates.swift, docs/updates.md).",
+      "shipped": "mac-download",
+      "text": "MIT-Sparkle.txt"
     }
   ],
   "notes": [
