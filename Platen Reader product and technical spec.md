@@ -39,6 +39,7 @@ These are settled and should not be revisited without a reason.
 | Telemetry | None of any kind |  |
 | Read aloud | A speaker button reads the book aloud from the current page with Apple's voices (AVSpeechSynthesizer), preferring Premium, then Enhanced, then default voices for the book's language (its `dc:language`, else the language of its text), underlining the word being read (not highlighting it) and turning pages. iOS first; the Mac follows with the same shared code (done 24 Nov 2026: the speaker on the overlay bar, View › Read Aloud ⌘R) | Natural reading on the device with nothing to download, no account and nothing sent. Decided 22 Nov 2026. A natural English voice (Kokoro-82M) was built and then parked the same day: see Parked below and docs/read-aloud.md. |
 | Language | English at launch, all strings localisable |  |
+| Folders on the Mac | A Home window with a sidebar of the folders the reader chooses and their books as covers, as on iOS (1.1, after the Mac 1.0 download). The Mac keeps the list of chosen folders (`recents/folders.json`); Recent Books there is the system's own Open Recent list, so nothing more is stored. Plan: docs/mac-folder-view-plan.md | Asked for after the first DMG test, when the Mac's welcome window had no "Choose Folder…". Without the list, Home would forget the folder at every launch. Decided 28 Nov 2026. |
 
 ## The happy path
 
