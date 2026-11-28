@@ -466,7 +466,12 @@ struct RecentFoldersView: View {
             #else
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
+                    Button(action: actions.chooseBook) { Label("Open Book…", systemImage: "book") }
+                        .help("Open Book…")
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: actions.chooseFolder) { Label("Choose Folder…", systemImage: "plus") }
+                        .help("Choose Folder…")
                 }
             }
             #endif
@@ -558,6 +563,11 @@ struct RecentFoldersView: View {
             Text("Choose a folder of books to find it here.")
         } actions: {
             Button("Choose Folder…", action: actions.chooseFolder)
+            #if os(macOS)
+            // On the Mac, Home is the window's first page, so a single book
+            // can be opened from here too (on iOS that is Recent Books' +).
+            Button("Open Book…", action: actions.chooseBook)
+            #endif
         }
         .frame(maxWidth: .infinity)
     }
