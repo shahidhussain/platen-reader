@@ -85,8 +85,10 @@ What differs on the Mac, and why:
 - A volume on a share mounted in `/Volumes` shows as a drive until it has
   been opened once (the path alone cannot tell; `RecentList.refinePlace`
   learns it).
-- Keyboard: Return to open the selected cover, and arrow keys between
-  covers (the grid is clickable, not yet a selectable collection), Space for
-  Quick Look, and dragging a cover out to Finder.
-- View › Bigger and Smaller Covers in the menu (⌘+ and ⌘− are the reader's
-  text size).
+- Keyboard selection is in a folder's grid only (arrows, Return, Space for
+  Quick Look); Recent Books and Favourites take clicks and drags.
+
+Done since (28 Nov 2026): arrow keys, Return and Space (Quick Look) in a
+folder's grid; dragging covers out to Finder or Mail; ⌘+, ⌘− and ⌘0 size
+the covers while Home is in front (View › Bigger Covers, Smaller Covers,
+Default Cover Size).

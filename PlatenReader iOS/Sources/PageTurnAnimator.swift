@@ -294,10 +294,26 @@ final class PageTurnAnimator {
     private func bookCurl(_ request: PageTurn, leafMovesLeft: Bool, spine: CGFloat) {
         generation += 1
         let turn = generation
-        let region = curlRegion?()?.intersection(pageView.bounds).nonEmpty ?? pageView.bounds
-        // Two halves of equal width either side of the spine (the narrower
-        // page, if they differ, has a little of the background beside it).
-        let half = max(spine - region.minX, region.maxX - spine)
+        // On whole device pixels, inwards: PDFKit's page edges and spine are
+        // fractional, and a leaf that started part-way into a pixel, or a
+        // picture that took in the pixel beyond the page, drew a hairline of
+        // the background down the fold and along the outer edges before the
+        // curl began (reported 28 Nov 2026).
+        let scale = pageView.window?.screen.scale ?? pageView.traitCollection.displayScale
+        func snap(_ value: CGFloat, _ rule: FloatingPointRoundingRule) -> CGFloat {
+            (value * scale).rounded(rule) / scale
+        }
+        let raw = curlRegion?()?.intersection(pageView.bounds).nonEmpty ?? pageView.bounds
+        let minX = snap(raw.minX, .up), maxX = snap(raw.maxX, .down)
+        let minY = snap(raw.minY, .up), maxY = snap(raw.maxY, .down)
+        let region = CGRect(x: minX, y: minY, width: max(maxX - minX, 1), height: max(maxY - minY, 1))
+        let spine = snap(spine, .toNearestOrAwayFromZero)
+        // Two halves of equal width either side of the spine. Pages that
+        // differ by a pixel or two (a spread) are taken at the narrower, so
+        // neither leaf takes in what is beyond its page; a narrower page
+        // that differs by more has a little of the background beside it.
+        let leftWidth = spine - region.minX, rightWidth = region.maxX - spine
+        let half = abs(leftWidth - rightWidth) <= 2 / scale ? min(leftWidth, rightWidth) : max(leftWidth, rightWidth)
         let book = CGRect(x: spine - half, y: region.minY, width: half * 2, height: region.height)
         let left = CGRect(x: book.minX, y: book.minY, width: half, height: book.height)
         let right = CGRect(x: spine, y: book.minY, width: half, height: book.height)
@@ -347,8 +363,10 @@ final class PageTurnAnimator {
     private func crop(_ image: UIImage, to region: CGRect) -> UIImage? {
         guard region != pageView.bounds else { return image }
         let scale = image.scale
-        let pixels = CGRect(x: region.minX * scale, y: region.minY * scale,
-                            width: region.width * scale, height: region.height * scale).integral
+        // Rounded, not widened (`integral` takes in a pixel beyond the region
+        // when it does not start on one).
+        let pixels = CGRect(x: (region.minX * scale).rounded(), y: (region.minY * scale).rounded(),
+                            width: (region.width * scale).rounded(), height: (region.height * scale).rounded())
         guard let cg = image.cgImage?.cropping(to: pixels) else { return nil }
         return UIImage(cgImage: cg, scale: scale, orientation: image.imageOrientation)
     }
