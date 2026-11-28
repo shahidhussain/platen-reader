@@ -240,8 +240,11 @@ def main():
     shutil.copy(icon, os.path.join(BUILD, "icon.png"))
 
     root = os.path.join(HERE, "scenes")
+    # --only <text>: just the scenes whose folder name contains it (a scene
+    # with no screenshot, such as 04, needs no captures).
+    only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else ""
     scenes = [read_scene(os.path.join(root, n)) for n in sorted(os.listdir(root))
-              if os.path.isfile(os.path.join(root, n, "scene.md"))]
+              if os.path.isfile(os.path.join(root, n, "scene.md")) and only in n]
     outputs = {}
     for locale_name, locale in LOCALES.items():
         for device, size in CANVAS.items():
