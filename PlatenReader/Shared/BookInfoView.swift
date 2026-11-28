@@ -59,17 +59,29 @@ struct BookInfoView: View {
                             Text("Asking the file system…")
                         }
                     } else {
+                        #if os(iOS)
                         Text("iOS updates a file’s last-accessed date only now and then, so it can be well behind.")
+                        #else
+                        Text("macOS updates a file’s last-accessed date only now and then, so it can be well behind.")
+                        #endif
                     }
                 }
             }
             .navigationTitle(info?.title ?? entry.name)
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #else
+            .formStyle(.grouped)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+        #if os(iOS)
         .presentationDetents([.medium, .large])
+        #else
+        .frame(minWidth: 420, minHeight: 520)
+        #endif
         .task {
             details = await FileDetails.read(entry.url, timeout: 5)
             waiting = false

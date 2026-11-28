@@ -57,7 +57,11 @@ enum StorageKind: String, Codable, Sendable {
 
     var symbol: String {
         switch self {
+        #if os(macOS)
+        case .device: return "internaldrive" // the Mac's own disk, as in Finder's sidebar
+        #else
         case .device: return "iphone"
+        #endif
         case .iCloud: return "icloud"
         case .network: return "server.rack"
         case .drive: return "externaldrive"
@@ -129,8 +133,20 @@ struct StoragePlace: Equatable, Sendable {
         } else if let rest = after("CloudStorage") {
             self.init(kind: .otherCloud, location: rest.joined(separator: "/"))
         } else {
-            self.init(kind: .device, location: path)
+            self.init(kind: .device, location: Self.homeShortened(path))
         }
+    }
+
+    /// On the Mac, a path in the reader's home folder as "~/Books/…", the
+    /// way it is usually written (and shorter in a narrow row). Elsewhere,
+    /// and on iOS, the path as it is.
+    nonisolated static func homeShortened(_ path: String, home: String = NSHomeDirectory()) -> String {
+        #if os(macOS)
+        let home = home.hasSuffix("/") ? String(home.dropLast()) : home
+        if path == home { return "~" }
+        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
+        #endif
+        return path
     }
 
     init(kind: StorageKind, location: String) {
@@ -255,7 +271,7 @@ final class RecentList: ObservableObject {
     @discardableResult
     func opened(_ url: URL, title: String? = nil, author: String? = nil, now: Date = Date(),
                 bookmark made: Data? = nil) -> RecentItem? {
-        guard let bookmark = made ?? (try? url.bookmarkData()) else { return nil }
+        guard let bookmark = made ?? Self.bookmark(for: url) else { return nil }
         let path = FolderScanner.canonicalPath(url)
         var item = items.first { Self.key($0.path) == path }
             ?? RecentItem(bookmark: bookmark, name: url.lastPathComponent, path: path, lastOpened: now)
@@ -319,7 +335,7 @@ final class RecentList: ObservableObject {
     /// folder shown on screen, which must not wait for it.
     func openedSoon(_ url: URL) {
         Self.checkQueue.addOperation {
-            guard let bookmark = try? url.bookmarkData() else { return }
+            guard let bookmark = Self.bookmark(for: url) else { return }
             DispatchQueue.main.async { [weak self] in self?.opened(url, bookmark: bookmark) }
         }
     }
@@ -414,10 +430,37 @@ final class RecentList: ObservableObject {
     /// connected (`mounting: false`); opening one may.
     nonisolated static func resolve(_ item: RecentItem, mounting: Bool = true) -> URL? {
         var stale = false
-        let options: URL.BookmarkResolutionOptions = mounting ? [.withoutUI] : [.withoutUI, .withoutMounting]
+        var options: URL.BookmarkResolutionOptions = mounting ? [.withoutUI] : [.withoutUI, .withoutMounting]
+        #if os(macOS)
+        // Made with a security scope on the Mac (`bookmark(for:)`), so they
+        // are read with one; an older link without one is read as it is.
+        if let url = try? URL(resolvingBookmarkData: item.bookmark, options: options.union(.withSecurityScope),
+                              bookmarkDataIsStale: &stale) {
+            return checked(url, for: item)
+        }
+        #endif
         guard let url = try? URL(resolvingBookmarkData: item.bookmark, options: options, bookmarkDataIsStale: &stale) else {
             return nil
         }
+        return checked(url, for: item)
+    }
+
+    /// The link to a book or folder that the list keeps. On the Mac it is
+    /// made with a security scope, which is what lets a sandboxed app (the
+    /// Mac App Store build, later) read the place again at the next launch;
+    /// the download build does not need it, but its lists then carry over.
+    /// If the system will not make one, a plain link.
+    nonisolated static func bookmark(for url: URL) -> Data? {
+        #if os(macOS)
+        if let data = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+            return data
+        }
+        #endif
+        return try? url.bookmarkData()
+    }
+
+    /// The place a link resolved to, if it is the item (see below).
+    private nonisolated static func checked(_ url: URL, for item: RecentItem) -> URL? {
         // A link that leads to another kind of storage is not the item
         // (see `isPlausibleMove`): it is taken as not reachable, rather than
         // followed to some other folder.

@@ -1,15 +1,9 @@
 import PlatenCore
 import SwiftUI
-import UIKit
-
-extension Notification.Name {
-    /// Asks the folder view to read its folder again (a reader was closed;
-    /// the book may have been moved or deleted meanwhile).
-    static let platenFolderShouldRefresh = Notification.Name("platenFolderShouldRefresh")
-}
 
 /// One folder's grid of covers (about three across on an iPhone), the
-/// folders inside it first, shown in the Home tab. Tapping a
+/// folders inside it first, shown in the Home tab (iOS) or the Home window
+/// (Mac). Tapping a
 /// folder goes into it, with the usual Back button; tapping a book opens it.
 /// Search (by file name, title and author) and a filter by kind of book are
 /// in the toolbar.
@@ -18,6 +12,8 @@ struct FolderGridView: View {
     let openBook: (URL) -> Void
     /// A folder inside this one was tapped.
     let openFolder: (URL) -> Void
+    /// Shows a book or folder in Finder (the Mac; nil on iOS).
+    var reveal: ((URL) -> Void)? = nil
     @StateObject private var model: FolderModel
     /// The search field (shown by the search button) and what is typed in it.
     @State private var query = ""
@@ -32,10 +28,12 @@ struct FolderGridView: View {
     @State private var showingOptions = false
     @ObservedObject private var filter = BookTypeFilter.shared
 
-    init(folder: URL, openBook: @escaping (URL) -> Void, openFolder: @escaping (URL) -> Void) {
+    init(folder: URL, openBook: @escaping (URL) -> Void, openFolder: @escaping (URL) -> Void,
+         reveal: ((URL) -> Void)? = nil) {
         self.folder = folder
         self.openBook = openBook
         self.openFolder = openFolder
+        self.reveal = reveal
         _model = StateObject(wrappedValue: FolderModel(folder: folder))
     }
 
@@ -54,7 +52,7 @@ struct FolderGridView: View {
         }
     }
 
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    private let room = RoomyGrid()
     /// The tab row's bottom safe area (tab bar and keyboard), and the
     /// grid's own: the grid makes room for the difference, so its last row,
     /// and search results with the keyboard up, can be scrolled clear of
@@ -69,8 +67,8 @@ struct FolderGridView: View {
         // for each place that needs it.
         let items = shown
         ScrollView {
-            LazyVGrid(columns: CoverColumns.items(filter, sizeClass), alignment: .leading,
-                      spacing: CoverColumns.spacing(filter, sizeClass) + 6) {
+            LazyVGrid(columns: CoverColumns.items(filter, roomy: room.isRoomy), alignment: .leading,
+                      spacing: CoverColumns.spacing(filter, roomy: room.isRoomy) + 6) {
                 ForEach(items) { entry in
                     Button {
                         tapped(entry)
@@ -95,14 +93,22 @@ struct FolderGridView: View {
                     .buttonStyle(.plain)
                     // A long press on a book: Favourite, and Get Info.
                     .contextMenu {
+                        if entry.kind == .folder, let reveal {
+                            Button { reveal(entry.url) } label: { Label("Show in Finder", systemImage: "folder") }
+                        }
                         if entry.kind == .book {
+                            #if os(iOS)
                             BookWindows.MenuItem { BookWindows.open(url: entry.url, title: entry.name) }
+                            #endif
                             Button {
                                 if Favourites.toggle(entry.url) { heartbeats[entry.url, default: 0] += 1 }
                             } label: {
                                 Favourites.menuLabel(isFavourite: favourites.contains(entry.url))
                             }
                             Button { infoFor = entry } label: { Label("Get Info", systemImage: "info.circle") }
+                            if let reveal {
+                                Button { reveal(entry.url) } label: { Label("Show in Finder", systemImage: "folder") }
+                            }
                         }
                     }
                 }
@@ -112,7 +118,7 @@ struct FolderGridView: View {
         }
         .roomBelow($ownBottom, tabRowBottom: tabRowBottom)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .coverPinch(filter, sizeClass)
+        .coverPinch(filter, roomy: room.isRoomy)
         .sheet(item: $infoFor) { entry in
             BookInfoView(entry: entry, info: model.covers[entry.url])
         }
@@ -157,23 +163,8 @@ struct FolderGridView: View {
         }
         .animation(.easeOut(duration: 0.3), value: model.coverProgress.done < model.coverProgress.total)
         .navigationTitle(folder.lastPathComponent)
-        // The title sits in the bar with the buttons, so the grid gets the
-        // space, and to the left, beside the Back button, as the book's own
-        // title is in the reader (the reader asked, 27 Nov 2026): the bar's
-        // own centred title is left empty, and the folder's name is the
-        // first item on the left (`FolderTitle`). The navigation title is
-        // still set, for the Back button's menu. iOS's own
-        // Back button is at the top left (long-press it for the whole way
-        // back); a swipe across the page goes back too (SwipeBack), as does
-        // tapping the Home tab.
-        .navigationBarTitleDisplayMode(.inline)
-        // The search field opens from the search button (and closes with
-        // Cancel, clearing the search). While it has words in it, it stays
-        // up as the results are scrolled, so what was searched for stays in
-        // sight; empty, it tucks away on scrolling as usual.
-        .searchable(text: $query, isPresented: $searching,
-                    placement: .navigationBarDrawer(displayMode: query.isEmpty ? .automatic : .always),
-                    prompt: Text("Title, author or file name"))
+        .folderChrome(name: folder.lastPathComponent, width: width, query: $query, searching: $searching,
+                      showingOptions: $showingOptions, filterShowsAll: filter.showsAll)
         // A note in the log of what each search found, once typing pauses,
         // to tell "not in the folder's listing yet" from "not matched".
         .task(id: query) {
@@ -184,22 +175,6 @@ struct FolderGridView: View {
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled else { return }
             logSearch()
-        }
-        .toolbar {
-            ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
-            FolderTitle(name: folder.lastPathComponent, maxWidth: max(80, width - 250))
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                // View Options: the order, the kinds of book shown and the
-                // words under each cover, in a sheet (filled in when some
-                // kinds are hidden).
-                Button { showingOptions = true } label: {
-                    Label("View Options", systemImage: filter.showsAll ? "line.3.horizontal.decrease.circle"
-                                                                       : "line.3.horizontal.decrease.circle.fill")
-                }
-            }
         }
         .sheet(isPresented: $showingOptions) { FolderViewOptions() }
         .refreshable { await model.refreshByReader() }
@@ -220,7 +195,7 @@ struct FolderGridView: View {
         .onDisappear { model.stop() }
         // Covers are made in the order the grid shows (Random included).
         .onChange(of: items.map(\.url), initial: true) { _, order in model.showOrder(order) }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .platenAppReturned)) { _ in
             model.refresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: .platenFolderShouldRefresh)) { _ in
@@ -292,49 +267,82 @@ struct FolderViewOptions: View {
                 }
             }
             .navigationTitle("View Options")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #else
+            .formStyle(.grouped)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+        #if os(iOS)
         .presentationDetents([.medium, .large])
+        #else
+        .frame(minWidth: 340, minHeight: 460)
+        #endif
     }
 }
 
 /// How many covers fit across a grid (folders, Recent Books): the reader's
 /// choice, made by pinching (out for fewer and bigger, in for more and
-/// smaller), or three on an iPhone and five on an iPad.
+/// smaller), or three on an iPhone and five on an iPad or a Mac (`roomy`:
+/// `RoomyGrid`).
 enum CoverColumns {
-    static func range(_ sizeClass: UserInterfaceSizeClass?) -> ClosedRange<Int> {
-        sizeClass == .regular ? 3...8 : 2...5
+    static func range(roomy: Bool) -> ClosedRange<Int> {
+        roomy ? 3...8 : 2...5
     }
 
-    @MainActor static func count(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> Int {
-        let range = range(sizeClass)
-        return min(max(options.columns ?? (sizeClass == .regular ? 5 : 3), range.lowerBound), range.upperBound)
+    @MainActor static func count(_ options: BookTypeFilter, roomy: Bool) -> Int {
+        let range = range(roomy: roomy)
+        return min(max(options.columns ?? (roomy ? 5 : 3), range.lowerBound), range.upperBound)
     }
 
-    @MainActor static func spacing(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> CGFloat {
-        count(options, sizeClass) > 3 ? 12 : 18
+    @MainActor static func spacing(_ options: BookTypeFilter, roomy: Bool) -> CGFloat {
+        count(options, roomy: roomy) > 3 ? 12 : 18
     }
 
-    @MainActor static func items(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: spacing(options, sizeClass), alignment: .bottom),
-              count: count(options, sizeClass))
+    @MainActor static func items(_ options: BookTypeFilter, roomy: Bool) -> [GridItem] {
+        #if os(macOS)
+        // A Mac window can be any width, so the count chooses a cover size
+        // instead, and as many fit across as the window allows (as Finder's
+        // icon size does): fewer is bigger.
+        let width = macCoverWidth(count(options, roomy: roomy))
+        return [GridItem(.adaptive(minimum: width, maximum: width * 1.25), spacing: spacing(options, roomy: roomy),
+                         alignment: .bottom)]
+        #else
+        return Array(repeating: GridItem(.flexible(), spacing: spacing(options, roomy: roomy), alignment: .bottom),
+                     count: count(options, roomy: roomy))
+        #endif
+    }
+
+    /// A cover's width on the Mac for a count of 3 (biggest) to 8
+    /// (smallest).
+    static func macCoverWidth(_ count: Int) -> CGFloat {
+        let widths: [Int: CGFloat] = [3: 200, 4: 160, 5: 128, 6: 110, 7: 96, 8: 84]
+        return widths[count] ?? 128
+    }
+
+    /// One step bigger (fewer across) or smaller (more across): View ›
+    /// Bigger Covers and Smaller Covers on the Mac.
+    @MainActor static func step(_ options: BookTypeFilter, roomy: Bool, bigger: Bool) {
+        let next = count(options, roomy: roomy) + (bigger ? -1 : 1)
+        guard range(roomy: roomy).contains(next) else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { options.columns = next }
     }
 }
 
 extension View {
     /// A pinch on a cover grid changes how many covers fit across.
-    @MainActor func coverPinch(_ options: BookTypeFilter, _ sizeClass: UserInterfaceSizeClass?) -> some View {
+    @MainActor func coverPinch(_ options: BookTypeFilter, roomy: Bool) -> some View {
         simultaneousGesture(
             MagnifyGesture()
                 .onChanged { _ in options.lastPinch = Date() }
                 .onEnded { value in
                 options.lastPinch = Date()
-                let now = CoverColumns.count(options, sizeClass)
+                let now = CoverColumns.count(options, roomy: roomy)
                 let next = value.magnification > 1.15 ? now - 1 : value.magnification < 0.87 ? now + 1 : now
-                let range = CoverColumns.range(sizeClass)
+                let range = CoverColumns.range(roomy: roomy)
                 guard next != now, range.contains(next) else { return }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { options.columns = next }
             }
@@ -342,6 +350,60 @@ extension View {
     }
 }
 
+extension View {
+    /// The folder view's bar: its title, Search and View Options. On iOS the
+    /// folder's name stands at the left beside Back, and the search field is
+    /// a drawer under the bar (see below); on the Mac the window's title is
+    /// the folder's name and the search field sits in the toolbar, as in
+    /// Finder.
+    fileprivate func folderChrome(name: String, width: CGFloat, query: Binding<String>, searching: Binding<Bool>,
+                                  showingOptions: Binding<Bool>, filterShowsAll: Bool) -> some View {
+        let options = Button { showingOptions.wrappedValue = true } label: {
+            // View Options: the order, the kinds of book shown and the
+            // words under each cover, in a sheet (filled in when some
+            // kinds are hidden).
+            Label("View Options", systemImage: filterShowsAll ? "line.3.horizontal.decrease.circle"
+                                                               : "line.3.horizontal.decrease.circle.fill")
+        }
+        #if os(iOS)
+        // The title sits in the bar with the buttons, so the grid gets the
+        // space, and to the left, beside the Back button, as the book's own
+        // title is in the reader (the reader asked, 27 Nov 2026): the bar's
+        // own centred title is left empty, and the folder's name is the
+        // first item on the left (`FolderTitle`). The navigation title is
+        // still set, for the Back button's menu. iOS's own
+        // Back button is at the top left (long-press it for the whole way
+        // back); a swipe across the page goes back too (SwipeBack), as does
+        // tapping the Home tab.
+        return self
+            .navigationBarTitleDisplayMode(.inline)
+            // The search field opens from the search button (and closes with
+            // Cancel, clearing the search). While it has words in it, it stays
+            // up as the results are scrolled, so what was searched for stays in
+            // sight; empty, it tucks away on scrolling as usual.
+            .searchable(text: query, isPresented: searching,
+                        placement: .navigationBarDrawer(displayMode: query.wrappedValue.isEmpty ? .automatic : .always),
+                        prompt: Text("Title, author or file name"))
+            .toolbar {
+                ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
+                FolderTitle(name: name, maxWidth: max(80, width - 250))
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { searching.wrappedValue = true } label: { Label("Search", systemImage: "magnifyingglass") }
+                }
+                ToolbarItem(placement: .topBarTrailing) { options }
+            }
+        #else
+        return self
+            .searchable(text: query, isPresented: searching, placement: .toolbar,
+                        prompt: Text("Title, author or file name"))
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { options }
+            }
+        #endif
+    }
+}
+
+#if os(iOS)
 /// The folder's name at the left of the bar, beside the Back button (as
 /// plain text: on iOS 26, without the glass a bar item is given). The
 /// bar's own centred title is hidden (`.principal`, empty).
@@ -378,6 +440,7 @@ private struct FolderTitle: ToolbarContent {
             .accessibilityAddTraits(.isHeader)
     }
 }
+#endif
 
 /// While covers are being made: a small bar floating at the bottom, with
 /// how many are done. Covers are made once and kept, so this shows the
@@ -641,7 +704,7 @@ struct FolderTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemFill))
+                .fill(.fill.secondary)
                 .aspectRatio(2 / 3, contentMode: .fit)
                 .overlay {
                     Image(systemName: "folder.fill")

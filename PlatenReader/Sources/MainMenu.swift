@@ -63,6 +63,7 @@ enum MainMenu {
     private static func fileMenu() -> NSMenu {
         let menu = NSMenu(title: String(localized: "File"))
         menu.addItem(item(String(localized: "Open…"), #selector(NSDocumentController.openDocument(_:)), "o"))
+        menu.addItem(item(String(localized: "Open Folder…"), #selector(AppDelegate.openFolder(_:)), "o", [.command, .shift]))
 
         // Open Recent: AppKit fills this in once it recognises the menu.
         let recent = NSMenuItem(title: String(localized: "Open Recent"), action: nil, keyEquivalent: "")
@@ -163,6 +164,8 @@ enum MainMenu {
         let menu = NSMenu(title: String(localized: "Window"))
         menu.addItem(item(String(localized: "Minimise"), #selector(NSWindow.performMiniaturize(_:)), "m"))
         menu.addItem(item(String(localized: "Zoom"), #selector(NSWindow.performZoom(_:))))
+        menu.addItem(.separator())
+        menu.addItem(item(String(localized: "Home"), #selector(AppDelegate.showHome(_:)), "h", [.command, .shift]))
         menu.addItem(.separator())
         menu.addItem(item(String(localized: "Bring All to Front"), #selector(NSApplication.arrangeInFront(_:))))
         return menu

@@ -313,6 +313,8 @@ private struct AdvancedSettingsView: View {
                     Button("Clear…") { confirmClear = true }
                 }
             }
+            // Favourites kept elsewhere copied to this Mac (as on iOS).
+            OfflineSettingsSection()
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)

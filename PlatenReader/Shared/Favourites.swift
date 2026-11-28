@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Favourites are marked from a book's long-press menu, on its cover in a
 /// folder or in Recent Books (not from inside the reader: the reader's
@@ -7,9 +6,17 @@ import UIKit
 /// this book", so a heart beats twice over the cover (lub-dub, lub-dub),
 /// with a soft ring going out from it on the second beat, and the phone taps in
 /// time. Taking one off is quiet. With Reduce Motion the heart only shows.
+/// (On the Mac, a cover's menu is its right-click menu, and there are no
+/// taps.)
 @MainActor
 enum Favourites {
     static var list: RecentList { RecentList.favorites }
+
+    /// The device's taps, set by the iOS app (`Favourites+UIKit.swift`):
+    /// in time with the heart when one is added, and a light tick when one
+    /// is taken off. None on the Mac.
+    static var heartbeatHaptics: () -> Void = {}
+    static var removedHaptic: () -> Void = {}
 
     static func contains(_ url: URL) -> Bool { list.contains(url) }
 
@@ -20,7 +27,7 @@ enum Favourites {
     static func toggle(_ url: URL) -> Bool {
         if let item = list.item(at: url) {
             list.remove(item)
-            UISelectionFeedbackGenerator().selectionChanged()
+            removedHaptic()
             return false
         }
         list.addBook(url)
@@ -34,25 +41,12 @@ enum Favourites {
     static func toggle(_ item: RecentItem, from recents: RecentList) -> Bool {
         if let here = list.item(at: RecentItem.pathURL(item.path)) {
             list.remove(here)
-            UISelectionFeedbackGenerator().selectionChanged()
+            removedHaptic()
             return false
         }
         list.add(copyOf: item, from: recents)
         heartbeatHaptics()
         return true
-    }
-
-    /// Taps in time with the heart's two beats: a firm tap and a softer
-    /// one, twice.
-    static func heartbeatHaptics() {
-        let firm = UIImpactFeedbackGenerator(style: .medium)
-        let soft = UIImpactFeedbackGenerator(style: .light)
-        firm.prepare(); soft.prepare()
-        // The menu takes a moment to close before the heart shows.
-        let start = 0.3
-        for (delay, generator, strength) in [(0.0, firm, 1.0), (0.24, soft, 0.8), (0.65, firm, 0.85), (0.89, soft, 0.6)] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + start + delay) { generator.impactOccurred(intensity: strength) }
-        }
     }
 
     /// The menu item: "Add to Favourites" or "Remove from Favourites".

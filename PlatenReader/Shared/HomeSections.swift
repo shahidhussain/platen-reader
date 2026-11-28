@@ -54,7 +54,7 @@ final class HomeSectionOrder: ObservableObject {
 }
 
 /// The Home tab's Favourites section: the first three favourites as covers,
-/// three across, so a book being read is one tap from opening Platen. "See
+/// three across (on the Mac, up to six), so a book being read is one tap from opening Platen. "See
 /// All" in the section's header goes to the Favourites tab, with the rest.
 struct FavouritesStrip: View {
     @ObservedObject private var favourites = RecentList.favorites
@@ -66,13 +66,24 @@ struct FavouritesStrip: View {
     @State private var cannotOpen: RecentItem?
     @State private var reach: [RecentItem.ID: Reach] = [:]
 
+    #if os(macOS)
+    /// On the Mac, a row of up to six at a steady size (a wide window would
+    /// otherwise make three covers huge).
+    static let count = 6
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: 120, maximum: 140), spacing: 16, alignment: .top)]
+    }
+    #else
     static let count = 3
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: Self.count)
+    }
+    #endif
 
     private var shown: [RecentItem] { Array(favourites.items.prefix(Self.count)) }
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: Self.count),
-                  alignment: .leading, spacing: 14) {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
             ForEach(shown) { item in
                 Button { open(item) } label: {
                     BookTile(title: item.displayName, author: item.author, imageFile: favourites.coverURL(for: item),
@@ -84,7 +95,7 @@ struct FavouritesStrip: View {
         // As in the Favourites tab: each is checked, and again when the
         // app comes back or the connection changes.
         .task(id: shown.map(\.id)) { await checkReach(shown, in: favourites, into: $reach) }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .platenAppReturned)) { _ in
             Task { await checkReach(shown, in: favourites, into: $reach) }
         }
         .onReceive(NetworkStatus.shared.changed.debounce(for: .seconds(1), scheduler: RunLoop.main)) { _ in

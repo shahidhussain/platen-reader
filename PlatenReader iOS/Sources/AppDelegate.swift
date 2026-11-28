@@ -24,6 +24,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         // Apple's voice list is slow to read: read it now, in the background.
         AppleSpeechEngine.prepareVoices()
+        // The phone's taps when a favourite is marked (shared code has no UIKit).
+        Favourites.installHaptics()
         // Favourites kept elsewhere are copied to the device (and copies
         // of books no longer favourites deleted), from now on.
         OfflineCopies.shared.start()

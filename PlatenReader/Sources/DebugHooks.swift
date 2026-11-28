@@ -81,8 +81,13 @@ enum DebugHooks {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             for (index, window) in NSApp.windows.enumerated() where window.isVisible {
                 guard let view = window.contentView?.superview ?? window.contentView,
-                      let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+                      var rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
                 view.cacheDisplay(in: view.bounds, to: rep)
+                // SwiftUI's split views and sidebars (Home) do not draw this
+                // way: the window server's own picture of the window is
+                // taken instead where it can be (an app may always capture
+                // its own windows).
+                if let captured = windowServerImage(of: window) { rep = NSBitmapImageRep(cgImage: captured) }
                 let kind = window.title.isEmpty ? String(describing: type(of: window)) : window.title
                 let safe = kind.replacingOccurrences(of: "[^A-Za-z0-9]+", with: "-", options: .regularExpression)
                 let url = URL(fileURLWithPath: dir).appendingPathComponent("\(name)-window-\(index)-\(safe).png")
@@ -90,6 +95,34 @@ enum DebugHooks {
                 log.info("snapshot: \(url.lastPathComponent, privacy: .public)")
             }
         }
+    }
+
+    /// Home's lists for design checks (with `PLATEN_TEST_HOME`):
+    /// `PLATEN_HOME_BOOKS=<path>|<path>` adds books to Recent Books,
+    /// `PLATEN_HOME_FAVOURITES=<path>|…` to Favourites, and
+    /// `PLATEN_HOME_TAB=home|favourites|books` shows that part.
+    @MainActor static func seedHome() {
+        let env = ProcessInfo.processInfo.environment
+        func paths(_ key: String) -> [URL] {
+            (env[key] ?? "").split(separator: "|").map { URL(fileURLWithPath: String($0)) }
+        }
+        for url in paths("PLATEN_HOME_BOOKS") { RecentList.books.addBook(url) }
+        for url in paths("PLATEN_HOME_FAVOURITES") { RecentList.favorites.addBook(url) }
+        let tabs: [String: HomeNavigation.Tab] = ["home": .home, "favourites": .favourites, "books": .books]
+        if let tab = env["PLATEN_HOME_TAB"].flatMap({ tabs[$0] }) {
+            HomeWindowController.shared.navigation.folderPath = []
+            HomeWindowController.shared.navigation.tab = tab
+        }
+    }
+
+    /// The window as the window server draws it (CGWindowListCreateImage,
+    /// looked up at run time as newer SDKs hide it; Debug builds only).
+    private static func windowServerImage(of window: NSWindow) -> CGImage? {
+        typealias Capture = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else { return nil }
+        let capture = unsafeBitCast(symbol, to: Capture.self)
+        // .null bounds, .optionIncludingWindow (8), .boundsIgnoreFraming (1).
+        return capture(.null, 8, UInt32(window.windowNumber), 1)?.takeRetainedValue()
     }
 
     /// Snapshot of native views (e.g. the failure message), which

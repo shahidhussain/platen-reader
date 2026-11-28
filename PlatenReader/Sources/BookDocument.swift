@@ -21,7 +21,10 @@ final class BookDocument: NSDocument {
 
     override func makeWindowControllers() {
         addWindowController(ReaderWindowController(document: self))
-        WelcomeWindowController.closeIfOpen()
+        // The book joins Recent Books (with its title, author and a copy of
+        // its cover, read in the background), as on iOS. A favourite's copy
+        // on this Mac is not added: the book itself is on the list already.
+        if let url = fileURL, !OfflineCopies.isCopy(url) { RecentList.books.addBook(url) }
     }
 
     /// A window put back at launch (macOS's window restoration): the app
