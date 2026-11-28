@@ -25,6 +25,20 @@
 	     exempt. Saves the question on every App Store upload. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Updates for the direct-download build (Sparkle; Updates.swift,
+	     docs/updates.md): where the appcast is, the public half of the key
+	     each update is signed with (SUPublicEDKey: made with Sparkle's
+	     generate_keys; until then the placeholder keeps the updater off),
+	     automatic checks on by default (Settings › Advanced turns them off),
+	     and nothing about the Mac sent with a check. -->
+	<key>SUFeedURL</key>
+	<string>https://shahidhussain.com/projects/platen-reader/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>REPLACE_WITH_SPARKLE_PUBLIC_KEY</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.books</string>
 	<key>LSMinimumSystemVersion</key>
