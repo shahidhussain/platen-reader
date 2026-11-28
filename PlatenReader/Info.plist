@@ -27,14 +27,15 @@
 	<false/>
 	<!-- Updates for the direct-download build (Sparkle; Updates.swift,
 	     docs/updates.md): where the appcast is, the public half of the key
-	     each update is signed with (SUPublicEDKey: made with Sparkle's
-	     generate_keys; until then the placeholder keeps the updater off),
-	     automatic checks on by default (Settings › Advanced turns them off),
-	     and nothing about the Mac sent with a check. -->
+	     each update is signed with (SUPublicEDKey, made with Sparkle's
+	     generate_keys on 28 Nov 2026; the private half is the repository
+	     secret SPARKLE_ED_PRIVATE_KEY), automatic checks on by default
+	     (Settings › Advanced turns them off), and nothing about the Mac sent
+	     with a check. -->
 	<key>SUFeedURL</key>
 	<string>https://shahidhussain.com/projects/platen-reader/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_SPARKLE_PUBLIC_KEY</string>
+	<string>WW4w6grwR3l9U5Hf2K836JQYYKVuvqL+zQU85OrEyGU=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUEnableSystemProfiling</key>

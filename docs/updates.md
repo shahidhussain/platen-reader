@@ -24,8 +24,9 @@ code. Spec: "Decisions made", Updates.
 - Version numbers: Sparkle compares `CFBundleVersion`, which the release
   workflow sets to its run number, so each release is higher than the last.
 
-Until the package is added and the key is in Info.plist, none of it is
-compiled in or started, and the menu item and setting do not show.
+It is all in place since 28 Nov 2026 (version 1.0.13). The first release
+after that is the first that can be updated from; copies before it have no
+updater.
 
 ## Setting up (once)
 
@@ -36,7 +37,8 @@ compiled in or started, and the menu item and setting do not show.
    only. The release workflow signs Sparkle's helpers again with the
    Developer ID before notarising (as Sparkle asks of builds made outside
    Xcode's Archive).
-2. **Make the signing keys.** Sparkle's tool comes with the package:
+2. **Make the signing keys** (done 28 Nov 2026; the public key is in
+   Info.plist). Sparkle's tool comes with the package:
 
    ```sh
    GENKEYS=$(find ~/Library/Developer/Xcode/DerivedData build/DerivedData -path '*artifacts/sparkle/Sparkle/bin/generate_keys' 2>/dev/null | head -1)
@@ -46,7 +48,8 @@ compiled in or started, and the menu item and setting do not show.
    It keeps the private key in your login keychain and prints the
    **public** key. The public key is not secret: it goes into Info.plist
    (`SUPublicEDKey`).
-3. **Back up the private key** and give it to the release workflow:
+3. **Back up the private key** and give it to the release workflow (done
+   28 Nov 2026: the secret is set, and a copy is in the password manager):
 
    ```sh
    "$GENKEYS" -x sparkle_private.key

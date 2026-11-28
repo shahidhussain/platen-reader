@@ -65,10 +65,10 @@ Measured here with a Release build and a 2 MB novel (`scripts/measure-performanc
 - **UI:** top-edge reveal in full screen; a font picker listing all installed fonts. Liquid Glass for the Mac's control bar is switched on (macOS 26 and later; the material before) but still to be checked by eye on screen, as snapshots cannot draw glass.
 - **The platen press and the ribbon** (docs/platen-press.md): to be seen on devices (light, dark, tall and wide covers; frames on an older iPhone and a large Mac window; Reduce Motion; the Mac's press has only been checked by its log, as snapshots cannot draw it); the ribbon's look to iterate on; the optional focus-follows-the-landing-edge shader.
 - **Testing:** page-turn smoothness in Instruments (no dropped frames during swipes); opening from an SMB share; UI tests for iOS.
-- **Releasing:** Sparkle is written (`Updates.swift`, the release workflow signs updates and writes the appcast) but waits on the one-time setup in docs/updates.md: adding the package in Xcode, the signing keys, and the public key in Info.plist; then a Homebrew cask (after the first notarised release).
+- **Releasing:** Sparkle is set up (docs/updates.md); the first full release will be the first to update from, once its `appcast.xml` is uploaded to the website. Then a Homebrew cask (after the first notarised release).
 - **After launch:** a second source for read aloud's voice download (Cloudflare R2, Backblaze B2 or similar), tried when GitHub fails, checked against the same SHA-256 (docs/read-aloud.md, "Hosting the voice").
 - **Requested, logged for later (23 Nov 2026):** a speech-speed control where reading aloud is controlled (the speed is only in Settings › Read Aloud now); pinning a book for offline reading without making it a favourite (favourites kept elsewhere are copied to the device since 25 Nov 2026; see docs/per-book-data.md).
-- **Manual steps:** Sparkle's setup (docs/updates.md, "Setting up"), and after each release, uploading `appcast.xml` to the website.
+- **Manual steps:** after each release, uploading `appcast.xml` to the website (docs/updates.md, "Each release").
 
 ## In progress: iOS, iPadOS and the App Store (M3)
 
