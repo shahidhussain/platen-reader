@@ -24,6 +24,13 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
     private var fitScale: CGFloat = 1
     private var userZoomed = false
     private var applyingScale = false
+    /// Behind the pages: their own colours, softened and stretched to fill
+    /// whatever room the window leaves around them (Ambient Light, as on
+    /// iOS; `AmbientGlow`).
+    private let ambient = NSImageView()
+    /// What the glow was last made for (pages and theme), so it is made only
+    /// when that changes.
+    private var ambientKey: String?
 
     init(document: BookDocument) {
         super.init(document: document, state: ReaderState())
@@ -53,6 +60,20 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
 
     override func loadView() {
         let root = ReaderRootView()
+
+        // The glow fills the window behind the pages (stretched: it is only
+        // colours, so proportions do not matter).
+        ambient.translatesAutoresizingMaskIntoConstraints = false
+        ambient.imageScaling = .scaleAxesIndependently
+        ambient.isHidden = true
+        ambient.wantsLayer = true
+        root.addSubview(ambient)
+        NSLayoutConstraint.activate([
+            ambient.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            ambient.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            ambient.topAnchor.constraint(equalTo: root.topAnchor),
+            ambient.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+        ])
 
         pdfView = PlatenPDFView()
         pdfView.translatesAutoresizingMaskIntoConstraints = false
@@ -166,7 +187,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
     /// page (themes do not recolour the PDF itself).
     override func applySettings() {
         super.applySettings()
-        pdfView.backgroundColor = currentTheme.nsBackground
+        updateAmbient()
         guard pdfView.document != nil else { return }
         let mode: PDFDisplayMode = state.flow == .scrolled ? .singlePageContinuous
             : settings.pageLayout == .two ? .twoUp : .singlePage
@@ -198,12 +219,24 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         if page.rotation % 180 != 0 { size = CGSize(width: size.height, height: size.width) }
         let across: CGFloat = pdfView.displayMode == .twoUp ? 2 : 1
         let margin: CGFloat = 16
-        let available = CGSize(width: max(pdfView.bounds.width - 2 * margin, 1),
-                               height: max(pdfView.bounds.height - 2 * margin, 1))
+        // The room the pages really have: less what the window's title bar
+        // covers (the scroll view is inset under it), and PDFKit's own
+        // margins around each page (in the page's units, so they scale with
+        // it). Without these a single page in a tall window was cut off at
+        // the bottom, with a scroll bar (reported 28 Nov 2026).
+        let insets = pdfView.documentView?.enclosingScrollView?.contentInsets ?? NSEdgeInsetsZero
+        let breaks = pdfView.displaysPageBreaks ? pdfView.pageBreakMargins : NSEdgeInsetsZero
+        let available = CGSize(width: max(pdfView.bounds.width - insets.left - insets.right - 2 * margin, 1),
+                               height: max(pdfView.bounds.height - insets.top - insets.bottom - 2 * margin, 1))
         guard size.width > 0, size.height > 0 else { return }
-        fitScale = min(available.width / (size.width * across), available.height / size.height)
+        let pageWidth = (size.width + breaks.left + breaks.right) * across
+        let pageHeight = size.height + breaks.top + breaks.bottom
+        fitScale = min(available.width / pageWidth, available.height / pageHeight)
         setScale(fitScale)
         updateScrollers()
+        #if DEBUG
+        log.debug("pdf fit: view \(Int(self.pdfView.bounds.width))x\(Int(self.pdfView.bounds.height)), insets \(Int(insets.top)) \(Int(insets.bottom)), page \(Int(size.width))x\(Int(size.height)), scale \(self.fitScale)")
+        #endif
     }
 
     private func setScale(_ scale: CGFloat) {
@@ -260,6 +293,49 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         if !visible.contains(currentIndex) { visible.insert(currentIndex, at: 0) }
         model.pageChanged(to: visible.first ?? currentIndex, visible: visible, zoom: zoom)
         view.window?.subtitle = state.chapter
+        updateAmbient()
+    }
+
+    // MARK: - Ambient light
+
+    /// The glow behind the pages on screen, made again when they or the theme
+    /// change. Off (Aa › Ambient Light), the theme's plain colour shows.
+    private func updateAmbient() {
+        let glow = settings.ambientLight
+        ambient.isHidden = !glow
+        // The pages' own background lets the glow show through.
+        pdfView.backgroundColor = glow ? .clear : currentTheme.nsBackground
+        // (PDFKit's scroll view paints a background of its own too.)
+        if let scrollView = pdfView.documentView?.enclosingScrollView {
+            scrollView.drawsBackground = !glow
+            scrollView.contentView.drawsBackground = !glow
+        }
+        ambient.layer?.backgroundColor = currentTheme.nsBackground.cgColor
+        guard glow, let document = pdfView.document else { ambientKey = nil; return }
+        let indexes = visiblePages
+        let theme = currentTheme.background
+        let key = indexes.map(String.init).joined(separator: ",") + " " + theme
+        guard key != ambientKey, !indexes.isEmpty else { return }
+        ambientKey = key
+        let refs = indexes.compactMap { document.page(at: $0)?.pageRef }.map { ($0, $0.getBoxRect(.cropBox)) }
+        let brightness = AmbientGlow.brightness(ofHex: theme)
+        AmbientGlow.queue.async { [weak self] in
+            let image = AmbientGlow.picture(of: refs, themeBrightness: brightness)
+            DispatchQueue.main.async {
+                guard let self, self.ambientKey == key, let image else { return }
+                // A soft fade from one page's glow to the next.
+                if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                    let fade = CATransition()
+                    fade.type = .fade
+                    fade.duration = 0.35
+                    self.ambient.layer?.add(fade, forKey: "fade")
+                }
+                self.ambient.image = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+                #if DEBUG
+                log.debug("pdf ambient: \(key, privacy: .public), \(image.width)x\(image.height), hidden \(self.ambient.isHidden), frame \(Int(self.ambient.frame.width))x\(Int(self.ambient.frame.height))")
+                #endif
+            }
+        }
     }
 
     override func savePositionNow() { model?.saveNow() }
@@ -364,6 +440,14 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
                        let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
                         try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(bookName)-\(i)-page.png"))
                     }
+                } else if s == "@snapwindows" {
+                    // The windows as the window server draws them (pages
+                    // and the light around them as the reader sees them).
+                    DebugHooks.snapshotWindows(name: "\(bookName)-\(i)")
+                } else if s.hasPrefix("@resize:") {
+                    // "@resize:900x700": the window's content size, as for books.
+                    let parts = s.dropFirst("@resize:".count).split(separator: "x").compactMap { Double($0) }
+                    if parts.count == 2 { self.view.window?.setContentSize(NSSize(width: parts[0], height: parts[1])) }
                 } else if s.hasPrefix("@") {
                     // To this reader directly: the app may not be frontmost
                     // during checks, so the responder chain may not reach it.
