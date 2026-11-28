@@ -1,5 +1,6 @@
 import AppKit
 import PlatenCore
+import Quartz
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -41,7 +42,8 @@ final class HomeWindowController: NSWindowController, NSWindowDelegate {
             openBook: { Self.open(book: $0) },
             chooseBook: { [weak self] in self?.chooseBook() },
             chooseFolder: { [weak self] in self?.chooseFolder() },
-            reveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
+            reveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) },
+            quickLook: { QuickLook.shared.show($0) }
         )
         let hosting = NSHostingController(rootView: MacHomeView(navigation: navigation, actions: actions))
         // The window keeps the size it is given (or the reader's), rather
@@ -67,6 +69,17 @@ final class HomeWindowController: NSWindowController, NSWindowDelegate {
     func show() {
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - Cover size (View menu)
+
+    // While Home is in front, the View menu's text size items size the
+    // covers instead (⌘+, ⌘− and ⌘0, as Finder's icon size): Home has no
+    // text, and two sets of the same keys could not share the menu.
+    @objc func makeTextBigger(_ sender: Any?) { CoverColumns.step(BookTypeFilter.shared, roomy: true, bigger: true) }
+    @objc func makeTextSmaller(_ sender: Any?) { CoverColumns.step(BookTypeFilter.shared, roomy: true, bigger: false) }
+    @objc func makeTextDefaultSize(_ sender: Any?) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { BookTypeFilter.shared.columns = nil }
     }
 
     // MARK: - Actions
@@ -126,6 +139,44 @@ final class HomeWindowController: NSWindowController, NSWindowDelegate {
         ["org.idpf.epub-container", "com.kobo.kepub", "com.amazon.mobi", "com.amazon.azw", "com.amazon.azw3"]
             .compactMap { UTType($0) } + [UTType(filenameExtension: "epub")].compactMap { $0 } + [.plainText, .pdf]
     }
+}
+
+extension HomeWindowController: NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        let options = BookTypeFilter.shared
+        let count = CoverColumns.count(options, roomy: true), range = CoverColumns.range(roomy: true)
+        switch item.action {
+        case #selector(makeTextBigger(_:)):
+            item.title = String(localized: "Bigger Covers")
+            return count > range.lowerBound
+        case #selector(makeTextSmaller(_:)):
+            item.title = String(localized: "Smaller Covers")
+            return count < range.upperBound
+        case #selector(makeTextDefaultSize(_:)):
+            item.title = String(localized: "Default Cover Size")
+            return options.columns != nil
+        default:
+            return true
+        }
+    }
+}
+
+/// Quick Look for Home (Space on a chosen cover, as in Finder): the system's
+/// preview panel, showing the one file.
+final class QuickLook: NSObject, QLPreviewPanelDataSource {
+    static let shared = QuickLook()
+    private var url: URL?
+
+    func show(_ url: URL) {
+        self.url = url
+        guard let panel = QLPreviewPanel.shared() else { return }
+        panel.dataSource = self
+        panel.reloadData()
+        if panel.isVisible { panel.orderOut(nil) } else { panel.makeKeyAndOrderFront(nil) }
+    }
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { url == nil ? 0 : 1 }
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! { url as NSURL? }
 }
 
 // MARK: - The window's content

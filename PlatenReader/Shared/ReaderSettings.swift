@@ -205,7 +205,7 @@ final class ReaderSettings: ObservableObject {
     /// The soft glow of a PDF's own colours around its pages (iOS). Off:
     /// the theme's plain colour.
     @Published var ambientLight: Bool { didSet { save("ambientLight", ambientLight) } }
-    /// PDFs drawn with their colours inverted (white pages dark), iOS.
+    /// PDFs drawn with their colours inverted (white pages dark).
     @Published var invertPDF: Bool { didSet { save("invertPDF", invertPDF) } }
     /// Optional "N pages left in chapter" in the location line (paginated).
     @Published var showPagesLeftInChapter: Bool { didSet { save("showPagesLeftInChapter", showPagesLeftInChapter) } }
