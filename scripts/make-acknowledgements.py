@@ -60,6 +60,7 @@ def build():
         "",
     ]
     for shipped, heading in (("app", "In the macOS and iOS apps"),
+                             ("mac-download", "In the direct-download Mac app only (not the App Store builds)"),
                              ("voice", "In the natural-voice pack (downloaded only when the reader asks)")):
         lines += [f"## {heading}", "",
                   "| Component | Version | Licence | Source | How it is included |",

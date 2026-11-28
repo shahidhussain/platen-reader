@@ -31,6 +31,9 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
     /// What the glow was last made for (pages and theme), so it is made only
     /// when that changes.
     private var ambientKey: String?
+    /// The bookmark ribbon over the top edge of a bookmarked page, as on
+    /// iOS (PDFRibbonView; placed by placeRibbon as the page moves).
+    private let ribbon = PDFRibbonView(frame: CGRect(origin: .zero, size: PDFRibbonView.size))
 
     init(document: BookDocument) {
         super.init(document: document, state: ReaderState())
@@ -85,6 +88,8 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         }
         pdfView.keyHandler = { [weak self] event in self?.handleKey(event) ?? false }
         root.addSubview(pdfView)
+        ribbon.isHidden = true
+        root.addSubview(ribbon)
         NSLayoutConstraint.activate([
             pdfView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             pdfView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -113,6 +118,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
                     self.updateScrollers()
                 }
                 self.reportPage()
+                self.placeRibbon()
             }
             .store(in: &cancellables)
         load()
@@ -122,6 +128,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         super.viewDidLayout()
         // The window was resized: fit the pages again (unless zoomed in).
         if !userZoomed { fitToWindow() }
+        placeRibbon()
     }
 
     // MARK: - Opening
@@ -188,6 +195,7 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
     override func applySettings() {
         super.applySettings()
         updateAmbient()
+        updateRibbon()
         guard pdfView.document != nil else { return }
         let mode: PDFDisplayMode = state.flow == .scrolled ? .singlePageContinuous
             : settings.pageLayout == .two ? .twoUp : .singlePage
@@ -294,17 +302,74 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         model.pageChanged(to: visible.first ?? currentIndex, visible: visible, zoom: zoom)
         view.window?.subtitle = state.chapter
         updateAmbient()
+        updateRibbon()
+    }
+
+    // MARK: - The bookmark ribbon
+
+    /// Shown on a bookmarked page (no outline while the controls are up:
+    /// their Bookmark button does that job).
+    private func updateRibbon() {
+        ribbon.isHidden = model == nil || !state.isPageBookmarked
+        ribbon.isDark = currentTheme.isDark
+        if ribbon.isHidden { ribbon.finishMotion() }
+        placeRibbon()
+    }
+
+    /// Over the top edge of the bookmarked page (in a spread, the
+    /// right-hand page if both are, or neither yet), a little in from its
+    /// right corner, kept on screen when the page is zoomed or scrolled past.
+    private func placeRibbon() {
+        guard !ribbon.isHidden, let frame = ribbonFrame(), ribbon.frame != frame else { return }
+        ribbon.frame = frame
+    }
+
+    private func ribbonFrame() -> CGRect? {
+        let visible = visiblePages
+        let index = visible.last { model?.isBookmarked(page: $0) == true } ?? visible.last
+        guard let document = pdfView.document, let page = index.flatMap({ document.page(at: $0) }) else { return nil }
+        let pageRect = view.convert(pdfView.convert(page.bounds(for: pdfView.displayBox), from: page), from: pdfView)
+        let size = PDFRibbonView.size
+        let x = min(pageRect.maxX - 18 - size.width, view.bounds.maxX - 12 - size.width)
+        // From the page's top edge (the root counts up from the bottom), or
+        // the window's top when the page runs above it.
+        let flipped = view.isFlipped
+        if flipped {
+            let top = max(pageRect.minY, 0)
+            return CGRect(x: x, y: top, width: size.width, height: size.height)
+        }
+        let top = min(pageRect.maxY, view.bounds.maxY)
+        return CGRect(x: x, y: top - size.height, width: size.width, height: size.height)
     }
 
     // MARK: - Ambient light
 
+    /// The colour an inverting filter turns into `colour`. Core Image
+    /// inverts in linear light, not in the screen's sRGB, so the opposite is
+    /// taken there (an sRGB opposite came out grey round a dark theme).
+    private static func opposite(of colour: NSColor) -> NSColor {
+        guard let rgb = colour.usingColorSpace(.sRGB) else { return colour }
+        func linear(_ c: CGFloat) -> CGFloat { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+        func srgb(_ c: CGFloat) -> CGFloat { c <= 0.0031308 ? c * 12.92 : 1.055 * pow(c, 1 / 2.4) - 0.055 }
+        func flip(_ c: CGFloat) -> CGFloat { srgb(1 - linear(c)) }
+        return NSColor(srgbRed: flip(rgb.redComponent), green: flip(rgb.greenComponent), blue: flip(rgb.blueComponent), alpha: 1)
+    }
+
     /// The glow behind the pages on screen, made again when they or the theme
     /// change. Off (Aa › Ambient Light), the theme's plain colour shows.
     private func updateAmbient() {
-        let glow = settings.ambientLight
+        // Invert Colours (Aa, as on iOS): the PDF view drawn through a
+        // colour-inverting filter, white paper dark and black text light.
+        // Its background is the theme's opposite, so it comes out as the
+        // theme's. No glow then: it is of the page's own colours, which
+        // would not match the inverted page.
+        let inverted = settings.invertPDF
+        pdfView.wantsLayer = true
+        pdfView.contentFilters = inverted ? [CIFilter(name: "CIColorInvert")].compactMap { $0 } : []
+        let glow = settings.ambientLight && !inverted
         ambient.isHidden = !glow
         // The pages' own background lets the glow show through.
-        pdfView.backgroundColor = glow ? .clear : currentTheme.nsBackground
+        pdfView.backgroundColor = glow ? .clear : inverted ? Self.opposite(of: currentTheme.nsBackground) : currentTheme.nsBackground
         // (PDFKit's scroll view paints a background of its own too.)
         if let scrollView = pdfView.documentView?.enclosingScrollView {
             scrollView.drawsBackground = !glow
@@ -383,7 +448,21 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
         state.toc.compactMap { model?.pageIndex(for: $0.href) }.sorted()
     }
 
-    func toggleBookmark() { model?.toggleBookmark(visible: visiblePages) }
+    func toggleBookmark() {
+        let wasMarked = state.isPageBookmarked
+        // Which side it swings from: the page's outer side.
+        let outerIsLeft = visiblePages.count > 1 && ribbon.frame.midX < view.bounds.midX
+        if wasMarked {
+            // Lifted off, then gone.
+            ribbon.liftOff(outerIsLeft: outerIsLeft) { [weak self] in self?.updateRibbon() }
+            model?.toggleBookmark(visible: visiblePages)
+            ribbon.isHidden = false // until the lift is over
+            return
+        }
+        model?.toggleBookmark(visible: visiblePages)
+        updateRibbon()
+        if !ribbon.isHidden { ribbon.layDown(outerIsLeft: outerIsLeft) }
+    }
     func removeBookmark(cfi: String) { model?.removeBookmark(cfi: cfi, visible: visiblePages) }
 
     func search(_ query: String) {

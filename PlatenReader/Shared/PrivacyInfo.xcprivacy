@@ -27,8 +27,8 @@
   they are built from: PlatenCore and its Kokoro module (ours), and
   foliate-js (JavaScript run in WebKit, which calls no system interfaces).
   There are no other packages; Vendor/ (onnxruntime, from a dropped trial)
-  is not part of either app. Sparkle, when it is added to the Mac download
-  build, brings its own manifest.
+  is not part of either app. Sparkle, in the Mac download build only,
+  brings its own manifest.
 -->
 <plist version="1.0">
 <dict>

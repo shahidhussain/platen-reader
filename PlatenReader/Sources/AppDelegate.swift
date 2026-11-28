@@ -45,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The on-device record of how the app has been running, for problem
         // reports (DiagnosticLog; it holds no book titles or file names).
         DiagnosticLog.shared.start()
+        // The download build checks for updates (Sparkle; Release builds only).
+        Updates.shared.start()
         // What Home calls this Mac's own storage (iOS says "On My iPhone").
         StoragePlace.thisDevice = String(localized: "On My Mac")
         // Favourites kept elsewhere are copied to this Mac (and copies of

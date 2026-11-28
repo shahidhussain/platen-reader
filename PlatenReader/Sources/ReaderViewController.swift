@@ -288,11 +288,15 @@ final class ReaderViewController: ReaderBaseViewController, BookSessionHost {
 
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        // (Titled for text again: Home calls them Bigger and Smaller Covers.)
         case #selector(makeTextBigger(_:)):
+            item.title = String(localized: "Larger Text")
             return !state.isFixedLayout && settings.fontSizeIndex < ReaderSettings.fontSizes.count - 1
         case #selector(makeTextSmaller(_:)):
+            item.title = String(localized: "Smaller Text")
             return !state.isFixedLayout && settings.fontSizeIndex > 0
         case #selector(makeTextDefaultSize(_:)):
+            item.title = String(localized: "Default Text Size")
             return !state.isFixedLayout
         case #selector(copyWithCitation(_:)), #selector(shareSelection(_:)), #selector(searchForSelection(_:)):
             return isReady && failureHost == nil && state.selection != nil

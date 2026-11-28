@@ -14,6 +14,13 @@ struct FolderGridView: View {
     let openFolder: (URL) -> Void
     /// Shows a book or folder in Finder (the Mac; nil on iOS).
     var reveal: ((URL) -> Void)? = nil
+    /// Quick Look on a book or folder (the Mac's Space; nil on iOS).
+    var quickLook: ((URL) -> Void)? = nil
+    #if os(macOS)
+    /// The cover chosen with the arrow keys (the Mac), opened by Return and
+    /// looked at by Space, as in Finder.
+    @State private var selected: URL?
+    #endif
     @StateObject private var model: FolderModel
     /// The search field (shown by the search button) and what is typed in it.
     @State private var query = ""
@@ -29,11 +36,12 @@ struct FolderGridView: View {
     @ObservedObject private var filter = BookTypeFilter.shared
 
     init(folder: URL, openBook: @escaping (URL) -> Void, openFolder: @escaping (URL) -> Void,
-         reveal: ((URL) -> Void)? = nil) {
+         reveal: ((URL) -> Void)? = nil, quickLook: ((URL) -> Void)? = nil) {
         self.folder = folder
         self.openBook = openBook
         self.openFolder = openFolder
         self.reveal = reveal
+        self.quickLook = quickLook
         _model = StateObject(wrappedValue: FolderModel(folder: folder))
     }
 
@@ -66,6 +74,7 @@ struct FolderGridView: View {
         // Worked out once per redraw (a sort of the whole folder), not once
         // for each place that needs it.
         let items = shown
+        ScrollViewReader { scroller in
         ScrollView {
             LazyVGrid(columns: CoverColumns.items(filter, roomy: room.isRoomy), alignment: .leading,
                       spacing: CoverColumns.spacing(filter, roomy: room.isRoomy) + 6) {
@@ -91,6 +100,21 @@ struct FolderGridView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .id(entry.url)
+                    #if os(macOS)
+                    // The cover chosen with the keyboard, ringed in the accent.
+                    .overlay {
+                        if selected == entry.url {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(Color.platenAccent, lineWidth: 3)
+                                .padding(-5)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    // Dragged out to Finder, Mail or another app: the file
+                    // itself, as from a Finder window.
+                    .onDrag { NSItemProvider(contentsOf: entry.url) ?? NSItemProvider() }
+                    #endif
                     // A long press on a book: Favourite, and Get Info.
                     .contextMenu {
                         if entry.kind == .folder, let reveal {
@@ -115,6 +139,16 @@ struct FolderGridView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+        }
+        #if os(macOS)
+        // The keyboard, as in a Finder window: arrows choose a cover, Return
+        // opens it, Space shows it in Quick Look.
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .return, .space]) { press in
+            keyPressed(press.key, items: items, scroller: scroller)
+        }
+        #endif
         }
         .roomBelow($ownBottom, tabRowBottom: tabRowBottom)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -214,6 +248,41 @@ struct FolderGridView: View {
         log.info("folder search for \(query, privacy: .name) in \(folder.lastPathComponent, privacy: .name): \(found.map(\.name).joined(separator: " | "), privacy: .name)")
         #endif
     }
+
+    #if os(macOS)
+    /// How many covers are across the grid now (it fits as many as the
+    /// window's width allows; `CoverColumns.items`).
+    private var coversAcross: Int {
+        let cover = CoverColumns.macCoverWidth(CoverColumns.count(filter, roomy: room.isRoomy))
+        let spacing = CoverColumns.spacing(filter, roomy: room.isRoomy)
+        return max(1, Int((width - 32 + spacing) / (cover + spacing)))
+    }
+
+    private func keyPressed(_ key: KeyEquivalent, items: [FolderEntry], scroller: ScrollViewProxy) -> KeyPress.Result {
+        guard !items.isEmpty else { return .ignored }
+        let index = selected.flatMap { url in items.firstIndex { $0.url == url } }
+        switch key {
+        case .return, .space:
+            guard let index else { return .ignored }
+            let entry = items[index]
+            if key == .return { tapped(entry) } else { quickLook?(entry.url) }
+            return .handled
+        default:
+            let step: Int
+            switch key {
+            case .leftArrow: step = -1
+            case .rightArrow: step = 1
+            case .upArrow: step = -coversAcross
+            default: step = coversAcross
+            }
+            // The first press chooses the first cover.
+            let next = index.map { min(max($0 + step, 0), items.count - 1) } ?? 0
+            selected = items[next].url
+            withAnimation(.easeOut(duration: 0.15)) { scroller.scrollTo(items[next].url) }
+            return .handled
+        }
+    }
+    #endif
 
     private func tapped(_ entry: FolderEntry) {
         guard !filter.justPinched else { return } // the end of a pinch, not a tap

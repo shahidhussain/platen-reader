@@ -599,6 +599,10 @@ struct TypographyPopover: View {
             // as on iOS; not in the Black theme, whose point is a black
             // screen).
             Toggle("Ambient Light", isOn: $settings.ambientLight)
+            if state.isPDF {
+                // White pages dark, for reading in the dark (as on iOS).
+                Toggle("Invert Colours", isOn: $settings.invertPDF)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 360)

@@ -14,6 +14,8 @@ struct HomeActions {
     let chooseFolder: () -> Void
     /// Shows a book or folder in Finder (the Mac; nil on iOS).
     var reveal: ((URL) -> Void)? = nil
+    /// Quick Look on a book or folder (the Mac's Space bar; nil on iOS).
+    var quickLook: ((URL) -> Void)? = nil
 }
 
 /// Which tab is showing (on the Mac, which item of the sidebar), and the
@@ -147,6 +149,10 @@ struct BookShelfView: View {
                                      heartbeats: heartbeats[item.id, default: 0])
                         }
                         .buttonStyle(.plain)
+                        #if os(macOS)
+                        // Dragged out as the file itself (while it can be reached).
+                        .onDrag { NSItemProvider(contentsOf: RecentItem.pathURL(item.path)) ?? NSItemProvider() }
+                        #endif
                         .contextMenu {
                             #if os(iOS)
                             BookWindows.MenuItem { BookWindows.open(bookmark: item.bookmark, title: item.displayName) }
@@ -477,7 +483,8 @@ struct RecentFoldersView: View {
             #endif
             .navigationDestination(for: URL.self) { folder in
                 FolderGridView(folder: folder, openBook: actions.openBook,
-                               openFolder: { navigation.folderPath.append($0) }, reveal: actions.reveal)
+                               openFolder: { navigation.folderPath.append($0) }, reveal: actions.reveal,
+                               quickLook: actions.quickLook)
                     .id(folder)
             }
             .task(id: recents.items.map(\.id)) { await checkReach(recents.items, in: recents, into: $reach) }
