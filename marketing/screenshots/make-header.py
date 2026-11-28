@@ -20,6 +20,7 @@ shared safe area outlined: preview-21x9.png and preview-3x2.png.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -32,7 +33,7 @@ SIZE = (5244, 2950)
 # Laid out at half size in CSS pixels; WebKit draws at 2× on a Retina Mac.
 CSS = (SIZE[0] // 2, SIZE[1] // 2)
 
-PHRASE = "Easily read books,<br>or have the app read to you."
+PHRASE = "Read your books,<br>or have them read to you."
 
 def crops():
     """The 21:9 and 3:2 crops of the full picture, centred, in its pixels."""
@@ -97,6 +98,10 @@ def main():
     if not os.path.exists(raw):
         sys.exit(f"{raw} is missing: run build.sh first")
     os.makedirs(OUT, exist_ok=True)
+    # The fonts beside the page (compose.py may not have run yet).
+    os.makedirs(os.path.join(BUILD, "fonts"), exist_ok=True)
+    for name in ("IBMPlexSans-SemiBold.ttf", "IBMPlexSans-Regular.ttf"):
+        shutil.copy(os.path.join(HERE, "fonts", name), os.path.join(BUILD, "fonts", name))
     Image.open(raw).convert("RGB").save(os.path.join(OUT, "page.png"))
     Image.open(icon).convert("RGB").save(os.path.join(OUT, "icon.png"))
     html_path = os.path.join(OUT, "header.html")

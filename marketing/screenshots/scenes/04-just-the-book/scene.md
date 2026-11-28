@@ -1,3 +1,3 @@
-headline: Just you and the book
-subheading: No ads, no account, no AI, no tracking. Free and open source.
+headline: Read your books, or have them read to you.
+subheading: No ads, no account, no tracking. Free and open source.
 show: none
