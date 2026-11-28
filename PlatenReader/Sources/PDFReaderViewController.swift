@@ -19,8 +19,11 @@ import os
 ///   and stands alone on the right; turning back to the cover puts it on
 ///   its own again (`pairSpreads`).
 /// - Page Curl (Layout or Settings › Page turn): a turn by click or key is
-///   drawn as a leaf of paper (PageTurnView, as for books); Slide pushes the
-///   new page in.
+///   drawn as a leaf of paper (PageTurnView, as for books). Only the page
+///   turns, not the ambient light around it, which fades to the new page's
+///   colours as it turns. Two pages turn one leaf about the spine, and so
+///   does a page wider than tall in One Page, about its middle (as on iOS).
+///   Slide pushes the new page in.
 final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
     private var pdfView: PlatenPDFView!
     private var model: PDFReaderModel?
@@ -501,14 +504,21 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
             log.debug("pdf page turn: no curl (rapid \(rapid))")
             return turnInstantly(turn)
         }
-        let overlay = PageTurnView(frame: pdfView.frame)
-        overlay.autoresizingMask = [.width, .height]
+        // Only the pages curl, not the light around them (as on iOS): the
+        // leaf is the page (or the spread), and round it the live glow fades
+        // from the old pages' colours to the new ones' as the leaf turns.
+        let rectsBefore = pageRects()
+        guard let start = curlGeometry(rectsBefore) else { return turnInstantly(turn) }
+        let overlay = PageTurnView(frame: start.frame)
         // Over the pages and the ribbon, under the controls.
         view.addSubview(overlay, positioned: .above, relativeTo: ribbon)
-        overlay.cover(with: before)
+        guard let cover = crop(before, to: start.frame) else {
+            overlay.removeFromSuperview()
+            return turnInstantly(turn)
+        }
+        overlay.cover(with: cover)
         pageTurn = overlay
         let generation = turnGeneration
-        let twoPages = pdfView.displayMode == .twoUp
         turnInstantly(turn)
         // PDFKit draws the new pages on its next pass.
         DispatchQueue.main.async { [weak self, weak overlay] in
@@ -517,11 +527,71 @@ final class PDFReaderViewController: ReaderBaseViewController, ReaderCommands {
                 overlay?.removeFromSuperview()
                 if self?.pageTurn === overlay { self?.pageTurn = nil }
             }
-            guard generation == self.turnGeneration, let after = self.pagesPicture() else { return remove() }
-            log.debug("pdf page turn: curl (\(twoPages ? "two pages" : "one page", privacy: .public))")
-            overlay.run(before: before, after: after, direction: turn.isForward ? .towardLeft : .towardRight,
-                        twoPages: twoPages, completion: remove)
+            // Both pictures cut to the region of the pages that were on show
+            // (as on iOS: the same region, unless the pages differ in size).
+            guard generation == self.turnGeneration, let after = self.pagesPicture(),
+                  let a = self.crop(before, to: start.frame), let b = self.crop(after, to: start.frame)
+            else { return remove() }
+            log.debug("pdf page turn: curl (\(start.spread ? "about a spine" : "one page", privacy: .public)) in \(String(describing: start.frame), privacy: .public), pages \(String(describing: rectsBefore), privacy: .public)")
+            overlay.run(before: a, after: b, direction: turn.isForward ? .towardLeft : .towardRight,
+                        twoPages: start.spread, completion: remove)
         }
+    }
+
+    /// The pages on screen, in the root view's coordinates, left to right.
+    private func pageRects() -> [CGRect] {
+        guard let document = pdfView.document else { return [] }
+        return visiblePages.compactMap { document.page(at: $0) }
+            .map { view.convert(pdfView.convert($0.bounds(for: pdfView.displayBox), from: $0), from: pdfView) }
+            .sorted { $0.minX < $1.minX }
+    }
+
+    /// Where a curl turns (in the root view's coordinates), from the pages
+    /// on show as it begins, and whether it turns about a spine, as on iOS:
+    /// - Two pages side by side: one leaf about the spine between them.
+    /// - A page alone wider than tall (a book's spread on one PDF page):
+    ///   about its middle, as two pages would.
+    /// - Any other page alone (One Page, or the cover or last page alone in
+    ///   Two Pages, which PDFKit centres): the page swings about its left edge.
+    /// The region is on whole pixels, inwards, so no hairline of the
+    /// background shows down the fold or along the edges (as on iOS).
+    private func curlGeometry(_ rects: [CGRect]) -> (frame: CGRect, spread: Bool)? {
+        guard let first = rects.first else { return nil }
+        let scale = view.window?.backingScaleFactor ?? 2
+        func snap(_ value: CGFloat, _ rule: FloatingPointRoundingRule) -> CGFloat { (value * scale).rounded(rule) / scale }
+        let union = rects.dropFirst().reduce(first) { $0.union($1) }.intersection(pdfView.frame)
+        guard !union.isEmpty else { return nil }
+        let region = CGRect(x: snap(union.minX, .up), y: snap(union.minY, .up),
+                            width: snap(union.maxX, .down) - snap(union.minX, .up),
+                            height: snap(union.maxY, .down) - snap(union.minY, .up))
+        var spine: CGFloat?
+        if rects.count == 2 {
+            spine = rects[0].maxX // the pages touch
+        } else if first.width > first.height {
+            spine = union.midX
+        }
+        guard let spine else { return (region, false) }
+        // Two halves of equal width either side of the spine (PageTurnView
+        // turns about its middle). Pages a pixel or two apart in width are
+        // taken at the narrower, so no leaf takes in what is beyond its page.
+        let middle = snap(spine, .toNearestOrAwayFromZero)
+        let left = middle - region.minX, right = region.maxX - middle
+        let half = abs(left - right) <= 2 / scale ? min(left, right) : max(left, right)
+        guard half > 0 else { return (region, false) }
+        return (CGRect(x: middle - half, y: region.minY, width: half * 2, height: region.height), true)
+    }
+
+    /// Part of a picture of the PDF view (`pagesPicture`), by a rect in the
+    /// root view's coordinates.
+    private func crop(_ picture: CGImage, to rect: CGRect) -> CGImage? {
+        let frame = pdfView.frame
+        let scale = CGFloat(picture.width) / max(frame.width, 1)
+        var local = rect.offsetBy(dx: -frame.minX, dy: -frame.minY)
+        // Pictures count rows from the top.
+        if !view.isFlipped { local.origin.y = frame.height - local.maxY }
+        let pixels = CGRect(x: local.minX * scale, y: local.minY * scale,
+                            width: local.width * scale, height: local.height * scale).integral
+        return picture.cropping(to: pixels)
     }
 
     /// The pages as the reader sees them, the glow and the ribbon included,
