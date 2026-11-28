@@ -155,14 +155,6 @@ struct OverlayBar: View {
     /// The popover that is open, if any: one at a time.
     @State private var openPopover: Popover?
     private enum Popover { case typography, layout }
-    /// The bar is slightly see-through, and solid while the pointer is on it.
-    @State private var hovering = false
-    #if os(iOS)
-    /// Touch screens have no hover, so the bar is always solid there.
-    private let isTouch = true
-    #else
-    private let isTouch = false
-    #endif
 
     private var locationText: String {
         if let f = dragFraction {
@@ -240,17 +232,21 @@ struct OverlayBar: View {
     private var wholeBar: some View {
         VStack(spacing: 10) {
             locationRow
+            // Contents and Bookmark together on the left, the page buttons
+            // and slider, Layout and Aa; read aloud last, a little apart
+            // (it is a different kind of thing: listening, not reading).
             HStack(spacing: 18) {
                 contentsButton
+                bookmarkButton
                 previousButton
                 slider
                 nextButton
-                bookmarkButton
-                if let readAloud = actions.readAloud {
-                    ReadAloudButton(phase: state.readAloud, actions: readAloud)
-                }
                 layoutButton
                 typographyButton
+                if let readAloud = actions.readAloud {
+                    ReadAloudButton(phase: state.readAloud, actions: readAloud)
+                        .padding(.leading, 10)
+                }
             }
             // The symbols a step larger than the system's default, of one
             // weight (the chevrons too), in the text colour: plain controls
@@ -266,18 +262,15 @@ struct OverlayBar: View {
         .labelStyle(.iconOnly)
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
-        // Liquid Glass on macOS 26 / iOS 26 and later. Before that, the
-        // material is slightly see-through (about 18%), so the bar reads as
-        // something laid over the page; solid while the pointer is over it.
-        .overlaySurface(RoundedRectangle(cornerRadius: 22, style: .continuous),
-                        seeThrough: !(hovering || isTouch))
+        // Liquid Glass on macOS 26 / iOS 26 and later, with nothing behind
+        // it (no band of the page's colour): the page shows softly through.
+        // Before that, the solid material (see-through, the page's text
+        // showed through it, now that no band hides the text behind it).
+        .overlaySurface(RoundedRectangle(cornerRadius: 22, style: .continuous))
         #if os(iOS)
         // Icons in the text colour, as on the Mac (not the system blue).
         .tint(.primary)
         #endif
-        .onHover { inside in
-            withAnimation(.easeOut(duration: 0.15)) { hovering = inside }
-        }
         .frame(maxWidth: 760)
         .popoverBookkeeping(state: state, actions: actions, openPopover: $openPopover)
     }
@@ -607,6 +600,10 @@ struct TypographyPopover: View {
         .formStyle(.grouped)
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
+        // The form is sized to fit, so there is nothing to scroll: no scroll
+        // bar (a grouped form is a scroll view, and showed one).
+        .scrollDisabled(true)
+        .scrollIndicators(.never)
         // VoiceOver names the popover rather than saying "scroll area".
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Text and Appearance"))
@@ -739,10 +736,20 @@ struct LayoutPopover: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !state.isPDF { lineWidthPicker.disabled(state.isFixedLayout) }
+            // How a page turns, in One Page and Two Pages (books and PDFs).
+            // Also in Settings › General.
+            if state.currentLayout != .scroll {
+                Picker("Page Turn", selection: $settings.pageTurnStyle) {
+                    ForEach(PageTurnStyle.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
+        .scrollDisabled(true)
+        .scrollIndicators(.never)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Layout"))
         #endif

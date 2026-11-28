@@ -31,10 +31,14 @@ final class PassThroughEffectView: NSVisualEffectView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// The band of the page's colour behind the controls (`PageBand`): drawn
-/// only, so clicks go through it to the page or the title bar.
-final class PageBandView: NSHostingView<ReaderPageBand> {
+/// The glass behind the title bar while the controls are up (`barSurface`):
+/// drawn only, so clicks go through it to the title bar and its buttons.
+final class TitleGlassView: NSHostingView<TitleGlass> {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+struct TitleGlass: View {
+    var body: some View { Color.clear.barSurface().ignoresSafeArea() }
 }
 
 /// The root view: tracks the pointer so the title bar can be revealed at the
