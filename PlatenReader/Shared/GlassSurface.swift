@@ -30,6 +30,27 @@ extension View {
         #endif
     }
 
+    /// A bar across the window's whole width (the Mac's title bar while the
+    /// controls are up): glass on macOS 26 and later, so the page shows
+    /// through it softly; before that (and in debug snapshots), the system's
+    /// bar material with a hairline along its bottom edge.
+    @ViewBuilder
+    func barSurface() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, macOS 26, *), !Self.snapshotting {
+            glassEffect(.regular, in: Rectangle())
+        } else {
+            barMaterial()
+        }
+        #else
+        barMaterial()
+        #endif
+    }
+
+    private func barMaterial() -> some View {
+        background(.bar).overlay(alignment: .bottom) { Divider() }
+    }
+
     /// Debug snapshots (PLATEN_SNAPSHOT_DIR) draw views offscreen, where
     /// glass does not draw (nor, reliably, what is on it): they get the
     /// material, and glass is checked by eye on screen.
